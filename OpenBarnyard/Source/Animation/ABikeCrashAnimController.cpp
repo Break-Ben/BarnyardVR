@@ -6,6 +6,8 @@
 #include "ANamedAnimationSet.h"
 #include "UnitMovement/Steering/ABikeSteer.h"
 #include "Physics/APhysicsBike.h"
+#include "Physics/AVehicleManager.h"
+#include "Cameras/AFirstPersonCamera.h"
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -114,7 +116,16 @@ void ABikeCrashAnimController::UpdateBikeAnimations( TFLOAT a_fDeltaTime )
 		rAnims.PlayAnim( TPS8( bk_rear_wheel_spin ), -1.0f, TFALSE );
 
 	// Steering
-	m_fWheelTurn = TMath::LERP( m_fWheelTurn, pPhysics->m_fSteeringAngle, 0.75f );
+	if ( AFirstPersonCamera::IsEnabled() )
+	{
+		const TFLOAT fTargetSteering = AVehicleManager::GetInterpolatedSteeringAngle( *pPhysics );
+		const TFLOAT fBlend          = ( a_fDeltaTime > 0.0f ) ? ( 1.0f - expf( -83.17766f * a_fDeltaTime ) ) : 0.75f;
+		m_fWheelTurn                 = TMath::LERP( m_fWheelTurn, fTargetSteering, fBlend );
+	}
+	else
+	{
+		m_fWheelTurn = TMath::LERP( m_fWheelTurn, pPhysics->m_fSteeringAngle, 0.75f );
+	}
 
 	if ( AToshiAnimationInterface::GetAnimationRef( rAnims.GetOverlayAnimRefs(), TPS8( bk_front_wheel_turn_right ) ) )
 	{
@@ -199,4 +210,41 @@ void ABikeCrashAnimController::UpdateTransform( TFLOAT a_fDeltaTime )
 		m_pAnimatableObject->GetModelInstance()->SetTransformKeepRight( vecPosition, vecDirection );
 	else
 		m_pAnimatableObject->GetModelInstance()->SetTransform( vecPosition, vecDirection );
+}
+
+TBOOL ABikeCrashAnimController::SyncInterpolatedTransform()
+{
+	if ( !m_pOwner || !m_pAnimatableObject )
+		return TFALSE;
+
+	AUnit*  pUnit = TSTATICCAST( AUnit, m_pOwner );
+	ASteer* pBase = pUnit->GetSteer();
+
+	if ( !pBase || !pBase->IsA( &TGetClass( ABikeSteer ) ) )
+		return TFALSE;
+
+	ABikeSteer*   pSteer   = TSTATICCAST( ABikeSteer, pBase );
+	APhysicsBike* pPhysics = pSteer->GetPhysics();
+
+	if ( !pPhysics )
+		return TFALSE;
+
+	TMatrix44 matTransform;
+	AVehicleManager::GetInterpolatedBodyTransform( pPhysics->GetBody(), matTransform );
+
+	TVector4 vOffset;
+	TMatrix44::RotateVector( vOffset, matTransform, MODEL_OFFSET );
+
+	TVector4& rTranslation = matTransform.GetTranslation();
+	rTranslation.x         = rTranslation.x + vOffset.x;
+	rTranslation.y         = rTranslation.y + vOffset.y;
+	rTranslation.z         = rTranslation.z + vOffset.z;
+
+	matTransform.RotateY( TMath::PI );
+	matTransform.RotateX( 1.5707964f );
+
+	m_pAnimatableObject->GetModelInstance()->SetTransform( matTransform );
+	m_pAnimatableObject->UpdateAttachedObjectTransforms();
+	pSteer->SyncLightTransforms();
+	return TTRUE;
 }

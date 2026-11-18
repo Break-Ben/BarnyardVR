@@ -37,6 +37,9 @@ public:
 	// Places the rider on the bike
 	void UpdateTransform( TFLOAT a_fDeltaTime );
 
+	// Re-applies the rider transform (and attached bike/lights) using interpolated vehicle physics before render
+	void SyncInterpolatedTransform();
+
 	// Animates the wheels, pedals, steering and flapping of the bike attached to body_loc
 	void UpdateBikeAnimations( TFLOAT a_fDeltaTime );
 

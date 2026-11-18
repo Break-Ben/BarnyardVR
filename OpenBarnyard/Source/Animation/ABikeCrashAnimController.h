@@ -32,6 +32,9 @@ public:
 	// Places the bike at the steer
 	void UpdateTransform( TFLOAT a_fDeltaTime );
 
+	// Re-applies the bike transform (and any attachments/lights) using interpolated vehicle physics before render
+	TBOOL SyncInterpolatedTransform();
+
 private:
 	TFLOAT m_fWheelTurn; // 0x1c, smoothed steering of the front wheel
 };

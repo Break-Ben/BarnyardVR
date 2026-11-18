@@ -313,7 +313,11 @@ TBOOL ABikePhysicsCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 		else
 		{
 			TMatrix44 matVehicle;
-			GetVehicleTransform( matVehicle );
+
+			if ( pSteer && pSteer->IsA( &TGetClass( ABikeSteer ) ) && TSTATICCAST( ABikeSteer, pSteer )->GetPhysics() )
+				AVehicleManager::GetInterpolatedBodyTransform( TSTATICCAST( ABikeSteer, pSteer )->GetPhysics()->GetBody(), matVehicle );
+			else
+				GetVehicleTransform( matVehicle );
 
 			AFirstPersonCamera::ComputeBikeCockpit( pTargetUnit, matVehicle, vEyePos, vForward );
 			FadeCloseRaceBikes( vEyePos, vEyePos + vForward );
@@ -1056,7 +1060,13 @@ void ABikePhysicsCameraHelper::PlaceCamera()
 			else
 			{
 				TMatrix44 matVehicle;
-				GetVehicleTransform( matVehicle );
+				ASteer*   pSteer = pTargetUnit->GetSteer();
+
+				if ( pSteer && pSteer->IsA( &TGetClass( ABikeSteer ) ) && TSTATICCAST( ABikeSteer, pSteer )->GetPhysics() )
+					AVehicleManager::GetInterpolatedBodyTransform( TSTATICCAST( ABikeSteer, pSteer )->GetPhysics()->GetBody(), matVehicle );
+				else
+					GetVehicleTransform( matVehicle );
+
 				AFirstPersonCamera::ComputeBikeCockpit( pTargetUnit, matVehicle, vEyePos, vForward );
 			}
 

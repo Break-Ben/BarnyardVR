@@ -470,7 +470,10 @@ void ARigidBody::SetPosition( const TVector4& a_rcPosition, TBOOL a_bResetPrevio
 	TMatrix44::TransformVector( m_vCentreOfMass, m_oTransform, m_vCentreOfMassLocal );
 
 	if ( a_bResetPrevious == TTRUE )
+	{
 		m_oPrevTransform = m_oTransform;
+		AVehicleManager::OnBodyPositionReset( this );
+	}
 }
 
 // $Barnyard: FUNCTION 00658eb0
@@ -485,13 +488,17 @@ void ARigidBody::SetOrientation( const TQuaternion& a_rcOrientation, TBOOL a_bRe
 	TMatrix44::TransformVector( m_vCentreOfMass, m_oTransform, m_vCentreOfMassLocal );
 
 	if ( a_bResetPrevious == TTRUE )
+	{
 		m_oPrevTransform = m_oTransform;
+		AVehicleManager::OnBodyOrientationReset( this );
+	}
 }
 
 // $Barnyard: FUNCTION 00658f50
 void ARigidBody::SetPreviousPosition( const TVector4& a_rcPosition )
 {
 	m_oPrevTransform.GetTranslation() = a_rcPosition;
+	AVehicleManager::SetBodyPreviousPosition( this, a_rcPosition );
 }
 
 // $Barnyard: FUNCTION 00658f80
@@ -500,6 +507,7 @@ void ARigidBody::SetPreviousOrientation( const TQuaternion& a_rcOrientation )
 	TVector4 vTranslation = m_oPrevTransform.GetTranslation();
 	m_oPrevTransform.SetFromQuaternion( a_rcOrientation );
 	m_oPrevTransform.GetTranslation() = vTranslation;
+	AVehicleManager::SetBodyPreviousOrientation( this, a_rcOrientation );
 }
 
 // $Barnyard: FUNCTION 00658fd0

@@ -110,6 +110,10 @@ public:
 	AAnimatableObject* GetDriver() const { return m_pDriver; }
 	TINT               GetBaseBone() const { return m_iBaseBone; }
 
+	// Re-applies chassis, driver, passenger, wheel and light transforms from interpolated physics before render
+	void        SyncInterpolatedVisuals();
+	static TBOOL SyncAllInterpolatedVisuals();
+
 	// $Barnyard: FUNCTION 004f5ce0
 	TINT GetUnkB0() const { return m_iUnkB0; }
 

@@ -7,6 +7,7 @@
 #include "ABikePhysicsCameraHelper.h"
 #include "AOptions.h"
 #include "Render/ARenderer.h"
+#include "Render/AShadowManager.h"
 #include "Animation/AAnimatableObject.h"
 #include "Animation/AAnimatableObjectManager.h"
 #include "Animation/AAnimatableObjectType.h"
@@ -23,6 +24,7 @@
 #include "Physics/ACollisionObject.h"
 #include "Physics/APhysicsBike.h"
 #include "Physics/APhysicsCar.h"
+#include "Physics/AVehicleManager.h"
 #include "Terrain/ATerrainInterface.h"
 
 #ifdef TOSHI_SKU_WINDOWS
@@ -79,8 +81,9 @@ constexpr TFLOAT HIDE_EXIT_DISTANCE  = 0.55f;
 // Bike cockpit offset in vehicle space (+X right, +Y down, +Z forward)
 constexpr TVector4 BIKE_EYE_OFFSET = TVector4( 0.0f, -1.68f, -0.20f, 1.0f );
 
-// Fallback Joy Ride driver eye offset in seat space (left-hand driver seat)
-constexpr TVector4 CAR_DEFAULT_EYE_OFFSET = TVector4( -0.38f, -1.72f, -0.05f, 1.0f );
+// Fallback Joy Ride driver eye offsets in vehicle body space (+X right, +Y down, +Z forward)
+constexpr TVector4 CAR_TRUCK_DEFAULT_EYE_OFFSET = TVector4( -0.42f, -1.56f, 0.05f, 1.0f );
+constexpr TVector4 CAR_SEDAN_DEFAULT_EYE_OFFSET = TVector4( -0.42f, -1.44f, -0.05f, 1.0f );
 
 // Vehicle freelook limits and auto-return timing
 constexpr TFLOAT VEHICLE_MAX_YAW_DEG      = 115.0f;
@@ -109,10 +112,10 @@ TBOOL                     s_bCarLookBack     = TFALSE;
 TVector4                  s_vFlightEyePos    = TVector4::VEC_ZERO;
 TBOOL                     s_bFlightThisFrame = TFALSE;
 
-// Cached rest-pose driver eye offset for the active Joy Ride car
+// Cached rest-pose driver eye offset for the active Joy Ride car (in vehicle body space)
 AUnitCarChaseCar* s_pCachedCar          = TNULL;
 TBOOL             s_bCarEyeOffsetCached = TFALSE;
-TVector4          s_vCarEyeOffset       = CAR_DEFAULT_EYE_OFFSET;
+TVector4          s_vCarEyeOffset       = CAR_TRUCK_DEFAULT_EYE_OFFSET;
 
 // Vehicle freelook state (degrees)
 TFLOAT   s_fVehicleLookYaw      = 0.0f;
@@ -394,6 +397,28 @@ void RestoreNearClip()
 	s_bNearClipOverridden = TFALSE;
 }
 
+void SyncInterpolatedVehiclesBeforeRender()
+{
+	TBOOL bSyncedBikes = TFALSE;
+	TBOOL bSyncedCars  = TFALSE;
+
+	if ( AAnimatableObjectManager::IsSingletonCreated() )
+		bSyncedBikes = AAnimatableObjectManager::GetSingleton()->SyncInterpolatedBikeTransforms();
+
+	bSyncedCars = AUnitCarChaseCar::SyncAllInterpolatedVisuals();
+
+	if ( ( bSyncedBikes || bSyncedCars ) && AShadowManager::IsSingletonCreated() )
+		AShadowManager::GetSingleton()->Update();
+}
+
+struct ScopedVehicleVisualSync
+{
+	~ScopedVehicleVisualSync()
+	{
+		SyncInterpolatedVehiclesBeforeRender();
+	}
+};
+
 } // namespace
 
 TBOOL AFirstPersonCamera::ShouldOverrideNearClip()
@@ -528,18 +553,23 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	const TVector4& rcVehicleUp  = a_rcVehicleTransform.AsBasisVector4( BASISVECTOR_UP );
 	const TVector4& rcVehicleFwd = a_rcVehicleTransform.AsBasisVector4( BASISVECTOR_FORWARD );
 
+	TVector4 vSafeStart;
+
 	// Follow the bike's natural lean and pitch while upright; fall back to world-up if tipped over
 	if ( rcVehicleUp.y > 0.35f )
 	{
 		TMatrix44::TransformVector( a_rOutEyePos, a_rcVehicleTransform, BIKE_EYE_OFFSET );
 		a_rOutEyePos.w = 1.0f;
+
+		TMatrix44::TransformVector( vSafeStart, a_rcVehicleTransform, TVector4( BIKE_EYE_OFFSET.x, -0.95f, BIKE_EYE_OFFSET.z, 1.0f ) );
+		vSafeStart.w = 1.0f;
 	}
 	else
 	{
 		a_rOutEyePos.Set( rcVehiclePos.x, rcVehiclePos.y + BIKE_EYE_OFFSET.y, rcVehiclePos.z, 1.0f );
+		vSafeStart.Set( rcVehiclePos.x, rcVehiclePos.y - 0.95f, rcVehiclePos.z, 1.0f );
 	}
 
-	TVector4 vSafeStart( rcVehiclePos.x, rcVehiclePos.y - 0.95f, rcVehiclePos.z, 1.0f );
 	SweepCeilingClearance( vSafeStart, a_rOutEyePos );
 
 	TVector4 vFlatFwd;
@@ -558,21 +588,120 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	BuildForwardDirection( vFlatFwd, fTotalPitch, a_rOutForward );
 }
 
+static TBOOL ContainsSubstringNoCase( const TCHAR* a_szHaystack, const TCHAR* a_szNeedle )
+{
+	if ( !a_szHaystack || !a_szNeedle || !a_szNeedle[ 0 ] )
+		return TFALSE;
+
+	for ( const TCHAR* pH = a_szHaystack; *pH; ++pH )
+	{
+		const TCHAR* pA = pH;
+		const TCHAR* pB = a_szNeedle;
+
+		while ( *pA && *pB )
+		{
+			TCHAR cA = ( *pA >= 'A' && *pA <= 'Z' ) ? TCHAR( *pA + ( 'a' - 'A' ) ) : *pA;
+			TCHAR cB = ( *pB >= 'A' && *pB <= 'Z' ) ? TCHAR( *pB + ( 'a' - 'A' ) ) : *pB;
+
+			if ( cA != cB )
+				break;
+
+			++pA;
+			++pB;
+		}
+
+		if ( !*pB )
+			return TTRUE;
+	}
+
+	return TFALSE;
+}
+
+static TINT FindDriverHeadBone( TSkeletonInstance* a_pDriverSkel )
+{
+	if ( !a_pDriverSkel )
+		return -1;
+
+	TINT iBone = a_pDriverSkel->GetBoneID( TPS8( c_head ).GetString() );
+
+	if ( iBone != -1 )
+		return iBone;
+
+	static const TCHAR* const s_aszFallbackNames[] = {
+		"cg_head",
+		"root_head",
+		"c_neck",
+	};
+
+	for ( TSIZE i = 0; i < TARRAYSIZE( s_aszFallbackNames ); i++ )
+	{
+		iBone = a_pDriverSkel->GetBoneID( s_aszFallbackNames[ i ] );
+
+		if ( iBone != -1 )
+			return iBone;
+	}
+
+	TSkeleton* pSkeleton = a_pDriverSkel->GetSkeleton();
+
+	if ( !pSkeleton )
+		return -1;
+
+	const TINT iBoneCount = pSkeleton->GetBoneCount();
+	TINT       iNeckBone  = -1;
+
+	for ( TINT i = 0; i < iBoneCount; i++ )
+	{
+		const TCHAR* pszName = pSkeleton->GetBone( i )->GetName();
+
+		if ( !pszName || !pszName[ 0 ] )
+			continue;
+
+		if ( ContainsSubstringNoCase( pszName, "head" ) &&
+		     !ContainsSubstringNoCase( pszName, "light" ) &&
+		     !ContainsSubstringNoCase( pszName, "horn" ) &&
+		     !ContainsSubstringNoCase( pszName, "ear" ) &&
+		     !ContainsSubstringNoCase( pszName, "end" ) &&
+		     !ContainsSubstringNoCase( pszName, "nub" ) )
+		{
+			return i;
+		}
+
+		if ( iNeckBone == -1 && ContainsSubstringNoCase( pszName, "neck" ) )
+			iNeckBone = i;
+	}
+
+	return iNeckBone;
+}
+
 void AFirstPersonCamera::ComputeCarCockpit( AUnitCarChaseCar* a_pCar, TBOOL a_bLookBack, TVector4& a_rOutEyePos, TVector4& a_rOutForward )
 {
-	TMatrix44 matSeat = TMatrix44::IDENTITY;
+	// Use the car rigid-body frame directly (+X right, +Y down, +Z forward).
+	// NOTE: ARacingCarSteer::GetSeatMatrix applies m_vSeatOffset and RotateX(+PI/2) into Z-up model space,
+	// so its forward basis points along the car roof normal rather than the vehicle driving direction.
+	TMatrix44        matBody     = TMatrix44::IDENTITY;
+	ARacingCarSteer* pSteer      = a_pCar->GetRacingCarSteer();
+	const TBOOL      bIsTruck    = ( a_pCar->GetCarType() == AUnitCarChaseCar::CARTYPE_PLAYER );
+	TVector4         vSeatOffset = bIsTruck ? TVector4( 0.0f, -0.93f, -0.1f, 1.0f ) : TVector4( 0.0f, -0.93f, -0.2f, 1.0f );
 
-	if ( ARacingCarSteer* pSteer = a_pCar->GetRacingCarSteer() )
-		pSteer->GetSeatMatrix( matSeat );
+	if ( pSteer )
+	{
+		pSteer->GetInterpolatedBodyTransform( matBody );
+		vSeatOffset = pSteer->GetSeatOffset();
+	}
 	else if ( a_pCar->GetSteer() )
-		matSeat.GetTranslation() = *a_pCar->GetSteer()->GetPosition();
+	{
+		TVector4 vDir;
+		a_pCar->GetSteer()->CopyDirection( vDir );
+		matBody.LookAtDirection( vDir, TVector4::VEC_NEGY );
+		matBody.GetTranslation() = *a_pCar->GetSteer()->GetPosition();
+	}
 
-	// Resolve the driver's head position in seat space once per car so suspension moves the camera without idle head-bob
+	// Resolve the driver's head position in vehicle body space once per car so suspension moves the camera without idle head-bob
 	if ( s_pCachedCar != a_pCar )
 	{
 		s_pCachedCar          = a_pCar;
 		s_bCarEyeOffsetCached = TFALSE;
-		s_vCarEyeOffset       = CAR_DEFAULT_EYE_OFFSET;
+		s_vCarEyeOffset       = bIsTruck ? CAR_TRUCK_DEFAULT_EYE_OFFSET : CAR_SEDAN_DEFAULT_EYE_OFFSET;
 	}
 
 	if ( !s_bCarEyeOffsetCached )
@@ -590,23 +719,64 @@ void AFirstPersonCamera::ComputeCarCockpit( AUnitCarChaseCar* a_pCar, TBOOL a_bL
 
 			if ( pDriverSkel && pCarSkel )
 			{
-				TINT iHeadBone = pDriverSkel->GetBoneID( TPS8( c_head ).GetString() );
+				pCarSkel->UpdateState( TFALSE );
+				pDriverSkel->UpdateState( TFALSE );
+
+				const TMatrix44& rcBaseMatrix = pCarSkel->GetBoneTransformCurrent( iBase );
+				TINT             iHeadBone    = FindDriverHeadBone( pDriverSkel );
+				TBOOL            bHaveHead    = TFALSE;
+				TVector4         vModelHead   = TVector4::VEC_ZERO;
 
 				if ( iHeadBone != -1 )
 				{
-					TMatrix44 matLocalHead = TMatrix44::IDENTITY;
-					matLocalHead.Multiply(
-					    pCarSkel->GetBoneTransformCurrent( iBase ),
-					    pDriverSkel->GetBoneTransformCurrent( iHeadBone )
-					);
+					TMatrix44 matModelHead = TMatrix44::IDENTITY;
+					matModelHead.Multiply( rcBaseMatrix, pDriverSkel->GetBoneTransformCurrent( iHeadBone ) );
+					vModelHead = matModelHead.GetTranslation();
+					bHaveHead  = TTRUE;
+				}
+				else if ( TSkeleton* pSkeleton = pDriverSkel->GetSkeleton() )
+				{
+					// Fallback for driver rigs without a named head/neck joint: pick the highest in-cab bone
+					const TINT iBoneCount = pSkeleton->GetBoneCount();
+					TFLOAT     fBestZ     = 0.20f;
 
-					TVector4 vHead = matLocalHead.GetTranslation();
-
-					// Sanity-check that the skeleton has evaluated into a plausible seat offset
-					if ( vHead.y < -0.8f && vHead.y > -2.8f && TMath::Abs( vHead.x ) < 1.2f && TMath::Abs( vHead.z ) < 1.8f )
+					for ( TINT i = 0; i < iBoneCount; i++ )
 					{
-						// Raise slightly from neck/head pivot to the eyes and nudge forward clear of the headrest
-						s_vCarEyeOffset.Set( vHead.x, vHead.y - 0.14f, vHead.z + 0.08f, 1.0f );
+						TMatrix44 matBone = TMatrix44::IDENTITY;
+						matBone.Multiply( rcBaseMatrix, pDriverSkel->GetBoneTransformCurrent( i ) );
+						const TVector4& rcPos = matBone.GetTranslation();
+
+						if ( rcPos.z > fBestZ && rcPos.z < 1.30f && TMath::Abs( rcPos.x ) < 0.95f && TMath::Abs( rcPos.y ) < 1.80f )
+						{
+							fBestZ     = rcPos.z;
+							vModelHead = rcPos;
+							bHaveHead  = TTRUE;
+						}
+					}
+				}
+
+				if ( bHaveHead )
+				{
+					// Convert from Z-up car model space (+X right, +Y forward, +Z up) into Y-down vehicle body space
+					const TFLOAT fBodyX = vSeatOffset.x + vModelHead.x;
+					const TFLOAT fBodyY = vSeatOffset.y - vModelHead.z;
+					const TFLOAT fBodyZ = vSeatOffset.z + vModelHead.y;
+
+					if ( vModelHead.z > 0.15f && vModelHead.z < 1.35f && TMath::Abs( fBodyX ) < 1.05f && TMath::Abs( fBodyZ ) < 2.2f )
+					{
+						// Keep the eye cleanly inside the windshield vertical window (below the cab roof header, above the dash)
+						const TFLOAT fHighestEyeY = bIsTruck ? -1.78f : -1.56f;
+						const TFLOAT fLowestEyeY  = bIsTruck ? -1.34f : -1.24f;
+
+						TFLOAT fEyeX = fBodyX;
+						TFLOAT fEyeY = fBodyY;
+						TFLOAT fEyeZ = fBodyZ + 0.08f;
+
+						TMath::Clip( fEyeX, -0.85f, 0.85f );
+						TMath::Clip( fEyeY, fHighestEyeY, fLowestEyeY );
+						TMath::Clip( fEyeZ, -1.40f, 1.00f );
+
+						s_vCarEyeOffset.Set( fEyeX, fEyeY, fEyeZ, 1.0f );
 						s_bCarEyeOffsetCached = TTRUE;
 					}
 				}
@@ -614,29 +784,29 @@ void AFirstPersonCamera::ComputeCarCockpit( AUnitCarChaseCar* a_pCar, TBOOL a_bL
 		}
 	}
 
-	const TVector4& rcSeatUp  = matSeat.AsBasisVector4( BASISVECTOR_UP );
-	const TVector4& rcSeatPos = matSeat.AsBasisVector4( BASISVECTOR_TRANSLATION );
-	const TVector4& rcSeatFwd = matSeat.AsBasisVector4( BASISVECTOR_FORWARD );
+	const TVector4& rcBodyUp  = matBody.AsBasisVector4( BASISVECTOR_UP );
+	const TVector4& rcBodyPos = matBody.AsBasisVector4( BASISVECTOR_TRANSLATION );
+	const TVector4& rcBodyFwd = matBody.AsBasisVector4( BASISVECTOR_FORWARD );
 
-	if ( rcSeatUp.y > 0.25f )
+	if ( rcBodyUp.y > 0.25f )
 	{
-		TMatrix44::TransformVector( a_rOutEyePos, matSeat, s_vCarEyeOffset );
+		TMatrix44::TransformVector( a_rOutEyePos, matBody, s_vCarEyeOffset );
 		a_rOutEyePos.w = 1.0f;
 	}
 	else
 	{
-		a_rOutEyePos.Set( rcSeatPos.x, rcSeatPos.y + s_vCarEyeOffset.y, rcSeatPos.z, 1.0f );
+		a_rOutEyePos.Set( rcBodyPos.x, rcBodyPos.y + s_vCarEyeOffset.y, rcBodyPos.z, 1.0f );
 	}
 
 	TVector4 vFlatFwd;
-	NormaliseFlatSafe( rcSeatFwd, vFlatFwd );
+	NormaliseFlatSafe( rcBodyFwd, vFlatFwd );
 
 	TFLOAT fYawDeg = s_fVehicleLookYaw + ( a_bLookBack ? 180.0f : 0.0f );
 
 	if ( fYawDeg != 0.0f )
 		vFlatFwd.AsVector3().RotateY( TMath::DegToRad( fYawDeg ) );
 
-	TFLOAT fCarPitch = PitchDegFromDirection( rcSeatFwd );
+	TFLOAT fCarPitch = PitchDegFromDirection( rcBodyFwd );
 	TMath::Clip( fCarPitch, -50.0f, 50.0f );
 
 	TFLOAT fTotalPitch = fCarPitch * TMath::Cos( TMath::DegToRad( fYawDeg ) ) + s_fVehicleLookPitch;
@@ -713,7 +883,7 @@ void AFirstPersonCamera::UpdateVehicleLook( TFLOAT a_fDeltaTime, TFLOAT a_fVehic
 	// Gently return the rider/driver gaze to the road ahead while moving
 	if ( a_fVehicleSpeed > 1.5f && s_fVehicleLookIdleTime > VEHICLE_RECENTER_DELAY )
 	{
-		TFLOAT fBlend       = TMath::Min( 1.0f, a_fDeltaTime * VEHICLE_RECENTER_SPEED );
+		TFLOAT fBlend       = ( a_fDeltaTime > 0.0f ) ? ( 1.0f - expf( -VEHICLE_RECENTER_SPEED * a_fDeltaTime ) ) : 0.0f;
 		s_fVehicleLookYaw   = TMath::LERP( s_fVehicleLookYaw, 0.0f, fBlend );
 		s_fVehicleLookPitch = TMath::LERP( s_fVehicleLookPitch, 0.0f, fBlend );
 
@@ -966,6 +1136,9 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera )
 	ACameraHelper*  pCurrentHelper = pCamMgr->GetCurrentCameraHelper();
 	AUnit*          pUnit          = s_pActiveUnit ? s_pActiveUnit->GetUnit() : TNULL;
 
+	// Sync visual bike/car meshes, passengers, wheels, lights and shadows to the same interpolated step once camera is placed
+	ScopedVehicleVisualSync oVehicleVisualSync;
+
 	switch ( s_eViewMode )
 	{
 		case VIEW_ON_FOOT:
@@ -1033,12 +1206,17 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera )
 		case VIEW_BIKE:
 		{
 			if ( pUnit && pUnit->GetSteer() && pUnit->GetSteer()->IsA( &TGetClass( ABikeSteer ) ) &&
+			     TSTATICCAST( ABikeSteer, pUnit->GetSteer() )->GetPhysics() &&
 			     pCurrentHelper == s_pVehicleHelper && GetHelperTargetUnit( s_pVehicleHelper ) == pUnit )
 			{
-				const TMatrix44& rcTransform = TSTATICCAST( ABikeSteer, pUnit->GetSteer() )->GetPhysics()->GetBody().GetTransform();
-				TVector4         vEyePos;
-				TVector4         vForward;
-				ComputeBikeCockpit( pUnit, rcTransform, vEyePos, vForward );
+				TMatrix44 matTransform;
+				AVehicleManager::GetInterpolatedBodyTransform(
+				    TSTATICCAST( ABikeSteer, pUnit->GetSteer() )->GetPhysics()->GetBody(),
+				    matTransform
+				);
+				TVector4 vEyePos;
+				TVector4 vForward;
+				ComputeBikeCockpit( pUnit, matTransform, vEyePos, vForward );
 
 				if ( pCamMgr->m_bIsPosLerping && TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) > 0.25f )
 				{

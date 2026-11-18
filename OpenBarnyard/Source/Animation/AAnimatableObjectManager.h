@@ -94,6 +94,9 @@ public:
 	void DestroyAnimatableObjectsOfType( AAnimatableObjectType* a_pType );
 	void DestroyAttachedObjects( AAnimatableObject* a_pAnimatableObject );
 
+	// Updates bike rider/bike visual transforms from interpolated physics before rendering; returns TTRUE if any were updated
+	TBOOL SyncInterpolatedBikeTransforms();
+
 private:
 	void AttachSoundBreakpoints( AAnimatableObjectType* a_pObjectType );
 

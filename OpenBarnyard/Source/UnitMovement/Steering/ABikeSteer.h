@@ -158,6 +158,9 @@ public:
 	// Puts the bike at the position, stopped
 	void Reset( const Toshi::TVector4& a_rcPosition, const Toshi::TVector4& a_rcDirection );
 
+	// Refreshes bone-attached headlight/taillight transforms after render interpolation
+	void SyncLightTransforms();
+
 	APhysicsBike*    GetPhysics() const { return m_pPhysics; }
 	Toshi::TVector4& GetLastGroundPosition() { return m_vecLastGroundPosition; }
 	Toshi::TVector4& GetLastPosition() { return m_vecLastPosition; }

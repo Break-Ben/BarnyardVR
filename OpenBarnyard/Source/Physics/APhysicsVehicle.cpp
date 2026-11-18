@@ -455,6 +455,7 @@ void APhysicsVehicle::Reset( const TVector4& a_rcPosition, const TQuaternion& a_
 	m_bFrozen          = TFALSE;
 
 	UpdateWheelContacts();
+	AVehicleManager::ResetVehicleInterpolation( this );
 }
 
 // $Barnyard: FUNCTION 00661f40
@@ -579,7 +580,9 @@ void APhysicsVehicle::ApplyBottomOut( APhysicsVehicleBottomOut* a_pBottomOut )
 
 			TVector4 vPosition;
 			vPosition.Add( m_oBody.m_oTransform.GetTranslation(), vMove );
+			AVehicleManager::SetSuppressBodyReset( TTRUE );
 			m_oBody.SetPosition( vPosition, TTRUE );
+			AVehicleManager::SetSuppressBodyReset( TFALSE );
 
 			m_oBody.m_vForce.x += a_pBottomOut->vImpulse.x;
 			m_oBody.m_vForce.y += a_pBottomOut->vImpulse.y;

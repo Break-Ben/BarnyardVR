@@ -142,6 +142,17 @@ public:
 	// Enables or disables the vehicles update in OnUpdate (ACarChaseMiniGameState)
 	void SetVehiclesUpdateEnabled( TBOOL a_bEnable ) { m_bEnableVehiclesUpdate = a_bEnable; }
 
+	// Fractional progress [0, 1] between the last fixed-rate vehicle step and the next (for render interpolation)
+	TFLOAT GetVehicleInterpolationAlpha() const
+	{
+		if ( !m_bEnableVehiclesUpdate || m_fVehiclesUpdateRate <= 0.0f )
+			return 1.0f;
+
+		TFLOAT fAlpha = m_fVehiclesUpdateTime / m_fVehiclesUpdateRate;
+		Toshi::TMath::Clip( fAlpha, 0.0f, 1.0f );
+		return fAlpha;
+	}
+
 public:
 	// Hits of the ray queries of the physics (AVehicleManager::CollideRay), 0x007b5f80
 	inline static Toshi::T2DynamicVector<ACollisionHit>* ms_pRayHits = TNULL;
