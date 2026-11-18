@@ -27,6 +27,11 @@ group "Third-Party"
 	include "Toshi/Vendor/minhook"
 end
 
+if os.target() == "windows" and _OPTIONS["renderer"] == "DX11" then
+	group "Third-Party"
+		include "Toshi/Vendor/openxr"
+end
+
 group "Third-Party"
 	include "Toshi/Vendor/Opcode"
 

@@ -17,6 +17,9 @@
 
 #include "AppBoot.h"
 #include "ClassLink.h"
+#if defined( TRENDERINTERFACE_DX11 )
+#  include "VR/AVRManager.h"
+#endif
 #include "Tasks/ADummyTask.h"
 #include "Locale/ALocaleManager.h"
 #include "Locale/ALocale.h"
@@ -611,6 +614,11 @@ static void FrameLimiter_Update()
 
 static void FrameLimiter_Wait()
 {
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( AVRManager::GetSingleton().IsActive() )
+		return; // xrWaitFrame owns the pacing while an OpenXR session is running
+#endif
+
 	LARGE_INTEGER iNow;
 	QueryPerformanceCounter( &iNow );
 

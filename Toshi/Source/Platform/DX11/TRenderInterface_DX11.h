@@ -254,8 +254,8 @@ public:
 		ID3D11ShaderResourceView* pSRV; // a Texture2DMS view with MSAA
 	};
 
-	// The depth buffer that is rendered with, the one of the scene target while it's active
-	TFORCEINLINE const DEPTHTARGET&        GetDepthTarget() const { return m_bSceneTargetActive ? m_oSceneDepth : m_oDepth; }
+	// The depth buffer that is rendered with, the one of the external/scene target while it's active
+	TFORCEINLINE const DEPTHTARGET&        GetDepthTarget() const { return m_bExternalTargetActive ? m_oExternalDepth : ( m_bSceneTargetActive ? m_oSceneDepth : m_oDepth ); }
 	TFORCEINLINE ID3D11DepthStencilView*   GetDepthStencilView() const { return GetDepthTarget().pView; }
 	TFORCEINLINE ID3D11ShaderResourceView* GetDepthStencilSRV() const { return GetDepthTarget().pSRV; }
 	TFORCEINLINE ID3D11DepthStencilView*   GetReadOnlyDepthStencilView() const { return GetDepthTarget().pReadOnlyView; }
@@ -282,11 +282,30 @@ public:
 	TFORCEINLINE ID3D11ShaderResourceView* GetSceneSRV() const { return m_pSceneSRV; }
 	TFORCEINLINE const DEPTHTARGET&        GetSceneDepthTarget() const { return m_oSceneDepth; }
 
-	// What is rendered into: the scene target while it's active, or the back buffer
-	TFORCEINLINE ID3D11Texture2D*        GetRenderTargetTexture() const { return m_bSceneTargetActive ? m_pSceneTexture : m_pBackBuffer; }
-	TFORCEINLINE ID3D11RenderTargetView* GetRenderTargetView() const { return m_bSceneTargetActive ? m_pSceneRTView : m_pBackBufferRTView; }
+	//-----------------------------------------------------------------------------
+	// External render target (used by OpenXR stereo eye & UI swapchains)
+	//-----------------------------------------------------------------------------
+	void  SetPreferredAdapterLuid( const LUID& a_rcAdapterLuid, D3D_FEATURE_LEVEL a_eMinFeatureLevel );
+	void  SetVSyncEnabled( TBOOL a_bEnabled ) { m_bVSyncEnabled = a_bEnabled; }
+	TBOOL IsVSyncEnabled() const { return m_bVSyncEnabled; }
+
+	TBOOL CreateCustomDepthTarget( TUINT32 a_uiWidth, TUINT32 a_uiHeight, DXGI_FORMAT a_eDepthFormat, UINT a_uiSampleCount, DEPTHTARGET& a_rTarget );
+	void  DestroyCustomDepthTarget( DEPTHTARGET& a_rTarget ) { DestroyDepthTarget( a_rTarget ); }
+
+	void  BeginExternalTarget( ID3D11Texture2D* a_pTexture, ID3D11RenderTargetView* a_pRTView, const DEPTHTARGET& a_rcDepth, TUINT32 a_uiWidth, TUINT32 a_uiHeight, TBOOL a_bPremultipliedAlpha = TFALSE );
+	void  EndExternalTarget();
+	TBOOL IsExternalTargetActive() const { return m_bExternalTargetActive; }
+	void  ClearCurrentTargetRGBA( TFLOAT a_fR, TFLOAT a_fG, TFLOAT a_fB, TFLOAT a_fA, TBOOL a_bClearDepth, TFLOAT a_fDepth = 1.0f );
+
+	// What is rendered into: external target, scene target, or back buffer
+	TFORCEINLINE ID3D11Texture2D*        GetRenderTargetTexture() const { return m_bExternalTargetActive ? m_pExternalTexture : ( m_bSceneTargetActive ? m_pSceneTexture : m_pBackBuffer ); }
+	TFORCEINLINE ID3D11RenderTargetView* GetRenderTargetView() const { return m_bExternalTargetActive ? m_pExternalRTView : ( m_bSceneTargetActive ? m_pSceneRTView : m_pBackBufferRTView ); }
+	TFORCEINLINE ID3D11Texture2D*        GetBackBufferTexture() const { return m_pBackBuffer; }
+	TFORCEINLINE ID3D11RenderTargetView* GetBackBufferRTView() const { return m_pBackBufferRTView; }
 	TFORCEINLINE TUINT32                 GetBackBufferWidth() const { return m_uiBackBufferWidth; }
 	TFORCEINLINE TUINT32                 GetBackBufferHeight() const { return m_uiBackBufferHeight; }
+	TFORCEINLINE TUINT32                 GetActiveTargetWidth() const { return m_bExternalTargetActive ? m_uiExternalWidth : m_uiBackBufferWidth; }
+	TFORCEINLINE TUINT32                 GetActiveTargetHeight() const { return m_bExternalTargetActive ? m_uiExternalHeight : m_uiBackBufferHeight; }
 
 	ID3D11ShaderResourceView* CreateTexture( TUINT32 a_uiWidth, TUINT32 a_uiHeight, DXGI_FORMAT a_eFormat, const void* a_pSrcData, TUINT8 a_uiFlags, D3D11_USAGE a_eUsage, TUINT32 a_uiCPUAccessFlags, TUINT32 a_uiSampleCount );
 
@@ -620,6 +639,17 @@ private:
 	DXGI_FORMAT               m_eSceneFormat;
 	UINT                      m_uiSceneSampleCount;
 	TBOOL                     m_bSceneTargetActive;
+	ID3D11Texture2D*          m_pExternalTexture;
+	ID3D11RenderTargetView*   m_pExternalRTView;
+	DEPTHTARGET               m_oExternalDepth;
+	TUINT32                   m_uiExternalWidth;
+	TUINT32                   m_uiExternalHeight;
+	TBOOL                     m_bExternalTargetActive;
+	TBOOL                     m_bExternalPremultipliedAlpha;
+	TBOOL                     m_bHasPreferredAdapterLuid;
+	LUID                      m_oPreferredAdapterLuid;
+	D3D_FEATURE_LEVEL         m_eMinFeatureLevel;
+	TBOOL                     m_bVSyncEnabled;
 	TUINT32                 m_uiBackBufferWidth;
 	TUINT32                 m_uiBackBufferHeight;
 	TBOOL                   m_bOccluded;

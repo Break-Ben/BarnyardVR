@@ -9,6 +9,7 @@
 #include "GUI/AGUI2.h"
 #include "GUI/T2GUITextureSectionManager.h"
 #include "Render/ARenderer.h"
+#include "VR/AVRManager.h"
 #include "Render/AGlowViewport.h"
 #include "Cameras/ACameraManager.h"
 #include "Cameras/AFirstPersonCamera.h"
@@ -68,6 +69,9 @@ TBOOL ARenderer::CreateTRender()
 	TRenderInterfaceHAL* pRenderer      = TSTATICCAST( TRenderInterfaceHAL, pRendererClass->CreateObject() );
 
 	pRenderer->SetAutoCreateSystemResources( TFALSE );
+#if defined( TRENDERINTERFACE_DX11 )
+	AVRManager::GetSingleton().Prepare( pRenderer ); // Must run before Create() selects/creates the graphics device.
+#endif
 	pRenderer->Create( "Barnyard" );
 
 #ifndef TOSHI_SKU_WASM
@@ -364,6 +368,9 @@ void ARenderer::RenderGUI()
 // $Barnyard: FUNCTION 0060aff0
 static TBOOL OnRenderDeviceLost()
 {
+#if defined( TRENDERINTERFACE_DX11 )
+	AVRManager::GetSingleton().OnDeviceLost();
+#endif
 	FIRE_EVENT( TRenderInterface::DeviceLost );
 
 	if ( ASkyDome* pSkyDome = ARenderer::GetSingleton()->GetSkyDome() )
@@ -380,6 +387,9 @@ static TBOOL OnRenderDeviceLost()
 // $Barnyard: FUNCTION 0060c5c0
 ARenderer::~ARenderer()
 {
+#if defined( TRENDERINTERFACE_DX11 )
+	AVRManager::GetSingleton().Shutdown();
+#endif
 	TRenderInterface* pRender = TRenderInterface::GetSingleton();
 	pRender->FlushDyingResources();
 	pRender->FlushDyingResources();
@@ -399,6 +409,9 @@ static TBOOL OnRenderDeviceFound()
 	}
 
 	FIRE_EVENT( TRenderInterface::DeviceFound );
+#if defined( TRENDERINTERFACE_DX11 )
+	AVRManager::GetSingleton().OnDeviceFound();
+#endif
 
 	return TTRUE;
 }
@@ -440,6 +453,9 @@ TBOOL ARenderer::OnCreate()
 #endif // BARNYARD_COMMUNITY_PATCH
 
 		CreateMainViewport();
+#if defined( TRENDERINTERFACE_DX11 )
+		AVRManager::GetSingleton().Initialize( TRenderInterface::GetSingleton() );
+#endif
 
 		AModelLoader::CreateSingleton();
 		AMaterialLibraryManager::CreateSingleton();
@@ -504,6 +520,10 @@ static void DestroyShader()
 // $Barnyard: FUNCTION 0060b1d0
 void ARenderer::OnDestroy()
 {
+#if defined( TRENDERINTERFACE_DX11 )
+	AVRManager::GetSingleton().Shutdown();
+#endif
+
 #ifdef PRIMEDEBUG
 	APrimeDebug::Destroy();
 #endif
@@ -592,8 +612,9 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 
 		pViewport->Begin();
 		pCameraObject->Render();
+		AVRManager::GetSingleton().ApplyEyeProjection( pViewport->GetRenderContext() );
 
-		if ( !ARootTask::GetSingleton()->IsPaused() )
+		if ( !ARootTask::GetSingleton()->IsPaused() && AVRManager::GetSingleton().GetCurrentEye() != 1 )
 		{
 			TBOOL bStartFlag;
 			m_AnimationUpdateStartEmitter.Throw( &bStartFlag );
@@ -698,6 +719,7 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 		pViewport->AllowDepthClear( TFALSE );
 		pViewport->Begin();
 		pCameraObject->Render();
+		AVRManager::GetSingleton().ApplyEyeProjection( pViewport->GetRenderContext() );
 
 		rTransformStack.Push( pViewport->GetRenderContext()->GetWorldViewMatrix() );
 
@@ -712,7 +734,9 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 		if ( AAnimalPopulationManager::IsSingletonCreated() )
 		{
 			AAnimalPopulationManager::GetSingleton()->RenderMarkers( TFALSE );
-			AAnimalPopulationManager::GetSingleton()->RemoveTemporaryMarkers();
+			// Temporary markers are consumed by rendering; keep them alive through eye 1.
+			if ( AVRManager::GetSingleton().GetCurrentEye() != 0 )
+				AAnimalPopulationManager::GetSingleton()->RemoveTemporaryMarkers();
 		}
 
 		if ( AReplayManager::IsSingletonCreated() )
@@ -741,8 +765,22 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 
 	pRender->Update( a_fDeltaTime );
 
-	if ( g_oSystemManager.IsPaused() )
+	AVRManager& oVRManager = AVRManager::GetSingleton();
+	const TBOOL bXRFrameBegun = oVRManager.BeginFrame();
+	if ( oVRManager.ShouldExit() )
+	{
+		g_oTheApp.Destroy();
 		return TFALSE;
+	}
+
+	if ( g_oSystemManager.IsPaused() )
+	{
+		if ( bXRFrameBegun )
+			oVRManager.EndFrame();
+		return TFALSE;
+	}
+
+	const TBOOL bVRActive = bXRFrameBegun && oVRManager.IsActive();
 
 	// Update transforms of glow objects
 	AGlowViewport::GetSingleton()->Update();
@@ -767,38 +805,97 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 
 		pRender->BeginScene();
 
-		if ( bMoviePlaying )
+		if ( bVRActive )
 		{
-			AMoviePlayer::GetSingleton()->Render( a_fDeltaTime );
-		}
-		else if ( pRootTask->IsRenderWorld() )
-		{
-			ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
-			AFirstPersonCamera::SyncBeforeRender( pCamera );
+			TMatrix44 oCenterCamera;
+			oCenterCamera.Identity();
+			const TBOOL bWorldRendered = !bMoviePlaying && pRootTask->IsRenderWorld();
 
-			TMatrix44 oCamMatrix = pCamera->GetMatrix();
-			oCamMatrix.SetTranslation( pCamera->GetMatrix().GetTranslation() );
+			if ( bWorldRendered )
+			{
+				ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
+				AFirstPersonCamera::SyncBeforeRender( pCamera );
 
-			UpdateMainCamera( oCamMatrix, pCamera );
-			m_pViewport->AllowDepthClear( TFALSE );
+				oCenterCamera = pCamera->GetMatrix();
+				oCenterCamera.SetTranslation( pCamera->GetMatrix().GetTranslation() );
+				UpdateMainCamera( oCenterCamera, pCamera );
+				m_pViewport->AllowDepthClear( TFALSE );
+				pRenderContext->EnableFog( TTRUE );
+			}
 
-			pRenderContext->EnableFog( TTRUE );
-			RenderMainScene( a_fDeltaTime );
-		}
+			if ( oVRManager.ShouldRender() )
+			{
+				for ( TUINT32 uiEye = 0; uiEye < oVRManager.GetViewCount(); uiEye++ )
+				{
+					if ( uiEye == 1 && bWorldRendered && ARainRenderer::IsSingletonCreated() )
+						ARainRenderer::GetSingleton()->Update( 0.0f );
 
-		if ( m_bRenderGUI )
-			RenderGUI();
+					if ( oVRManager.BeginEye( uiEye, oCenterCamera, m_pCameraObject, m_pViewport, m_pHALViewport1, m_pHALViewport2, bWorldRendered ) )
+					{
+						if ( bWorldRendered )
+							RenderMainScene( uiEye == 0 ? a_fDeltaTime : 0.0f );
+						oVRManager.EndEye();
+					}
+				}
 
-#if !defined( TOSHI_FINAL ) && ( defined( TRENDERINTERFACE_DX8 ) || defined( TRENDERINTERFACE_DX11 ) || defined( TRENDERINTERFACE_GL ) )
-		if ( ADebugOverlay::IsSingletonCreated() )
-			ADebugOverlay::GetSingleton()->Render( a_fDeltaTime );
+				if ( oVRManager.BeginUILayer() )
+				{
+					if ( bMoviePlaying )
+						AMoviePlayer::GetSingleton()->Render( a_fDeltaTime );
+
+					if ( m_bRenderGUI )
+						RenderGUI();
+
+#if !defined( TOSHI_FINAL ) && defined( TRENDERINTERFACE_DX11 )
+					if ( ADebugOverlay::IsSingletonCreated() )
+						ADebugOverlay::GetSingleton()->Render( a_fDeltaTime );
 #endif
 
 #ifdef PRIMEDEBUG_DEV
-		APrimeDebug::Render2D();
+					APrimeDebug::Render2D();
+#endif
+					oVRManager.EndUILayer();
+				}
+			}
+
+		}
+		else
+		{
+			if ( bMoviePlaying )
+			{
+				AMoviePlayer::GetSingleton()->Render( a_fDeltaTime );
+			}
+			else if ( pRootTask->IsRenderWorld() )
+			{
+				ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
+				AFirstPersonCamera::SyncBeforeRender( pCamera );
+
+				TMatrix44 oCamMatrix = pCamera->GetMatrix();
+				oCamMatrix.SetTranslation( pCamera->GetMatrix().GetTranslation() );
+
+				UpdateMainCamera( oCamMatrix, pCamera );
+				m_pViewport->AllowDepthClear( TFALSE );
+
+				pRenderContext->EnableFog( TTRUE );
+				RenderMainScene( a_fDeltaTime );
+			}
+
+			if ( m_bRenderGUI )
+				RenderGUI();
+
+#if !defined( TOSHI_FINAL ) && ( defined( TRENDERINTERFACE_DX8 ) || defined( TRENDERINTERFACE_DX11 ) || defined( TRENDERINTERFACE_GL ) )
+			if ( ADebugOverlay::IsSingletonCreated() )
+				ADebugOverlay::GetSingleton()->Render( a_fDeltaTime );
 #endif
 
+#ifdef PRIMEDEBUG_DEV
+			APrimeDebug::Render2D();
+#endif
+		}
+
 		pRender->EndScene();
+		if ( bXRFrameBegun )
+			oVRManager.EndFrame();
 
 		UpdateScreenCapture( pRender );
 		return TTRUE;
@@ -807,17 +904,49 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 	{
 		pRender->BeginScene();
 
-		if ( bMoviePlaying )
-			AMoviePlayer::GetSingleton()->Render( a_fDeltaTime );
+		if ( bVRActive )
+		{
+			if ( oVRManager.ShouldRender() )
+			{
+				TMatrix44 oCenterCamera;
+				oCenterCamera.Identity();
+				for ( TUINT32 uiEye = 0; uiEye < oVRManager.GetViewCount(); uiEye++ )
+				{
+					if ( oVRManager.BeginEye( uiEye, oCenterCamera, m_pCameraObject, m_pViewport, m_pHALViewport1, m_pHALViewport2, TFALSE ) )
+						oVRManager.EndEye();
+				}
 
-		if ( m_bRenderGUI )
-			RenderGUI();
+				if ( oVRManager.BeginUILayer() )
+				{
+					if ( bMoviePlaying )
+						AMoviePlayer::GetSingleton()->Render( a_fDeltaTime );
+
+					if ( m_bRenderGUI )
+						RenderGUI();
 
 #ifdef PRIMEDEBUG_DEV
-		APrimeDebug::Render2D();
+					APrimeDebug::Render2D();
 #endif
+					oVRManager.EndUILayer();
+				}
+			}
+		}
+		else
+		{
+			if ( bMoviePlaying )
+				AMoviePlayer::GetSingleton()->Render( a_fDeltaTime );
+
+			if ( m_bRenderGUI )
+				RenderGUI();
+
+#ifdef PRIMEDEBUG_DEV
+			APrimeDebug::Render2D();
+#endif
+		}
 
 		pRender->EndScene();
+		if ( bXRFrameBegun )
+			oVRManager.EndFrame();
 		return TTRUE;
 	}
 }
@@ -1024,6 +1153,10 @@ TBOOL ARenderer::ChangeDisplay( TINT a_iWidth, TINT a_iHeight, TBOOL a_bWindowed
 
 	if ( AGUI2::IsSingletonCreated() )
 		AGUI2::GetSingleton()->UpdateRootDimensions();
+
+#  if defined( TRENDERINTERFACE_DX11 )
+	AVRManager::GetSingleton().OnDisplayChanged();
+#  endif
 
 	if ( AOptions::GetSingleton() )
 		AOptions::GetSingleton()->SetDisplay( a_iWidth, a_iHeight, a_bWindowed, a_bBorderless );

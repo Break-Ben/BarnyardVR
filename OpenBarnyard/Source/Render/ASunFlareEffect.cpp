@@ -8,6 +8,9 @@
 #include "Helpers/AGameLoader.h"
 #include "Terrain/ATerrainInterface.h"
 #include "Physics/ACollisionManager.h"
+#if defined( TRENDERINTERFACE_DX11 )
+#  include "VR/AVRManager.h"
+#endif
 
 #include <Render/TRenderInterface.h>
 #include <Render/TTextureFactory.h>
@@ -172,7 +175,13 @@ void ASunFlareEffect::Render()
 	oScreenProjParams.m_fNearClip = 0.05f;
 	oScreenProjParams.m_fFarClip  = 200.0f;
 
+#if defined( TRENDERINTERFACE_DX11 )
+	// Rendering is invoked once per eye; advance the flare state only for the first eye.
+	if ( AVRManager::GetSingleton().GetCurrentEye() != 1 )
+		Update();
+#else
 	Update();
+#endif
 
 	TMatrix44 oIdentity = TMatrix44::IDENTITY;
 
