@@ -35,9 +35,10 @@ public:
 	virtual void  OnDestroy() override;                                             // +0x20
 	virtual void  OnAttach() override;                                              // +0x24
 	virtual void  ResetPosition( TBOOL a_bSnapCamera ) override;                    // +0x2c
-	virtual void  SetTarget( Toshi::TRef<AUnitProxy> a_pTarget ) override;          // +0x30
-	virtual void  ResetTarget() override;                                           // +0x38
-	virtual void  OnDetach() override;                                              // +0x3c
+	virtual void   SetTarget( Toshi::TRef<AUnitProxy> a_pTarget ) override;          // +0x30
+	virtual void   ResetTarget() override;                                           // +0x38
+	virtual void   OnDetach() override;                                              // +0x3c
+	virtual TFLOAT GetFOV() const override;                                          // +0x40
 
 	//-----------------------------------------------------------------------------
 	// Own methods

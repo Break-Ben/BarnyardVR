@@ -2,6 +2,7 @@
 #include "AGTAStyleCameraHelper.h"
 #include "ABarnStairCamera.h"
 #include "ACameraManager.h"
+#include "AFirstPersonCamera.h"
 #include "AOptions.h"
 #include "Input/AInputMap.h"
 #include "Helpers/AGameLoader.h"
@@ -162,12 +163,119 @@ TBOOL AGTAStyleCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 		AVisibleUnit* pUnit  = TSTATICCAST( AVisibleUnit, m_pTarget->GetUnit() );
 		ASteer*       pSteer = pUnit->GetSteer();
 
+		const TBOOL bUsePosOverride = !IsEqual4( m_vTargetPosOverride, TVector4::VEC_ZERO );
+
 		TVector4 vTargetPos;
 
-		if ( IsEqual4( m_vTargetPosOverride, TVector4::VEC_ZERO ) )
+		if ( !bUsePosOverride )
 			vTargetPos = *pSteer->GetPosition();
 		else
 			vTargetPos = m_vTargetPosOverride;
+
+		// First-person camera for on-foot player units (non-player targets such as thrown chicks keep the follow view)
+		if ( AFirstPersonCamera::IsOnFootPlayerTarget( pUnit ) )
+		{
+#ifdef BARNYARD_LATEST
+			ACollisionObjectMesh::SetCameraCollision( TFALSE );
+			m_fHoldHeightTime  = -1.0f;
+			m_fCameraClearTime = 0.0f;
+#endif
+
+			TVector4 vEyePos;
+			AFirstPersonCamera::ComputePlayerEyePosition( pUnit, vTargetPos, m_fHeightOffset, vEyePos );
+
+			// Clamp dt for stick/key turn rates so OnAttach/SetPosition's snap call (1000s) doesn't spin the view
+			const TFLOAT fRateDelta = TMath::Min( a_fDeltaTime, 0.25f );
+			m_fYaw += fRateDelta * m_vRotateInput.x * 160.0f;
+			m_fPitch += fRateDelta * m_vRotateInput.y * 120.0f;
+
+			const TFLOAT fMaxPitch = m_bYawLimits ? AFirstPersonCamera::LADDER_MAX_PITCH_DEG : AFirstPersonCamera::MAX_PITCH_DEG;
+			TMath::Clip( m_fPitch, -fMaxPitch, fMaxPitch );
+
+			// Recover the horizontal backing direction (pivot -> virtual chase position = -forward)
+			TVector4 vDirection(
+			    m_vPosition.x - m_vPivot.x,
+			    0.0f,
+			    m_vPosition.z - m_vPivot.z,
+			    1.0f
+			);
+
+			if ( vDirection.MagnitudeSqXZ() < 0.0001f )
+			{
+				TVector4 vSteerDir;
+				pSteer->CopyDirection( vSteerDir );
+				vDirection.Set( -vSteerDir.x, 0.0f, -vSteerDir.z, 1.0f );
+
+				if ( vDirection.MagnitudeSqXZ() < 0.0001f )
+					vDirection.Set( 0.0f, 0.0f, -1.0f, 1.0f );
+			}
+
+			vDirection.NormaliseXZ();
+
+			if ( m_fYaw != 0.0f )
+				vDirection.AsVector3().RotateY( m_fYaw * DEG2RAD );
+
+			if ( m_bYawLimits )
+			{
+				// Keep the look direction inside the ladder's forward cone so W/S always climb up/down
+				TFLOAT fHalfRange = TMath::Min(
+				    ( m_fYawMax - m_fYawMin ) * 0.5f,
+				    AFirstPersonCamera::LADDER_MAX_YAW_DEG * DEG2RAD
+				);
+				TFLOAT fCentre = ( m_fYawMax + m_fYawMin ) * 0.5f;
+
+				TVector4 vForward( -vDirection.x, 0.0f, -vDirection.z, 1.0f );
+				TVector4 vCentre = TVector4::VEC_POSX;
+				vCentre.AsVector3().RotateY( -fCentre );
+
+				if ( TMath::Cos( fHalfRange ) > TVector4::DotProduct3( vForward, vCentre ) )
+				{
+					TFLOAT fLimit = ( vForward.z * vCentre.x - vCentre.z * vForward.x >= 0.0f )
+					    ? ( fCentre + fHalfRange )
+					    : ( fCentre - fHalfRange );
+
+					vDirection = TVector4::VEC_POSX;
+					vDirection.AsVector3().RotateY( -fLimit );
+					vDirection.Multiply( -1.0f );
+				}
+			}
+
+			TVector4 vFlatForward( -vDirection.x, 0.0f, -vDirection.z, 1.0f );
+			TVector4 vForward;
+			AFirstPersonCamera::BuildForwardDirection( vFlatForward, m_fPitch, vForward );
+
+			// Keep a valid backing orbit so external SetCameraPosition calls and third-person toggling stay seamless
+			const TFLOAT fBackDistance = ( m_fDefaultDistance > 0.5f ) ? m_fDefaultDistance : 5.0f;
+			m_vPivot                   = vEyePos;
+			m_vLookAt                  = vEyePos;
+			m_vPosition.Set(
+			    vEyePos.x - vForward.x * fBackDistance,
+			    vEyePos.y - vForward.y * fBackDistance,
+			    vEyePos.z - vForward.z * fBackDistance,
+			    1.0f
+			);
+			m_fDistance          = fBackDistance;
+			m_fTargetDistance    = fBackDistance;
+			m_vLastTargetPos     = vTargetPos;
+			m_fTargetOpacity     = 0.0f;
+			m_fIdleTime          = m_fIdleTime + fRateDelta;
+			m_vRotateInput       = TVector2::VEC_ZERO;
+			m_fYaw               = 0.0f;
+			m_fYawSpeed          = 0.0f;
+			m_bRotating          = TFALSE;
+			m_bPitchInput        = TFALSE;
+			m_bForceUpdate       = TFALSE;
+			m_bCharacterInTheWay = TFALSE;
+
+			m_pCamera->GetMatrix().GetTranslation() = vEyePos;
+			m_pCamera->LookAtDirection( vForward );
+			m_pCamera->SetFOV( GetFOV() );
+
+			if ( ACameraManager::GetSingleton()->GetCurrentCameraHelper() == this )
+				AFirstPersonCamera::RegisterOnFootView( this, pUnit, vForward, m_fHeightOffset, bUsePosOverride, m_vTargetPosOverride );
+
+			return TTRUE;
+		}
 
 		// NOTE: the direction isn't used
 		TVector4 vTargetDir;
@@ -641,6 +749,10 @@ TBOOL AGTAStyleCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 			pUnit->SetOpacity( m_fTargetOpacity );
 		}
 
+		// Restore the standard FOV if first-person mode was toggled off while this helper remained attached
+		if ( m_pCamera && TMath::Abs( m_pCamera->GetFOV() - AFirstPersonCamera::GetDefaultFOV() ) < 0.001f )
+			m_pCamera->SetFOV( GetFOV() );
+
 		m_vLookAt        = vLookAt;
 		m_fYaw           = 0.0f;
 		m_bRotating      = TFALSE;
@@ -725,8 +837,9 @@ TBOOL AGTAStyleCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_pEve
 			}
 #endif
 
-			AOptions* pOptions = AOptions::GetSingleton();
-			TBOOL     bRotating;
+			const TBOOL bFirstPerson = m_pTarget && AFirstPersonCamera::IsOnFootPlayerTarget( m_pTarget->GetUnit() );
+			AOptions*   pOptions     = AOptions::GetSingleton();
+			TBOOL       bRotating;
 
 			if ( pEvent->GetSource()->IsA( &TGetClass( TInputDeviceMouse ) ) )
 			{
@@ -738,10 +851,12 @@ TBOOL AGTAStyleCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_pEve
 
 				m_fYaw = fX * pOptions->GetSensitivity() * 0.15f + m_fYaw;
 
-				if ( !m_bCharacterInTheWay )
+				if ( bFirstPerson || !m_bCharacterInTheWay )
 				{
-					TFLOAT fPitch = fY * pOptions->GetSensitivity() * 0.2f;
-					m_fPitch      = pOptions->IsMouseInverted() ? m_fPitch - fPitch : fPitch + m_fPitch;
+					// Use isotropic horizontal/vertical mouse sensitivity in first-person
+					const TFLOAT fPitchScale = bFirstPerson ? 0.15f : 0.2f;
+					TFLOAT       fPitch      = fY * pOptions->GetSensitivity() * fPitchScale;
+					m_fPitch                 = pOptions->IsMouseInverted() ? m_fPitch - fPitch : fPitch + m_fPitch;
 				}
 
 				m_bPitchInput = m_bPitchInput || fY != 0.0f;
@@ -756,7 +871,7 @@ TBOOL AGTAStyleCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_pEve
 				// Wii Style camera option: the yaw is scaled by the camera speed option: ( speed + 1 ) / 6
 				// NOTE: the Wii only reads the stick of the Nunchuk here, it also ignores the inner half of its range
 				// (|x| <= 0.5 is 0, the rest is rescaled to 0-1) and skips it while the player aims with the pointer
-				if ( pOptions->IsWiiStyleCamera() )
+				if ( !bFirstPerson && pOptions->IsWiiStyleCamera() )
 					m_vRotateInput.x *= ( pOptions->GetCameraSpeed() + 1 ) / 6.0f;
 #endif
 
@@ -921,11 +1036,96 @@ void AGTAStyleCameraHelper::OnDetach()
 #ifdef BARNYARD_LATEST
 	m_fCameraClearTime = 0.0f;
 #endif
+
+	AFirstPersonCamera::RestoreAll();
+}
+
+TFLOAT AGTAStyleCameraHelper::GetFOV() const
+{
+	if ( m_pTarget && AFirstPersonCamera::IsOnFootPlayerTarget( m_pTarget->GetUnit() ) )
+		return AFirstPersonCamera::GetDefaultFOV();
+
+	return ACameraHelper::GetFOV();
 }
 
 // $Barnyard: FUNCTION 00462ac0
 void AGTAStyleCameraHelper::SetPosition( const TVector4& a_rcPosition, const TVector4& a_rcTarget, TBOOL a_bSnapCamera )
 {
+	if ( m_pTarget && AFirstPersonCamera::IsOnFootPlayerTarget( m_pTarget->GetUnit() ) )
+	{
+		TVector4 vOldCameraPos = TVector4::VEC_ZERO;
+		TVector4 vOldCameraDir = TVector4::VEC_POSZ;
+		TFLOAT   fOldFOV       = GetFOV();
+
+		if ( !a_bSnapCamera && m_pCamera )
+		{
+			const TMatrix44& rcMatrix = m_pCamera->GetMatrix();
+			vOldCameraPos             = rcMatrix.GetTranslation();
+			vOldCameraDir             = rcMatrix.AsBasisVector4( BASISVECTOR_FORWARD );
+			vOldCameraDir.w           = 1.0f;
+			vOldCameraDir.Normalise();
+			fOldFOV = m_pCamera->GetFOV();
+		}
+
+		// Direction the camera looks along (position -> target)
+		TVector4 vLookDir(
+		    a_rcTarget.x - a_rcPosition.x,
+		    a_rcTarget.y - a_rcPosition.y,
+		    a_rcTarget.z - a_rcPosition.z,
+		    1.0f
+		);
+
+		AUnit*   pUnit     = m_pTarget->GetUnit();
+		TVector4 vUnitPos  = *pUnit->GetSteer()->GetPosition();
+		TVector4 vEyePos;
+		AFirstPersonCamera::ComputePlayerEyePosition( pUnit, vUnitPos, m_fHeightOffset, vEyePos );
+
+		if ( vLookDir.MagnitudeSq() < 0.0001f )
+		{
+			pUnit->GetSteer()->CopyDirection( vLookDir );
+			vLookDir.y = 0.0f;
+		}
+
+		m_fPitch = AFirstPersonCamera::PitchDegFromDirection( vLookDir );
+
+		TVector4 vForward;
+		AFirstPersonCamera::BuildForwardDirection( vLookDir, m_fPitch, vForward );
+
+		const TFLOAT fBackDistance = ( m_fDefaultDistance > 0.5f ) ? m_fDefaultDistance : 5.0f;
+		m_fDistance                = fBackDistance;
+		m_fTargetDistance          = fBackDistance;
+		m_fTargetPitch             = m_fDefaultPitch;
+		m_fMaxPitch                = m_fDefaultMaxPitch;
+		m_fDistanceSpeed           = 3.0f;
+		m_fTargetOpacity           = 0.0f;
+		m_fYaw                     = 0.0f;
+		m_vRotateInput             = TVector2::VEC_ZERO;
+		m_bPitchInput              = TFALSE;
+		m_vLastTargetPos           = vUnitPos;
+		m_vPivot                   = vEyePos;
+		m_vLookAt                  = vEyePos;
+		m_vPosition.Set(
+		    vEyePos.x - vForward.x * fBackDistance,
+		    vEyePos.y - vForward.y * fBackDistance,
+		    vEyePos.z - vForward.z * fBackDistance,
+		    1.0f
+		);
+
+		TBOOL bUsePath = m_bUsePath;
+		m_bRotating    = TTRUE;
+		m_bUsePath     = TFALSE;
+		OnUpdate( 0.0f );
+		m_bUsePath = bUsePath;
+
+		if ( !a_bSnapCamera && m_pCamera )
+		{
+			m_pCamera->GetMatrix().GetTranslation() = vOldCameraPos;
+			m_pCamera->LookAtDirection( vOldCameraDir );
+			m_pCamera->SetFOV( fOldFOV );
+		}
+
+		return;
+	}
 	// Remember the state of the camera to restore it
 	TVector4 vOldCameraPos;
 	TVector4 vOldCameraLookAt;

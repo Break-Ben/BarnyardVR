@@ -12,6 +12,9 @@
 #include "Units/AAnimatedUnit.h"
 #include "UnitMovement/Steering/ASteer.h"
 #include "Animation/AAnimatableObject.h"
+#include "Cameras/ACamera.h"
+#include "Cameras/ACameraManager.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "Helpers/AHintManager.h"
 
 #include <Math/TMatrix44.h>
@@ -282,7 +285,26 @@ void AMilkSquirtProjectileLauncher::OnThrown( AProjectile* a_pProjectile )
 // $Barnyard: FUNCTION 00669640
 Toshi::TVector4 AMilkSquirtProjectileLauncher::GetLaunchPosition()
 {
-	AAnimatableObject* pAnimatableObject = TSTATICCAST( AAnimatedUnit, GetOwnerUnit() )->GetAnimatableObject();
+	AUnit* pOwner = GetOwnerUnit();
+
+	if ( AFirstPersonCamera::IsUnitInFirstPerson( pOwner ) && ACameraManager::IsSingletonCreated() )
+	{
+		// Spawn just below and ahead of the first-person view (still inside the player's collision cylinder)
+		// so the stream clears low obstacles and arcs visibly into the centre of the screen.
+		const TMatrix44& rcCam = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
+		const TVector4&  rcPos = rcCam.AsBasisVector4( BASISVECTOR_TRANSLATION );
+		const TVector4&  rcFwd = rcCam.AsBasisVector4( BASISVECTOR_FORWARD );
+		const TVector4&  rcDn  = rcCam.AsBasisVector4( BASISVECTOR_UP );
+
+		return TVector4(
+		    rcPos.x + rcFwd.x * 0.34f + rcDn.x * 0.30f,
+		    rcPos.y + rcFwd.y * 0.34f + rcDn.y * 0.30f,
+		    rcPos.z + rcFwd.z * 0.34f + rcDn.z * 0.30f,
+		    1.0f
+		);
+	}
+
+	AAnimatableObject* pAnimatableObject = TSTATICCAST( AAnimatedUnit, pOwner )->GetAnimatableObject();
 
 	TINT iBone = pAnimatableObject->GetModelInstance()->GetBoneIndex( TPS8( cb_udder ) );
 
@@ -295,7 +317,20 @@ Toshi::TVector4 AMilkSquirtProjectileLauncher::GetLaunchPosition()
 // $Barnyard: FUNCTION 00668b10
 Toshi::TVector4 AMilkSquirtProjectileLauncher::GetLaunchDirection()
 {
-	TVector4 vDirection = *GetOwnerUnit()->GetSteer()->GetDirection();
+	AUnit* pOwner = GetOwnerUnit();
+
+	if ( AFirstPersonCamera::IsUnitInOnFootFirstPerson( pOwner ) && ACameraManager::IsSingletonCreated() )
+	{
+		// Aim hip-fired milk along the 3D camera direction with the launcher's upward ballistic loft
+		TVector4 vCamForward = ACameraManager::GetSingleton()->GetCurrentCamera()->GetOrientation();
+		TFLOAT   fPitchDeg   = AFirstPersonCamera::PitchDegFromDirection( vCamForward ) - m_fVerticalAngle * ( 180.0f / TMath::PI );
+
+		TVector4 vOut;
+		AFirstPersonCamera::BuildForwardDirection( vCamForward, fPitchDeg, vOut );
+		return vOut;
+	}
+
+	TVector4 vDirection = *pOwner->GetSteer()->GetDirection();
 
 	// NOTE: retail calls TVector4::NormaliseXZ (006c7540) here, which flattens the vector onto the XZ plane and normalises it
 	vDirection.y        = 0.0f;

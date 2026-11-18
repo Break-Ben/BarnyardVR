@@ -39,6 +39,8 @@ TDEFINE_CLASS( AOptions );
 TBOOL AOptions::ms_bBorderless = TFALSE;
 #endif // BARNYARD_COMMUNITY_PATCH
 
+TBOOL AOptions::ms_bFirstPersonCamera = TTRUE;
+
 // $Barnyard: FUNCTION 006632d0
 AOptions::AOptions()
 {
@@ -51,6 +53,8 @@ AOptions::AOptions()
 	m_eFlags           = Flags_Rumble;
 
 	ReloadSettings();
+
+	ms_bFirstPersonCamera = TTRUE;
 
 #ifdef BARNYARD_LATEST
 	m_uiCameraSpeed         = CAMERA_SPEED_DEFAULT;
@@ -66,6 +70,15 @@ AOptions::AOptions()
 
 	LoadExtraSettings();
 #endif // BARNYARD_LATEST
+
+	// Command-line overrides for first-person / third-person camera
+	if ( const TCHAR* szCmdLine = GetCommandLineA() )
+	{
+		if ( TStringManager::String8FindString( szCmdLine, "-thirdperson" ) )
+			ms_bFirstPersonCamera = TFALSE;
+		else if ( TStringManager::String8FindString( szCmdLine, "-firstperson" ) )
+			ms_bFirstPersonCamera = TTRUE;
+	}
 }
 
 // $Barnyard: FUNCTION 00662e70
@@ -364,6 +377,8 @@ void AOptions::LoadExtraSettings()
 			if ( iValue >= 0 && iValue <= CAMERA_SPEED_MAX && ACameraOptionsState::SHOW_SPEED_SLIDER )
 				m_uiCameraSpeed = TUINT8( iValue );
 		}
+		else if ( !strcmp( szLine, "FirstPerson" ) )
+			ms_bFirstPersonCamera = iValue != 0;
 		else if ( !strcmp( szLine, "WiiStyleCamera" ) )
 			m_bWiiStyleCamera = iValue != 0;
 		else if ( !strcmp( szLine, "FollowJumpsCamera" ) )
@@ -373,7 +388,7 @@ void AOptions::LoadExtraSettings()
 	}
 
 	fclose( pFile );
-	TINFO( "Loaded %s (camera: Wii Style %d, Follow Jumps %d, speed %d; easy difficulty %d)\n", szPath, m_bWiiStyleCamera, m_bFollowJumpsCamera, m_uiCameraSpeed, m_bEasyDifficulty );
+	TINFO( "Loaded %s (camera: First Person %d, Wii Style %d, Follow Jumps %d, speed %d; easy difficulty %d)\n", szPath, ms_bFirstPersonCamera, m_bWiiStyleCamera, m_bFollowJumpsCamera, m_uiCameraSpeed, m_bEasyDifficulty );
 }
 
 void AOptions::SaveExtraSettings()
@@ -400,6 +415,7 @@ TBOOL AOptions::WriteExtraSettings()
 	}
 
 	fprintf( pFile, "# OpenBarnyard settings that the original game doesn't have (savedata.by stays compatible with it)\n" );
+	fprintf( pFile, "FirstPerson=%d\n", ms_bFirstPersonCamera ? 1 : 0 );
 	fprintf( pFile, "CameraSpeed=%d\n", m_uiCameraSpeed );
 	fprintf( pFile, "WiiStyleCamera=%d\n", m_bWiiStyleCamera ? 1 : 0 );
 	fprintf( pFile, "FollowJumpsCamera=%d\n", m_bFollowJumpsCamera ? 1 : 0 );
@@ -408,7 +424,7 @@ TBOOL AOptions::WriteExtraSettings()
 	const TBOOL bWritten = ferror( pFile ) == 0;
 	fclose( pFile );
 
-	TINFO( "Saved %s (camera: Wii Style %d, Follow Jumps %d, speed %d; easy difficulty %d)\n", szPath, m_bWiiStyleCamera, m_bFollowJumpsCamera, m_uiCameraSpeed, m_bEasyDifficulty );
+	TINFO( "Saved %s (camera: First Person %d, Wii Style %d, Follow Jumps %d, speed %d; easy difficulty %d)\n", szPath, ms_bFirstPersonCamera, m_bWiiStyleCamera, m_bFollowJumpsCamera, m_uiCameraSpeed, m_bEasyDifficulty );
 	return bWritten;
 }
 

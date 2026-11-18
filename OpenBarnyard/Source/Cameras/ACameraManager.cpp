@@ -16,6 +16,7 @@
 #include "AMultiCameraHelper.h"
 #include "AProjectileFireCameraHelper.h"
 #include "ACarChaseCamera.h"
+#include "AFirstPersonCamera.h"
 #include "Debug/ADebugOverlay.h"
 
 //-----------------------------------------------------------------------------
@@ -224,6 +225,8 @@ void ACameraManager::SetSmoothTransition( ACameraHelper* a_pHelper, TFLOAT a_fDu
 // $Barnyard: FUNCTION 0045c290
 void ACameraManager::ResetHelperTargets()
 {
+	AFirstPersonCamera::RestoreAll();
+
 	for ( TINT i = 0; i < CAMERAHELPER_NUM_OF; i++ )
 	{
 		m_apCameraHelpers[ i ]->ResetTarget();

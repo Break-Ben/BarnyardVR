@@ -85,19 +85,21 @@ public:
 	{
 		CAMERAOPTIONS_SPEED,
 		// NOTE: the toggles are not in the original
+		CAMERAOPTIONS_FIRSTPERSON,
 		CAMERAOPTIONS_WIISTYLE,
 		CAMERAOPTIONS_FOLLOWJUMPS,
 		CAMERAOPTIONS_NUMOF
 	};
 
-	static constexpr TINT NUM_TOGGLES = CAMERAOPTIONS_NUMOF - CAMERAOPTIONS_WIISTYLE;
+	static constexpr TINT FIRST_TOGGLE = CAMERAOPTIONS_FIRSTPERSON;
+	static constexpr TINT NUM_TOGGLES  = CAMERAOPTIONS_NUMOF - FIRST_TOGGLE;
 
 	// NOTE: the speed row (the only one of the original) is hidden for now. The Wii Style camera uses the default
 	// speed (AOptions::CAMERA_SPEED_DEFAULT). Set to TTRUE to bring the slider back.
 	static constexpr TBOOL SHOW_SPEED_SLIDER = TFALSE;
 
 	// First row shown in the menu
-	static constexpr TINT FIRST_OPTION = SHOW_SPEED_SLIDER ? CAMERAOPTIONS_SPEED : CAMERAOPTIONS_WIISTYLE;
+	static constexpr TINT FIRST_OPTION = SHOW_SPEED_SLIDER ? CAMERAOPTIONS_SPEED : FIRST_TOGGLE;
 	static constexpr TINT NUM_ROWS     = CAMERAOPTIONS_NUMOF - FIRST_OPTION;
 
 	// Title of the dialog
@@ -137,13 +139,13 @@ private:
 	// Changes the speed for AInputCommand_Left/AInputCommand_Right
 	void ChangeCameraSpeed( AInputCommand a_eInputCommand );
 
-	// Switches a toggle (CAMERAOPTIONS_WIISTYLE or CAMERAOPTIONS_FOLLOWJUMPS) and applies it
+	// Switches a toggle (FIRST_TOGGLE..CAMERAOPTIONS_NUMOF) and applies it
 	void SwitchToggle( TINT a_iOption );
 
 	// Applies the value of a toggle to AOptions and shows it
 	void SetToggle( TINT a_iOption, TBOOL a_bValue );
 
-	AGUI2MenuGridTextItem& GetLabel( TINT a_iOption ) { return ( a_iOption == CAMERAOPTIONS_SPEED ) ? m_oTextItem : m_aToggleTexts[ a_iOption - CAMERAOPTIONS_WIISTYLE ]; }
+	AGUI2MenuGridTextItem& GetLabel( TINT a_iOption ) { return ( a_iOption == CAMERAOPTIONS_SPEED ) ? m_oTextItem : m_aToggleTexts[ a_iOption - FIRST_TOGGLE ]; }
 
 	void UpdateLabelScale( AGUI2MenuGridTextItem& a_rLabel, TFLOAT a_fDeltaTime );
 

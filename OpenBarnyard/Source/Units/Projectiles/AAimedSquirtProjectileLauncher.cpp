@@ -9,7 +9,9 @@
 #include "Animation/AModel.h"
 #include "Cameras/ACameraManager.h"
 #include "Cameras/ACamera.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "Cameras/AGTAStyleCameraHelper.h"
+#include "AOptions.h"
 #include "GUI/AGUI2.h"
 #include "GUI/AMilkReticleManager.h"
 #include "Render/ARenderer.h"
@@ -199,6 +201,86 @@ TBOOL AAimedSquirtProjectileLauncher::ProcessInput( AInputCommand a_eCommand, co
 	if ( m_bNPCControlled )
 		return TFALSE;
 
+	if ( m_bAimCameraActive && AFirstPersonCamera::IsOnFootPlayerTarget( GetOwnerUnit() ) )
+	{
+		if ( a_eCommand >= AInputCommand_LookUpWithUp && a_eCommand <= AInputCommand_LookRightWithUp )
+		{
+			TBOOL  bYaw  = ( a_eCommand == AInputCommand_LookLeftWithUp || a_eCommand == AInputCommand_LookRightWithUp );
+			TFLOAT fTurn = ( a_eCommand == AInputCommand_LookUpWithUp || a_eCommand == AInputCommand_LookLeftWithUp ) ? -1.5f : 1.5f;
+
+			if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
+			{
+				a_pEvent->StartRepeat();
+				AFirstPersonCamera::SetAimLookButtonTurn( bYaw, fTurn );
+				m_bLockedOnTarget = TFALSE;
+			}
+			else if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_REPEAT )
+			{
+				AFirstPersonCamera::SetAimLookButtonTurn( bYaw, fTurn );
+				m_bLockedOnTarget = TFALSE;
+			}
+			else
+			{
+				AFirstPersonCamera::SetAimLookButtonTurn( bYaw, 0.0f );
+			}
+
+			return TTRUE;
+		}
+
+		if ( a_eCommand == AInputCommand_RotateCameraCW || a_eCommand == AInputCommand_RotateCameraCCW )
+		{
+			a_pEvent->StartRepeat( 0.0f, 0.0f );
+			TBOOL bBreakLock = TFALSE;
+			AFirstPersonCamera::AddAimRateInput( ( a_eCommand == AInputCommand_RotateCameraCW ) ? 1.0f : -1.0f, 0.0f, bBreakLock );
+			m_bLockedOnTarget = TFALSE;
+			return TTRUE;
+		}
+
+		if ( a_eCommand == AInputCommand_ElevateCameraCCW || a_eCommand == AInputCommand_ElevateCameraCW )
+		{
+			a_pEvent->StartRepeat( 0.0f, 0.0f );
+			TBOOL  bBreakLock = TFALSE;
+			TFLOAT fDir       = ( a_eCommand == AInputCommand_ElevateCameraCCW ) ? -1.0f : 1.0f;
+
+			// Counter AddAimRateInput's mouse-invert flip so explicit camera elevation keys match AGTAStyleCameraHelper
+			if ( AOptions::GetSingleton()->IsMouseInverted() )
+				fDir = -fDir;
+
+			AFirstPersonCamera::AddAimRateInput( 0.0f, fDir, bBreakLock );
+			m_bLockedOnTarget = TFALSE;
+			return TTRUE;
+		}
+
+		const TBOOL bRotatesAim = ( a_eCommand == AInputCommand_RotateCamera ) ||
+		                          ( a_eCommand == AInputCommand_Move && m_bCursorInput && m_bMoveAimsCursor );
+
+		if ( bRotatesAim )
+		{
+			TFLOAT fX         = a_pEvent->GetMagnitudeFloat( 0 );
+			TFLOAT fY         = a_pEvent->GetMagnitudeFloat( 1 );
+			TBOOL  bBreakLock = TFALSE;
+
+			if ( a_pEvent->GetSource()->IsA( &TGetClass( TInputDeviceMouse ) ) )
+			{
+				if ( a_pEvent->GetEventType() != TInputInterface::EVENT_TYPE_MOVED )
+					return TFALSE;
+
+				AFirstPersonCamera::AddAimMouseInput( fX, fY, bBreakLock );
+			}
+			else
+			{
+				AFirstPersonCamera::AddAimRateInput( fX, fY, bBreakLock );
+			}
+
+			if ( bBreakLock )
+				m_bLockedOnTarget = TFALSE;
+
+			return TTRUE;
+		}
+
+		return AProjectileLauncher::ProcessInput( a_eCommand, a_pEvent, a_bUnk1, a_bUnk2 );
+	}
+
 #ifdef BARNYARD_LATEST
 	// The latest version turns the aim camera with the look buttons (the D-pad), at twice the speed of the pointer.
 	// NOTE: only the look buttons are recovered. The Wii aims with the pointer and has no aim cursor input; it keeps the
@@ -300,9 +382,15 @@ TBOOL AAimedSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 {
 	if ( !m_bNPCControlled )
 	{
-		// Without the cursor input, the aim cursor goes back to the centre of the screen
-		if ( !m_bCursorInput && !m_bLockedOnTarget )
+		// Keep the reticle anchored dead-centre in first-person free aim
+		if ( AFirstPersonCamera::IsAimModeActive() && !m_bLockedOnTarget )
 		{
+			m_vAimCursor.x = m_fScreenWidth * 0.5f;
+			m_vAimCursor.y = m_fScreenHeight * 0.5f;
+		}
+		else if ( !m_bCursorInput && !m_bLockedOnTarget )
+		{
+			// Without the cursor input, the aim cursor goes back to the centre of the screen
 			MoveTowards( m_vAimCursor.x, m_fScreenWidth * 0.5f, a_fDeltaTime * m_fScreenWidth );
 			MoveTowards( m_vAimCursor.y, m_fScreenHeight * 0.5f, a_fDeltaTime * m_fScreenHeight );
 		}
@@ -435,7 +523,24 @@ TBOOL AAimedSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 // $Barnyard: FUNCTION 006643e0
 Toshi::TVector4 AAimedSquirtProjectileLauncher::GetLaunchPosition()
 {
-	AAnimatableObject* pAnimatableObject = TSTATICCAST( AAnimatedUnit, GetOwnerUnit() )->GetAnimatableObject();
+	AUnit* pOwner = GetOwnerUnit();
+
+	if ( !m_bNPCControlled && AFirstPersonCamera::IsUnitInFirstPerson( pOwner ) && ACameraManager::IsSingletonCreated() )
+	{
+		const TMatrix44& rcCam = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
+		const TVector4&  rcPos = rcCam.AsBasisVector4( BASISVECTOR_TRANSLATION );
+		const TVector4&  rcFwd = rcCam.AsBasisVector4( BASISVECTOR_FORWARD );
+		const TVector4&  rcDn  = rcCam.AsBasisVector4( BASISVECTOR_UP );
+
+		return TVector4(
+		    rcPos.x + rcFwd.x * 0.34f + rcDn.x * 0.30f,
+		    rcPos.y + rcFwd.y * 0.34f + rcDn.y * 0.30f,
+		    rcPos.z + rcFwd.z * 0.34f + rcDn.z * 0.30f,
+		    1.0f
+		);
+	}
+
+	AAnimatableObject* pAnimatableObject = TSTATICCAST( AAnimatedUnit, pOwner )->GetAnimatableObject();
 
 	TINT iBone = pAnimatableObject->GetModelInstance()->GetBoneIndex( TPS8( cb_udder ) );
 
@@ -552,10 +657,21 @@ void AAimedSquirtProjectileLauncher::EnterAimCamera()
 
 	m_bAimCameraActive = TTRUE;
 
-	ACameraManager* pCameraManager = ACameraManager::GetSingleton();
-	pCameraManager->GetCurrentCamera();
+	ACameraManager*  pCameraManager        = ACameraManager::GetSingleton();
+	const TMatrix44& rcInitialCameraMatrix = pCameraManager->GetCurrentCamera()->GetMatrix();
+	TVector4         vInitialForward( rcInitialCameraMatrix.m_f31, rcInitialCameraMatrix.m_f32, rcInitialCameraMatrix.m_f33, 1.0f );
+
 	m_pPrevCameraHelper = pCameraManager->GetCurrentCameraHelper();
 	pCameraManager->DetachCameraHelpers();
+
+	if ( !m_bNPCControlled && AFirstPersonCamera::IsOnFootPlayerTarget( GetOwnerUnit() ) )
+	{
+		m_vAimCursor.x = m_fScreenWidth * 0.5f;
+		m_vAimCursor.y = m_fScreenHeight * 0.5f;
+		AFirstPersonCamera::EnterAimMode( GetOwnerUnit(), vInitialForward );
+		UpdateAimCamera( 0.0f );
+		return;
+	}
 
 #ifdef BARNYARD_LATEST
 	// Wii Style camera option, kept until the aim mode ends
@@ -614,6 +730,9 @@ void AAimedSquirtProjectileLauncher::LeaveAimCamera()
 {
 	m_bAimCameraActive = TFALSE;
 
+	const TBOOL bWasFirstPersonAim = AFirstPersonCamera::IsAimModeActive();
+	AFirstPersonCamera::LeaveAimMode();
+
 	const TMatrix44& rcCameraMatrix = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
 	TVector4         vCameraPosition( rcCameraMatrix.m_f41, rcCameraMatrix.m_f42, rcCameraMatrix.m_f43, rcCameraMatrix.m_f44 );
 	TVector4         vCameraDirection( rcCameraMatrix.m_f31, rcCameraMatrix.m_f32, rcCameraMatrix.m_f33, 1.0f );
@@ -626,6 +745,21 @@ void AAimedSquirtProjectileLauncher::LeaveAimCamera()
 
 	if ( !m_pPrevCameraHelper )
 		return;
+
+	if ( bWasFirstPersonAim && AFirstPersonCamera::IsOnFootPlayerTarget( GetOwnerUnit() ) && m_pPrevCameraHelper->IsA( &TGetClass( AGTAStyleCameraHelper ) ) )
+	{
+		TVector4 vTarget(
+		    vCameraPosition.x + vCameraDirection.x,
+		    vCameraPosition.y + vCameraDirection.y,
+		    vCameraPosition.z + vCameraDirection.z,
+		    1.0f
+		);
+
+		TSTATICCAST( AGTAStyleCameraHelper, m_pPrevCameraHelper )->SetPosition( vCameraPosition, vTarget, TFALSE );
+		ACameraManager::GetSingleton()->SetSmoothTransition( m_pPrevCameraHelper, 0.2f );
+		m_pPrevCameraHelper = TNULL;
+		return;
+	}
 
 #ifdef BARNYARD_LATEST
 	if ( m_bWiiAimCamera )
@@ -976,6 +1110,23 @@ void AAimedSquirtProjectileLauncher::AimAt( Toshi::TVector4& a_rTarget, const To
 // $Barnyard: FUNCTION 00664200
 void AAimedSquirtProjectileLauncher::FaceTarget( const Toshi::TVector4& a_rcTarget )
 {
+	if ( !m_bNPCControlled && AFirstPersonCamera::IsAimModeActive() )
+	{
+		ASteer*  pSteer = GetOwnerUnit()->GetSteer();
+		TVector4 vFacing( a_rcTarget.x - pSteer->GetPosition()->x, 0.0f, a_rcTarget.z - pSteer->GetPosition()->z, 1.0f );
+
+		if ( vFacing.MagnitudeSqXZ() > 0.0001f )
+		{
+			vFacing.NormaliseXZ();
+			pSteer->SetDirection( vFacing );
+
+			if ( pSteer->GetDesiredSpeed() <= 0.05f )
+				pSteer->SetDesiredDirection( vFacing );
+		}
+
+		return;
+	}
+
 	if ( !m_bCursorInput && !m_bLockedOnTarget )
 		return;
 
@@ -1080,6 +1231,30 @@ void AAimedSquirtProjectileLauncher::UpdateAimCamera( TFLOAT a_fDeltaTime )
 {
 	if ( m_bNPCControlled || !m_bAimCameraActive )
 		return;
+
+	if ( AFirstPersonCamera::IsOnFootPlayerTarget( GetOwnerUnit() ) )
+	{
+		AUnit*   pOwner  = GetOwnerUnit();
+		ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
+
+		if ( !AFirstPersonCamera::IsAimModeActive() )
+		{
+			TVector4 vForward = pCamera->GetOrientation();
+			AFirstPersonCamera::EnterAimMode( pOwner, vForward );
+		}
+
+		AFirstPersonCamera::UpdateAimCamera( pOwner, pCamera, a_fDeltaTime, m_bLockedOnTarget, m_vAimPoint, m_vAimCursor, m_fScreenWidth, m_fScreenHeight );
+
+		if ( !m_bLockedOnTarget )
+			m_oReticle.SetPosition( m_vAimCursor );
+
+		return;
+	}
+	else if ( AFirstPersonCamera::IsAimModeActive() )
+	{
+		AFirstPersonCamera::LeaveAimMode();
+		AFirstPersonCamera::RestoreAll();
+	}
 
 #ifdef BARNYARD_LATEST
 	// Wii Style camera option (kept from EnterAimCamera)

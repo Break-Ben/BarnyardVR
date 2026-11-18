@@ -24,6 +24,7 @@
 #include "Cameras/ACameraManager.h"
 #include "Cameras/ACamera.h"
 #include "Cameras/AGTAStyleCameraHelper.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "Player/APlayerManager.h"
 #include "Player/APlayerProfileManager.h"
 #include "GameInterface/AInventoryState2.h"
@@ -980,12 +981,21 @@ void ASimState::OnActivate()
 		{
 			TVector4 vecTarget( vecPosition.x, vecPosition.y - pGTAHelper->GetHeightOffset(), vecPosition.z, 1.0f );
 
-			TVector4 vecOffset;
-			vecOffset.Multiply( vecDirection, 10.0f );
-
 			TVector4 vecCamera;
-			vecCamera.Add( vecTarget, vecOffset );
-			vecCamera.AsVector3().RotateY( TMath::PI );
+
+			if ( AFirstPersonCamera::IsOnFootPlayerTarget( pPlayer ) )
+			{
+				TVector4 vecOffset;
+				vecOffset.Multiply( vecDirection, -5.0f );
+				vecCamera.Add( vecTarget, vecOffset );
+			}
+			else
+			{
+				TVector4 vecOffset;
+				vecOffset.Multiply( vecDirection, 10.0f );
+				vecCamera.Add( vecTarget, vecOffset );
+				vecCamera.AsVector3().RotateY( TMath::PI );
+			}
 
 			pGTAHelper->SetPosition( vecCamera, vecTarget, TTRUE );
 		}

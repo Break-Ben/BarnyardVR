@@ -105,8 +105,10 @@ public:
 	// Resets the car before a race: stops every cue, turns the engine off and clears the tyre tracks
 	void Reset();
 
-	ARacingCarSteer* GetRacingCarSteer();
-	CARTYPE_         GetCarType() const { return m_eCarType; }
+	ARacingCarSteer*   GetRacingCarSteer();
+	CARTYPE_           GetCarType() const { return m_eCarType; }
+	AAnimatableObject* GetDriver() const { return m_pDriver; }
+	TINT               GetBaseBone() const { return m_iBaseBone; }
 
 	// $Barnyard: FUNCTION 004f5ce0
 	TINT GetUnkB0() const { return m_iUnkB0; }

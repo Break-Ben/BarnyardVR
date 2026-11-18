@@ -2,12 +2,14 @@
 #include "ABikePhysicsCameraHelper.h"
 #include "Physics/ACollisionObject.h"
 #include "ACameraManager.h"
+#include "AFirstPersonCamera.h"
 #include "AOptions.h"
 #include "Input/AInputMap.h"
 #include "GameInterface/AGameStateController.h"
 #include "Render/ARenderer.h"
 #include "Units/AUnit.h"
 #include "Units/AAnimatedUnit.h"
+#include "Units/AUnitCarChaseCar.h"
 #include "Animation/AAnimatableObject.h"
 #include "Animation/AAnimatableObjectManager.h"
 #include "Animation/AModel.h"
@@ -277,6 +279,56 @@ TBOOL ABikePhysicsCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 {
 	if ( !m_pTarget || !m_pTarget->GetUnit() )
 		return TFALSE;
+
+	AUnit* pTargetUnit = m_pTarget->GetUnit();
+
+	if ( AFirstPersonCamera::IsEnabled() )
+	{
+		ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
+		ASteer*  pSteer  = pTargetUnit->GetSteer();
+
+		const TFLOAT fRateDelta = TMath::Min( a_fDeltaTime, 0.25f );
+		TFLOAT       fSpeed     = 0.0f;
+
+		if ( pSteer && pSteer->IsA( &TGetClass( ABikeSteer ) ) )
+			fSpeed = TSTATICCAST( ABikeSteer, pSteer )->GetPhysics()->GetBody().GetVelocity().Magnitude();
+		else if ( pSteer )
+			fSpeed = pSteer->GetSpeed();
+
+		AFirstPersonCamera::UpdateVehicleLook( fRateDelta, fSpeed );
+
+		TVector4 vEyePos;
+		TVector4 vForward;
+
+		if ( pTargetUnit->IsA( &TGetClass( AUnitCarChaseCar ) ) )
+		{
+			AUnitCarChaseCar* pCar      = TSTATICCAST( AUnitCarChaseCar, pTargetUnit );
+			const TBOOL       bLookBack = ( m_eMode == MODE_LOOK_BACK );
+
+			AFirstPersonCamera::ComputeCarCockpit( pCar, bLookBack, vEyePos, vForward );
+
+			if ( ACameraManager::GetSingleton()->GetCurrentCameraHelper() == this )
+				AFirstPersonCamera::RegisterCarView( this, pCar, bLookBack );
+		}
+		else
+		{
+			TMatrix44 matVehicle;
+			GetVehicleTransform( matVehicle );
+
+			AFirstPersonCamera::ComputeBikeCockpit( pTargetUnit, matVehicle, vEyePos, vForward );
+			FadeCloseRaceBikes( vEyePos, vEyePos + vForward );
+
+			if ( ACameraManager::GetSingleton()->GetCurrentCameraHelper() == this )
+				AFirstPersonCamera::RegisterBikeView( this, pTargetUnit );
+		}
+
+		pCamera->GetMatrix().GetTranslation() = vEyePos;
+		pCamera->LookAtDirection( vForward );
+		UpdateFOV( fRateDelta );
+
+		m_fRotateInput = 0.0f;
+		return TTRUE;
+	}
 
 	m_fTimeAccumulator += a_fDeltaTime;
 
@@ -678,9 +730,27 @@ TBOOL ABikePhysicsCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_p
 			}
 
 			return TTRUE;
+		case AInputCommand_ElevateCameraCCW:
+			if ( !AFirstPersonCamera::IsEnabled() )
+				return TFALSE;
+
+			pEvent->StartRepeat( 0.0f, 0.0f );
+			AFirstPersonCamera::AddVehicleKeyLook( 0.0f, -1.0f );
+			return TTRUE;
+		case AInputCommand_ElevateCameraCW:
+			if ( !AFirstPersonCamera::IsEnabled() )
+				return TFALSE;
+
+			pEvent->StartRepeat( 0.0f, 0.0f );
+			AFirstPersonCamera::AddVehicleKeyLook( 0.0f, 1.0f );
+			return TTRUE;
 		case AInputCommand_RotateCameraCW:
 			pEvent->StartRepeat( 0.0f, 0.0f );
 			m_fRotateInput = m_fRotateInput + 1.0f;
+
+			if ( AFirstPersonCamera::IsEnabled() )
+				AFirstPersonCamera::AddVehicleKeyLook( 1.0f, 0.0f );
+
 			return TTRUE;
 		case AInputCommand_RotateCamera:
 #ifdef TOSHI_SKU_WII
@@ -694,7 +764,19 @@ TBOOL ABikePhysicsCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_p
 				if ( pEvent->GetEventType() != TInputInterface::EVENT_TYPE_MOVED )
 					return TFALSE;
 
+				if ( AFirstPersonCamera::IsEnabled() )
+				{
+					AFirstPersonCamera::AddVehicleMouseLook( pEvent->GetMagnitudeFloat( 0 ), pEvent->GetMagnitudeFloat( 1 ) );
+					return TTRUE;
+				}
+
 				m_fRotateInput = pEvent->GetMagnitudeFloat( 0 ) * AOptions::GetSingleton()->GetSensitivity() * 0.029999999f + m_fRotateInput;
+				return TTRUE;
+			}
+
+			if ( AFirstPersonCamera::IsEnabled() )
+			{
+				AFirstPersonCamera::SetVehicleStickLook( pEvent->GetMagnitudeFloat( 0 ), pEvent->GetMagnitudeFloat( 1 ) );
 				return TTRUE;
 			}
 
@@ -703,6 +785,10 @@ TBOOL ABikePhysicsCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_p
 		case AInputCommand_RotateCameraCCW:
 			pEvent->StartRepeat( 0.0f, 0.0f );
 			m_fRotateInput = m_fRotateInput - 1.0f;
+
+			if ( AFirstPersonCamera::IsEnabled() )
+				AFirstPersonCamera::AddVehicleKeyLook( -1.0f, 0.0f );
+
 			return TTRUE;
 	}
 
@@ -785,6 +871,7 @@ void ABikePhysicsCameraHelper::OnAttach()
 	}
 
 	m_fRotateInput = 0.0f;
+	AFirstPersonCamera::ResetVehicleLook();
 
 	ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
 
@@ -911,12 +998,18 @@ void ABikePhysicsCameraHelper::OnDetach()
 		}
 	}
 
+	AFirstPersonCamera::ResetVehicleLook();
+	AFirstPersonCamera::RestoreAll();
+
 	ACameraHelper::OnDetach();
 }
 
 // NOTE: shares 0058ac00 with another class
 TFLOAT ABikePhysicsCameraHelper::GetFOV() const
 {
+	if ( AFirstPersonCamera::IsEnabled() )
+		return AFirstPersonCamera::GetVehicleFOV();
+
 	return m_fFOV;
 }
 
@@ -944,26 +1037,51 @@ void ABikePhysicsCameraHelper::PlaceCamera()
 	m_oHeightSpring.fValue      = m_oHeightSpring.fTarget;
 	m_oHeightSpring.fVelocity   = 0.0f;
 	m_fRotateInput              = 0.0f;
+	AFirstPersonCamera::ResetVehicleLook();
 
 	if ( m_pTarget && m_pTarget->GetUnit() )
 	{
-		TMatrix44 matVehicle;
-		GetVehicleTransform( matVehicle );
-
-		TMatrix44 matFlat;
-		FlattenMatrix( matVehicle, matFlat );
-
 		ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
 
-		TVector4 vCameraPos;
-		TMatrix44::TransformVector( vCameraPos, matFlat, m_vCameraOffset );
-		pCamera->GetMatrix().GetTranslation() = vCameraPos;
+		if ( AFirstPersonCamera::IsEnabled() )
+		{
+			AUnit*   pTargetUnit = m_pTarget->GetUnit();
+			TVector4 vEyePos;
+			TVector4 vForward;
 
-		TVector4 vLookAt;
-		TMatrix44::TransformVector( vLookAt, matFlat, m_vLookAtOffset );
-		LookAtPoint( vLookAt );
+			if ( pTargetUnit->IsA( &TGetClass( AUnitCarChaseCar ) ) )
+			{
+				AFirstPersonCamera::ComputeCarCockpit( TSTATICCAST( AUnitCarChaseCar, pTargetUnit ), m_eMode == MODE_LOOK_BACK, vEyePos, vForward );
+			}
+			else
+			{
+				TMatrix44 matVehicle;
+				GetVehicleTransform( matVehicle );
+				AFirstPersonCamera::ComputeBikeCockpit( pTargetUnit, matVehicle, vEyePos, vForward );
+			}
 
-		pCamera->SetFOV( GetFOV() );
+			pCamera->GetMatrix().GetTranslation() = vEyePos;
+			pCamera->LookAtDirection( vForward );
+			pCamera->SetFOV( GetFOV() );
+		}
+		else
+		{
+			TMatrix44 matVehicle;
+			GetVehicleTransform( matVehicle );
+
+			TMatrix44 matFlat;
+			FlattenMatrix( matVehicle, matFlat );
+
+			TVector4 vCameraPos;
+			TMatrix44::TransformVector( vCameraPos, matFlat, m_vCameraOffset );
+			pCamera->GetMatrix().GetTranslation() = vCameraPos;
+
+			TVector4 vLookAt;
+			TMatrix44::TransformVector( vLookAt, matFlat, m_vLookAtOffset );
+			LookAtPoint( vLookAt );
+
+			pCamera->SetFOV( GetFOV() );
+		}
 	}
 
 #ifdef BARNYARD_LATEST
@@ -1234,7 +1352,8 @@ void ABikePhysicsCameraHelper::UpdateFOV( TFLOAT a_fDeltaTime )
 		TMath::Clip( fProgress, 0.0f, 1.0f );
 	}
 
-	pCamera->SetFOV( TMath::LERP( fFOV, 1.5707964f, fProgress ) );
+	const TFLOAT fBoostFOV = AFirstPersonCamera::IsEnabled() ? AFirstPersonCamera::GetVehicleBoostFOV() : 1.5707964f;
+	pCamera->SetFOV( TMath::LERP( fFOV, fBoostFOV, fProgress ) );
 }
 
 // $Barnyard: FUNCTION 0045de40

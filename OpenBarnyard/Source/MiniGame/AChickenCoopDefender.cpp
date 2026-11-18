@@ -959,7 +959,11 @@ void AChickenCoopDefender::UpdateGameOver( TFLOAT a_fDeltaTime )
 
 		TVector4 vToCamera;
 		vToCamera.Substract( ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix().GetTranslation(), *pSteer->GetPosition() );
-		AChickenCoopDefenderNormaliseXZ( vToCamera );
+
+		if ( vToCamera.MagnitudeSqXZ() < 0.0001f )
+			pSteer->CopyDirection( vToCamera );
+		else
+			AChickenCoopDefenderNormaliseXZ( vToCamera );
 
 		if ( TVector4::DotProduct3( *m_pPlayer->GetSteer()->GetDirection(), vToCamera ) > 0.98f )
 		{
