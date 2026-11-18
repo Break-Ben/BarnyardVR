@@ -46,9 +46,171 @@ static T2ObjectPool<APhysicsCar, AVehicleManager::MAX_NUM_VEHICLES, 3644, 4> s_o
 // $Barnyard: FUNCTION 0065b980
 static T2ObjectPool<APhysicsBike, AVehicleManager::MAX_NUM_VEHICLES, 4044, 4> s_oBikePool;
 
+namespace
+{
+
+// Teleport safety guard: anything moving farther than 5 m in a single 1/60 s step snaps directly
+constexpr TFLOAT MAX_INTERP_STEP_DIST_SQ = 25.0f;
+
+struct BodyRenderSnapshot
+{
+	const ARigidBody* pBody        = TNULL;
+	TVector4          vPrevPos     = TVector4::VEC_ZERO;
+	TQuaternion       qPrevOrient  = TQuaternion::IDENTITY;
+	TBOOL             bHasPrevious = TFALSE;
+};
+
+struct VehicleRenderSnapshot
+{
+	const APhysicsVehicle* pVehicle                                               = TNULL;
+	TFLOAT                 fPrevSteeringAngle                                     = 0.0f;
+	TFLOAT                 afPrevSpringLength[ APhysicsVehicle::MAX_NUM_WHEELS ]  = {};
+	TFLOAT                 afPrevWheelRotation[ APhysicsVehicle::MAX_NUM_WHEELS ] = {};
+	TBOOL                  bHasPrevious                                           = TFALSE;
+};
+
+BodyRenderSnapshot    s_aBodySnapshots[ AVehicleManager::MAX_NUM_BODIES ];
+VehicleRenderSnapshot s_aVehicleSnapshots[ AVehicleManager::MAX_NUM_VEHICLES ];
+TBOOL                 s_bSuppressBodyReset = TFALSE;
+
+BodyRenderSnapshot* FindBodySnapshot( const ARigidBody* a_pBody )
+{
+	if ( !a_pBody )
+		return TNULL;
+
+	for ( TINT i = 0; i < AVehicleManager::MAX_NUM_BODIES; i++ )
+	{
+		if ( s_aBodySnapshots[ i ].pBody == a_pBody )
+			return &s_aBodySnapshots[ i ];
+	}
+
+	return TNULL;
+}
+
+BodyRenderSnapshot* GetOrCreateBodySnapshot( const ARigidBody* a_pBody )
+{
+	if ( BodyRenderSnapshot* pExisting = FindBodySnapshot( a_pBody ) )
+		return pExisting;
+
+	for ( TINT i = 0; i < AVehicleManager::MAX_NUM_BODIES; i++ )
+	{
+		if ( !s_aBodySnapshots[ i ].pBody )
+		{
+			s_aBodySnapshots[ i ].pBody        = a_pBody;
+			s_aBodySnapshots[ i ].vPrevPos     = a_pBody->GetPosition();
+			s_aBodySnapshots[ i ].qPrevOrient  = a_pBody->m_qOrientation;
+			s_aBodySnapshots[ i ].bHasPrevious = TTRUE;
+			return &s_aBodySnapshots[ i ];
+		}
+	}
+
+	return TNULL;
+}
+
+void RemoveBodySnapshot( const ARigidBody* a_pBody )
+{
+	if ( BodyRenderSnapshot* pSnap = FindBodySnapshot( a_pBody ) )
+	{
+		pSnap->pBody        = TNULL;
+		pSnap->bHasPrevious = TFALSE;
+	}
+}
+
+VehicleRenderSnapshot* FindVehicleSnapshot( const APhysicsVehicle* a_pVehicle )
+{
+	if ( !a_pVehicle )
+		return TNULL;
+
+	for ( TINT i = 0; i < AVehicleManager::MAX_NUM_VEHICLES; i++ )
+	{
+		if ( s_aVehicleSnapshots[ i ].pVehicle == a_pVehicle )
+			return &s_aVehicleSnapshots[ i ];
+	}
+
+	return TNULL;
+}
+
+void CaptureVehicleSnapshotState( VehicleRenderSnapshot& a_rSnap, const APhysicsVehicle* a_pVehicle )
+{
+	a_rSnap.pVehicle           = a_pVehicle;
+	a_rSnap.fPrevSteeringAngle = a_pVehicle->m_fSteeringAngle;
+
+	const TINT iNumWheels = TMath::Min( a_pVehicle->m_iNumWheels, APhysicsVehicle::MAX_NUM_WHEELS );
+
+	for ( TINT i = 0; i < iNumWheels; i++ )
+	{
+		a_rSnap.afPrevSpringLength[ i ]  = a_pVehicle->m_aWheels[ i ].m_fPrevSpringLength;
+		a_rSnap.afPrevWheelRotation[ i ] = a_pVehicle->m_aWheels[ i ].m_fRotation;
+	}
+
+	a_rSnap.bHasPrevious = TTRUE;
+}
+
+VehicleRenderSnapshot* GetOrCreateVehicleSnapshot( const APhysicsVehicle* a_pVehicle )
+{
+	if ( VehicleRenderSnapshot* pExisting = FindVehicleSnapshot( a_pVehicle ) )
+		return pExisting;
+
+	for ( TINT i = 0; i < AVehicleManager::MAX_NUM_VEHICLES; i++ )
+	{
+		if ( !s_aVehicleSnapshots[ i ].pVehicle )
+		{
+			CaptureVehicleSnapshotState( s_aVehicleSnapshots[ i ], a_pVehicle );
+			return &s_aVehicleSnapshots[ i ];
+		}
+	}
+
+	return TNULL;
+}
+
+void RemoveVehicleSnapshot( const APhysicsVehicle* a_pVehicle )
+{
+	if ( VehicleRenderSnapshot* pSnap = FindVehicleSnapshot( a_pVehicle ) )
+	{
+		pSnap->pVehicle     = TNULL;
+		pSnap->bHasPrevious = TFALSE;
+	}
+}
+
+TFLOAT LerpWrappedRadians( TFLOAT a_fStart, TFLOAT a_fEnd, TFLOAT a_fAlpha )
+{
+	TFLOAT fDelta = a_fEnd - a_fStart;
+
+	while ( fDelta > TMath::PI )
+		fDelta -= TMath::TWO_PI;
+
+	while ( fDelta < -TMath::PI )
+		fDelta += TMath::TWO_PI;
+
+	return a_fStart + fDelta * a_fAlpha;
+}
+
+} // namespace
+
 // $Barnyard: FUNCTION 0065e650
 void AVehicleManager::UpdatePhysics( TFLOAT a_fDeltaTime )
 {
+	// Snapshot pre-step end-of-tick states (before contact & bottom-out pushouts) for smooth render interpolation
+	for ( TINT i = 0; i < TINT( ms_vecBodies.Size() ); i++ )
+	{
+		ARigidBody* pBody = ms_vecBodies[ i ];
+
+		if ( BodyRenderSnapshot* pSnap = GetOrCreateBodySnapshot( pBody ) )
+		{
+			pSnap->vPrevPos     = pBody->GetPosition();
+			pSnap->qPrevOrient  = pBody->m_qOrientation;
+			pSnap->bHasPrevious = TTRUE;
+		}
+	}
+
+	for ( TINT i = 0; i < TINT( ms_vecVehicles.Size() ); i++ )
+	{
+		APhysicsVehicle* pVehicle = ms_vecVehicles[ i ];
+
+		if ( VehicleRenderSnapshot* pSnap = GetOrCreateVehicleSnapshot( pVehicle ) )
+			CaptureVehicleSnapshotState( *pSnap, pVehicle );
+	}
+
 	ms_iNumUsedContacts = 0;
 
 	ClearContacts( a_fDeltaTime );
@@ -64,11 +226,13 @@ void AVehicleManager::UpdatePhysics( TFLOAT a_fDeltaTime )
 void AVehicleManager::AddRigidBody( ARigidBody* a_pBody )
 {
 	ms_vecBodies.PushBack( a_pBody );
+	GetOrCreateBodySnapshot( a_pBody );
 }
 
 // $Barnyard: FUNCTION 0065d820
 void AVehicleManager::RemoveRigidBody( ARigidBody* a_pBody )
 {
+	RemoveBodySnapshot( a_pBody );
 	ms_vecBodies.FindAndErase( a_pBody );
 }
 
@@ -76,12 +240,195 @@ void AVehicleManager::RemoveRigidBody( ARigidBody* a_pBody )
 void AVehicleManager::AddVehicle( APhysicsVehicle* a_pVehicle )
 {
 	ms_vecVehicles.PushBack( a_pVehicle );
+	GetOrCreateVehicleSnapshot( a_pVehicle );
 }
 
 // $Barnyard: FUNCTION 0065d890
 void AVehicleManager::RemoveVehicle( APhysicsVehicle* a_pVehicle )
 {
+	RemoveVehicleSnapshot( a_pVehicle );
 	ms_vecVehicles.FindAndErase( a_pVehicle );
+}
+
+TFLOAT AVehicleManager::GetInterpolationAlpha()
+{
+	if ( !ACollisionManager::IsSingletonCreated() )
+		return 1.0f;
+
+	return ACollisionManager::GetSingleton()->GetVehicleInterpolationAlpha();
+}
+
+void AVehicleManager::GetInterpolatedBodyTransform( const ARigidBody& a_rcBody, TMatrix44& a_rOutTransform, TQuaternion* a_pOutOrientation )
+{
+	const BodyRenderSnapshot* pSnap = FindBodySnapshot( &a_rcBody );
+
+	if ( !pSnap || !pSnap->bHasPrevious || !a_rcBody.m_bEnabled )
+	{
+		a_rOutTransform = a_rcBody.GetTransform();
+
+		if ( a_pOutOrientation )
+			*a_pOutOrientation = a_rcBody.m_qOrientation;
+
+		return;
+	}
+
+	const TVector4& rcCurPos = a_rcBody.GetPosition();
+
+	if ( TVector4::DistanceSq( pSnap->vPrevPos, rcCurPos ) > MAX_INTERP_STEP_DIST_SQ )
+	{
+		a_rOutTransform = a_rcBody.GetTransform();
+
+		if ( a_pOutOrientation )
+			*a_pOutOrientation = a_rcBody.m_qOrientation;
+
+		return;
+	}
+
+	const TFLOAT fAlpha = GetInterpolationAlpha();
+
+	TVector4 vInterpPos;
+	vInterpPos.Lerp4( pSnap->vPrevPos, rcCurPos, fAlpha );
+	vInterpPos.w = 1.0f;
+
+	TQuaternion qInterpOrient;
+	TQuaternion::Slerp( qInterpOrient, pSnap->qPrevOrient, a_rcBody.m_qOrientation, fAlpha );
+
+	const TFLOAT fMagSq = qInterpOrient.MagnitudeSq();
+
+	if ( fMagSq > 0.000001f )
+	{
+		const TFLOAT fInvMag = 1.0f / TMath::Sqrt( fMagSq );
+		qInterpOrient.Set(
+		    qInterpOrient.x * fInvMag,
+		    qInterpOrient.y * fInvMag,
+		    qInterpOrient.z * fInvMag,
+		    qInterpOrient.w * fInvMag
+		);
+	}
+	else
+	{
+		qInterpOrient = a_rcBody.m_qOrientation;
+	}
+
+	a_rOutTransform.SetFromQuaternion( qInterpOrient );
+	a_rOutTransform.GetTranslation() = vInterpPos;
+
+	if ( a_pOutOrientation )
+		*a_pOutOrientation = qInterpOrient;
+}
+
+TFLOAT AVehicleManager::GetInterpolatedSteeringAngle( const APhysicsVehicle& a_rcVehicle )
+{
+	const VehicleRenderSnapshot* pSnap = FindVehicleSnapshot( &a_rcVehicle );
+
+	if ( !pSnap || !pSnap->bHasPrevious || !a_rcVehicle.m_bEnabled )
+		return a_rcVehicle.m_fSteeringAngle;
+
+	return TMath::LERP( pSnap->fPrevSteeringAngle, a_rcVehicle.m_fSteeringAngle, GetInterpolationAlpha() );
+}
+
+void AVehicleManager::GetInterpolatedWheelState( const APhysicsVehicle& a_rcVehicle, TINT a_iWheel, TFLOAT& a_rfOutSpringLength, TFLOAT& a_rfOutRotation )
+{
+	if ( a_iWheel < 0 || a_iWheel >= APhysicsVehicle::MAX_NUM_WHEELS )
+	{
+		a_rfOutSpringLength = 0.0f;
+		a_rfOutRotation     = 0.0f;
+		return;
+	}
+
+	const APhysicsWheel&         rcWheel = a_rcVehicle.m_aWheels[ a_iWheel ];
+	const VehicleRenderSnapshot* pSnap   = FindVehicleSnapshot( &a_rcVehicle );
+
+	if ( !pSnap || !pSnap->bHasPrevious || !a_rcVehicle.m_bEnabled )
+	{
+		a_rfOutSpringLength = rcWheel.m_fPrevSpringLength;
+		a_rfOutRotation     = rcWheel.m_fRotation;
+		return;
+	}
+
+	const TFLOAT fAlpha = GetInterpolationAlpha();
+	a_rfOutSpringLength = TMath::LERP( pSnap->afPrevSpringLength[ a_iWheel ], rcWheel.m_fPrevSpringLength, fAlpha );
+	a_rfOutRotation     = LerpWrappedRadians( pSnap->afPrevWheelRotation[ a_iWheel ], rcWheel.m_fRotation, fAlpha );
+}
+
+void AVehicleManager::OnBodyPositionReset( const ARigidBody* a_pBody )
+{
+	if ( s_bSuppressBodyReset )
+		return;
+
+	if ( BodyRenderSnapshot* pSnap = FindBodySnapshot( a_pBody ) )
+	{
+		pSnap->vPrevPos     = a_pBody->GetPosition();
+		pSnap->bHasPrevious = TTRUE;
+	}
+}
+
+void AVehicleManager::OnBodyOrientationReset( const ARigidBody* a_pBody )
+{
+	if ( s_bSuppressBodyReset )
+		return;
+
+	if ( BodyRenderSnapshot* pSnap = FindBodySnapshot( a_pBody ) )
+	{
+		pSnap->qPrevOrient  = a_pBody->m_qOrientation;
+		pSnap->bHasPrevious = TTRUE;
+	}
+}
+
+void AVehicleManager::SetBodyPreviousPosition( const ARigidBody* a_pBody, const TVector4& a_rcPosition )
+{
+	if ( BodyRenderSnapshot* pSnap = FindBodySnapshot( a_pBody ) )
+	{
+		pSnap->vPrevPos     = a_rcPosition;
+		pSnap->bHasPrevious = TTRUE;
+	}
+}
+
+void AVehicleManager::SetBodyPreviousOrientation( const ARigidBody* a_pBody, const TQuaternion& a_rcOrientation )
+{
+	if ( BodyRenderSnapshot* pSnap = FindBodySnapshot( a_pBody ) )
+	{
+		pSnap->qPrevOrient  = a_rcOrientation;
+		pSnap->bHasPrevious = TTRUE;
+	}
+}
+
+void AVehicleManager::ResetVehicleInterpolation( const APhysicsVehicle* a_pVehicle )
+{
+	if ( !a_pVehicle )
+		return;
+
+	if ( BodyRenderSnapshot* pBodySnap = FindBodySnapshot( &a_pVehicle->m_oBody ) )
+	{
+		pBodySnap->vPrevPos     = a_pVehicle->m_oBody.GetPosition();
+		pBodySnap->qPrevOrient  = a_pVehicle->m_oBody.m_qOrientation;
+		pBodySnap->bHasPrevious = TTRUE;
+	}
+
+	if ( VehicleRenderSnapshot* pVehSnap = FindVehicleSnapshot( a_pVehicle ) )
+		CaptureVehicleSnapshotState( *pVehSnap, a_pVehicle );
+}
+
+void AVehicleManager::SetSuppressBodyReset( TBOOL a_bSuppress )
+{
+	s_bSuppressBodyReset = a_bSuppress;
+}
+
+void AVehicleManager::ResetAllInterpolation()
+{
+	s_bSuppressBodyReset = TFALSE;
+
+	for ( TINT i = 0; i < MAX_NUM_BODIES; i++ )
+	{
+		s_aBodySnapshots[ i ].pBody        = TNULL;
+		s_aBodySnapshots[ i ].bHasPrevious = TFALSE;
+	}
+
+	for ( TINT i = 0; i < MAX_NUM_VEHICLES; i++ )
+	{
+		s_aVehicleSnapshots[ i ].pVehicle     = TNULL;
+		s_aVehicleSnapshots[ i ].bHasPrevious = TFALSE;
+	}
 }
 
 // $Barnyard: FUNCTION 0065b900

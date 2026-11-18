@@ -180,6 +180,7 @@ void ACollisionManager::CreateStatic()
 
 	AVehicleManager::ms_vecBodies.Clear();
 	AVehicleManager::ms_vecVehicles.Clear();
+	AVehicleManager::ResetAllInterpolation();
 
 	AVehicleManager::ms_iNumUsedContacts   = 0;
 	AVehicleManager::ms_iMaxNumContacts    = AVehicleManager::MAX_NUM_CONTACTS;
@@ -201,6 +202,7 @@ void ACollisionManager::DestroyStatic()
 
 	AVehicleManager::ms_vecBodies.Clear();
 	AVehicleManager::ms_vecVehicles.Clear();
+	AVehicleManager::ResetAllInterpolation();
 
 	TASSERT( ms_pRayHits != TNULL );
 	ms_pRayHits->Clear();

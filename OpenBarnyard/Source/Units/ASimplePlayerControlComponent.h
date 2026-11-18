@@ -67,6 +67,7 @@ public:
 	void  SetUnk32( TBOOL a_bValue ) { m_bUnk32 = a_bValue; }
 	void  SetSecondaryLauncherInput( TBOOL a_bValue ) { m_bSecondaryLauncherInput = a_bValue; }
 	void  SetCameraInput( TBOOL a_bValue ) { m_bCameraInput = a_bValue; }
+	TBOOL IsCameraInputEnabled() const { return m_bCameraInput; }
 
 	// Set together by AUnitPlayer::SetControlFlags
 	void SetLauncherFlags( TBOOL a_bValue )

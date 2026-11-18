@@ -54,7 +54,10 @@ public:
 	//-----------------------------------------------------------------------------
 	// Own methods
 	//-----------------------------------------------------------------------------
-	APhysicsCar* GetCar() const { return m_pCar; }
+	APhysicsCar*            GetCar() const { return m_pCar; }
+	const Toshi::TVector4&  GetSeatOffset() const { return m_vSeatOffset; }
+	void                    GetInterpolatedBodyTransform( Toshi::TMatrix44& a_rOutMatrix ) const;
+	void                    GetInterpolatedSeatMatrix( Toshi::TMatrix44& a_rOutMatrix ) const;
 
 private:
 	// Allocates and sets up the physics of the car and puts it at the position

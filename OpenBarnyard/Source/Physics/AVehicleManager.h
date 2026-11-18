@@ -91,6 +91,19 @@ public:
 
 	static TBOOL BoundingSpheresOverlap( ARigidBody* a_pBody1, ARigidBody* a_pBody2 );
 
+	// Render interpolation between consecutive fixed-rate UpdatePhysics steps (read-only on simulated state)
+	static TFLOAT GetInterpolationAlpha();
+	static void   GetInterpolatedBodyTransform( const ARigidBody& a_rcBody, Toshi::TMatrix44& a_rOutTransform, Toshi::TQuaternion* a_pOutOrientation = TNULL );
+	static TFLOAT GetInterpolatedSteeringAngle( const APhysicsVehicle& a_rcVehicle );
+	static void   GetInterpolatedWheelState( const APhysicsVehicle& a_rcVehicle, TINT a_iWheel, TFLOAT& a_rfOutSpringLength, TFLOAT& a_rfOutRotation );
+	static void   OnBodyPositionReset( const ARigidBody* a_pBody );
+	static void   OnBodyOrientationReset( const ARigidBody* a_pBody );
+	static void   SetBodyPreviousPosition( const ARigidBody* a_pBody, const Toshi::TVector4& a_rcPosition );
+	static void   SetBodyPreviousOrientation( const ARigidBody* a_pBody, const Toshi::TQuaternion& a_rcOrientation );
+	static void   ResetVehicleInterpolation( const APhysicsVehicle* a_pVehicle );
+	static void   SetSuppressBodyReset( TBOOL a_bSuppress );
+	static void   ResetAllInterpolation();
+
 private:
 	static TBOOL   CollideSweptSphere( ARigidBody* a_pBody, ARigidBodyCollision* a_pCollision, const Toshi::TVector4& a_rcStart, const Toshi::TVector4& a_rcEnd, TFLOAT a_fRadius );
 	static TBOOL   CollideBoxWithObject( const Toshi::TOBBox& a_rcBox, ACollisionObject* a_pObject, Toshi::TCollisionContact* a_pContact );

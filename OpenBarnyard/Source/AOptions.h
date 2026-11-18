@@ -87,6 +87,21 @@ public:
 	TINT                  GetMusicVolume() const { return m_iMusicVolume; }
 	TINT                  GetVOVolume() const { return m_iVOVolume; }
 
+	// First-person camera option (on by default). Static so the size of AOptions and savedata.by stay compatible with retail.
+	TBOOL IsFirstPersonCamera() const { return ms_bFirstPersonCamera; }
+
+	void SetFirstPersonCamera( TBOOL a_bEnabled )
+	{
+		ms_bFirstPersonCamera = a_bEnabled;
+#ifdef BARNYARD_LATEST
+		m_eUpdatedSettings |= UpdatedSettings_Camera;
+#endif
+	}
+
+	static TBOOL IsFirstPersonCameraEnabled() { return ms_bFirstPersonCamera; }
+
+	static TBOOL ms_bFirstPersonCamera;
+
 #ifdef BARNYARD_LATEST
 	// Camera rotation speed, 0 to CAMERA_SPEED_MAX (ACameraOptionsState)
 	static constexpr TINT CAMERA_SPEED_DEFAULT = 3;

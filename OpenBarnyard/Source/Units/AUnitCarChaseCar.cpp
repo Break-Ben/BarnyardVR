@@ -65,6 +65,44 @@ static TBOOL s_bLocalSparks = TTRUE;
 // Rumble of the controller when the car hits something
 static const AInputHandler::RumbleParams s_oCrashRumble = { { 0.8f, 0.0f, 0.0f, 0.4f, 0.0f, 1.0f, 1.0f }, 1 };
 
+namespace
+{
+
+constexpr TINT    MAX_TRACKED_CARS                   = 16;
+AUnitCarChaseCar* s_apActiveCars[ MAX_TRACKED_CARS ] = {};
+
+void RegisterActiveCar( AUnitCarChaseCar* a_pCar )
+{
+	if ( !a_pCar )
+		return;
+
+	for ( TINT i = 0; i < MAX_TRACKED_CARS; i++ )
+	{
+		if ( s_apActiveCars[ i ] == a_pCar )
+			return;
+	}
+
+	for ( TINT i = 0; i < MAX_TRACKED_CARS; i++ )
+	{
+		if ( !s_apActiveCars[ i ] )
+		{
+			s_apActiveCars[ i ] = a_pCar;
+			return;
+		}
+	}
+}
+
+void UnregisterActiveCar( AUnitCarChaseCar* a_pCar )
+{
+	for ( TINT i = 0; i < MAX_TRACKED_CARS; i++ )
+	{
+		if ( s_apActiveCars[ i ] == a_pCar )
+			s_apActiveCars[ i ] = TNULL;
+	}
+}
+
+} // namespace
+
 // Packs the colour of a tyre track
 // NOTE: same as PackColour of ABikeSteer.cpp (004083c0)
 static TUINT32 PackTyreTrackColour( TFLOAT a_fRed, TFLOAT a_fGreen, TFLOAT a_fBlue, TFLOAT a_fAlpha )
@@ -146,6 +184,8 @@ AUnitCarChaseCar::AUnitCarChaseCar()
 // $Barnyard: FUNCTION 004f6090
 AUnitCarChaseCar::~AUnitCarChaseCar()
 {
+	UnregisterActiveCar( this );
+
 	if ( m_pGlowObject )
 		AGlowViewport::GetSingleton()->RemoveGlowObject( m_pGlowObject );
 }
@@ -279,6 +319,7 @@ void AUnitCarChaseCar::CreateLights()
 // $Barnyard: FUNCTION 004f60a0
 void AUnitCarChaseCar::OnDestroy()
 {
+	UnregisterActiveCar( this );
 	KillLights();
 
 	AAnimatableObjectManager* pManager = AAnimatableObjectManager::GetSingleton();
@@ -366,6 +407,7 @@ TBOOL AUnitCarChaseCar::Create( AUnitTransform* a_pTransform )
 
 	m_fMaxSpeed = GetRacingCarSteer()->GetMaxSpeed();
 	CreateLights();
+	RegisterActiveCar( this );
 
 	return TTRUE;
 }
@@ -1392,4 +1434,132 @@ void AUnitCarChaseCar::UpdateAI( TFLOAT a_fDeltaTime )
 	}
 
 	AAnimatedUnit::UpdateAI( a_fDeltaTime );
+}
+
+void AUnitCarChaseCar::SyncInterpolatedVisuals()
+{
+	if ( !IsVisible() || !m_pSteer || !m_pSteer->IsA( &TGetClass( ARacingCarSteer ) ) )
+		return;
+
+	AAnimatableObject* pCarObject = GetAnimatableObject();
+
+	if ( !pCarObject )
+		return;
+
+	AModelInstanceRef pCarModel = pCarObject->GetModelInstance();
+
+	if ( !pCarModel )
+		return;
+
+	ARacingCarSteer* pSteer = TSTATICCAST( ARacingCarSteer, m_pSteer );
+	APhysicsCar*     pCar   = pSteer->GetCar();
+
+	if ( !pCar )
+		return;
+
+	TMatrix44 matCar;
+	pSteer->GetInterpolatedSeatMatrix( matCar );
+	pCarModel->SetTransform( matCar );
+
+	TSkeletonInstance* pSkeletonInstance = pCarModel->GetSkeletonInstance();
+
+	if ( pSkeletonInstance )
+	{
+		if ( m_iBaseBone != -1 )
+		{
+			TMatrix44 matSeat = TMatrix44::IDENTITY;
+			matSeat.Multiply( matCar, pSkeletonInstance->GetBoneTransformCurrent( m_iBaseBone ) );
+
+			if ( m_pDriver && m_pDriver->GetModelInstance() )
+				m_pDriver->GetModelInstance()->SetTransform( matSeat );
+
+			if ( m_pPassenger1 && m_pPassenger1->GetModelInstance() )
+				m_pPassenger1->GetModelInstance()->SetTransform( matSeat );
+
+			if ( m_pPassenger2 && m_pPassenger2->GetModelInstance() )
+				m_pPassenger2->GetModelInstance()->SetTransform( matSeat );
+		}
+
+		const TFLOAT fInterpSteering = AVehicleManager::GetInterpolatedSteeringAngle( *pCar );
+
+		for ( TINT i = 0; i < NUM_WHEELS; i++ )
+		{
+			if ( !m_apWheels[ i ] || !m_apWheels[ i ]->GetModelInstance() || m_aiWheelBones[ i ] < 0 || !pSkeletonInstance->GetBones() )
+				continue;
+
+			TMatrix44 matWheel = TMatrix44::IDENTITY;
+			matWheel.Multiply( matCar, pSkeletonInstance->GetBoneTransformCurrent( m_aiWheelBones[ i ] ) );
+
+			if ( i == 0 || i == 2 )
+				matWheel.RotateZ( TMath::PI );
+
+			TFLOAT fSpringLength = 0.0f;
+			TFLOAT fWheelRot     = 0.0f;
+			AVehicleManager::GetInterpolatedWheelState( *pCar, i, fSpringLength, fWheelRot );
+
+			TMatrix44 matSuspension = TMatrix44::IDENTITY;
+			TFLOAT    fExtension    = TMath::Max( fSpringLength, pCar->m_aWheels[ i ].m_oParams.fMaxExtension * -0.5f );
+			matSuspension.AsBasisVector4( BASISVECTOR_TRANSLATION ).Multiply( TVector4::VEC_POSZ, fExtension );
+
+			TMatrix44 matRotation = TMatrix44::IDENTITY;
+			TFLOAT    fRotation   = -fWheelRot;
+
+			if ( i == 0 || i == 2 )
+				fRotation *= -1.0f;
+
+			matRotation.RotateX( fRotation );
+
+			TMatrix44 matSteering = TMatrix44::IDENTITY;
+
+			if ( i == 0 || i == 1 )
+				matSteering.RotateZ( fInterpSteering );
+
+			TMatrix44 matTemp = matWheel;
+			matWheel.Multiply( matTemp, matSuspension );
+
+			matTemp = matWheel;
+			matWheel.Multiply( matTemp, matSteering );
+
+			matTemp = matWheel;
+			matWheel.Multiply( matTemp, matRotation );
+
+			m_apWheels[ i ]->GetModelInstance()->SetTransform( matWheel );
+		}
+	}
+
+	for ( TINT i = 0; i < 2; i++ )
+	{
+		if ( m_apHeadlights[ i ] && m_apHeadlights[ i ]->GetInstance() )
+			m_apHeadlights[ i ]->Update( 0.0f );
+
+		if ( m_apTaillights[ i ] && m_apTaillights[ i ]->GetInstance() )
+			m_apTaillights[ i ]->Update( 0.0f );
+
+		if ( m_apBrakeLights[ i ] && m_apBrakeLights[ i ]->GetInstance() )
+			m_apBrakeLights[ i ]->Update( 0.0f );
+
+		if ( m_apReverseLights[ i ] && m_apReverseLights[ i ]->GetInstance() )
+			m_apReverseLights[ i ]->Update( 0.0f );
+
+		if ( m_apSirens[ i ] && m_apSirens[ i ]->GetInstance() )
+			m_apSirens[ i ]->Update( 0.0f );
+	}
+}
+
+TBOOL AUnitCarChaseCar::SyncAllInterpolatedVisuals()
+{
+	TBOOL bSyncedAny = TFALSE;
+
+	for ( TINT i = 0; i < MAX_TRACKED_CARS; i++ )
+	{
+		AUnitCarChaseCar* pCar = s_apActiveCars[ i ];
+
+		if ( pCar && pCar->IsVisible() )
+		{
+			pCar->SyncInterpolatedVisuals();
+			bSyncedAny = TTRUE;
+		}
+	}
+
+	return bSyncedAny;
 }

@@ -11,6 +11,7 @@
 #include "Render/ARenderer.h"
 #include "Render/AGlowViewport.h"
 #include "Cameras/ACameraManager.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "Input/AInputHandler.h"
 #include "Movie/AMoviePlayer.h"
 #include "Helpers/AHintManager.h"
@@ -570,7 +571,7 @@ void ARenderer::UpdateMainCamera( const Toshi::TMatrix44& a_rTransformMatrix, co
 	m_pCameraObject->SetFOV( a_pCamera->m_fFOV );
 	m_pCameraObject->GetTransformObject().SetMatrix( a_rTransformMatrix );
 	m_pCameraObject->SetFar( m_fFar );
-	m_pCameraObject->SetNear( m_fNear );
+	m_pCameraObject->SetNear( AFirstPersonCamera::ShouldOverrideNearClip() ? TMath::Min( m_fNear, AFirstPersonCamera::NEAR_CLIP ) : m_fNear );
 }
 
 // $Barnyard: FUNCTION 0060b370
@@ -772,8 +773,10 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 		}
 		else if ( pRootTask->IsRenderWorld() )
 		{
-			const ACamera* pCamera    = ACameraManager::GetSingleton()->GetCurrentCamera();
-			TMatrix44      oCamMatrix = pCamera->GetMatrix();
+			ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
+			AFirstPersonCamera::SyncBeforeRender( pCamera );
+
+			TMatrix44 oCamMatrix = pCamera->GetMatrix();
 			oCamMatrix.SetTranslation( pCamera->GetMatrix().GetTranslation() );
 
 			UpdateMainCamera( oCamMatrix, pCamera );

@@ -3,7 +3,10 @@
 #include "AAnimatableObjectTypeBunch.h"
 #include "AModelRepos.h"
 #include "ALoadScreen.h"
+#include "ABikeAnimController.h"
+#include "ABikeCrashAnimController.h"
 #include "FX/AParticleEffectManager.h"
+#include "Physics/AVehicleManager.h"
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -525,6 +528,44 @@ void AAnimatableObjectManager::UpdateAttachedObjects( TFLOAT a_fDeltaTime )
 	}
 
 	AParticleEffectManager::GetSingleton()->OnUpdate( a_fDeltaTime );
+}
+
+TBOOL AAnimatableObjectManager::SyncInterpolatedBikeTransforms()
+{
+	if ( AVehicleManager::ms_vecBodies.IsEmpty() )
+		return TFALSE;
+
+	TBOOL bSyncedAny = TFALSE;
+
+	T2_FOREACH( m_llAnimatableObjects, it )
+	{
+		if ( it->m_oAttachmentInfo.pParentObject )
+			continue;
+
+		if ( it->m_llAnimControllers.IsEmpty() )
+			continue;
+
+		AModelInstanceRef pModelInstance = it->GetModelInstance();
+
+		if ( !pModelInstance || !pModelInstance->IsVisible() || !pModelInstance->IsUpdatingSkeleton() )
+			continue;
+
+		T2_FOREACH( it->m_llAnimControllers, ctrlIt )
+		{
+			if ( ctrlIt->IsA( &TGetClass( ABikeAnimController ) ) )
+			{
+				TSTATICCAST( ABikeAnimController, ctrlIt.Get() )->SyncInterpolatedTransform();
+				bSyncedAny = TTRUE;
+			}
+			else if ( ctrlIt->IsA( &TGetClass( ABikeCrashAnimController ) ) )
+			{
+				if ( TSTATICCAST( ABikeCrashAnimController, ctrlIt.Get() )->SyncInterpolatedTransform() )
+					bSyncedAny = TTRUE;
+			}
+		}
+	}
+
+	return bSyncedAny;
 }
 
 // $Barnyard: FUNCTION 0057e3e0

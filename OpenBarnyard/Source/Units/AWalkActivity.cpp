@@ -607,6 +607,15 @@ AInteractionActivity::RESULT AWalkActivity::StartToCamera( AInteractionSequence*
 			const TVector4* pPosition = pSteer->GetPosition();
 
 			TVector4 vFacing( vCamera.x - pPosition->x, 0.0f, vCamera.z - pPosition->z, vCamera.w );
+
+			if ( vFacing.MagnitudeSqXZ() < 0.0001f )
+			{
+				ACameraManager::GetSingleton()->GetCurrentCamera()->GetFlatDirection( vFacing );
+
+				if ( vFacing.MagnitudeSqXZ() < 0.0001f )
+					pSteer->CopyDirection( vFacing );
+			}
+
 			vFacing.Normalise();
 
 			pSteer->SetInteracting( 1 );

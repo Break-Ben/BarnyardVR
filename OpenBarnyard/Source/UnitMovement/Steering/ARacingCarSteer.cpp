@@ -555,6 +555,31 @@ void ARacingCarSteer::GetSeatMatrix( TMatrix44& a_rOutMatrix )
 	a_rOutMatrix.RotateX( 1.5707964f );
 }
 
+void ARacingCarSteer::GetInterpolatedBodyTransform( TMatrix44& a_rOutMatrix ) const
+{
+	if ( !m_pCar )
+	{
+		a_rOutMatrix = TMatrix44::IDENTITY;
+		return;
+	}
+
+	AVehicleManager::GetInterpolatedBodyTransform( m_pCar->GetBody(), a_rOutMatrix );
+}
+
+void ARacingCarSteer::GetInterpolatedSeatMatrix( TMatrix44& a_rOutMatrix ) const
+{
+	GetInterpolatedBodyTransform( a_rOutMatrix );
+
+	TVector4 vOffset;
+	TMatrix44::RotateVector( vOffset, a_rOutMatrix, m_vSeatOffset );
+
+	a_rOutMatrix.m_f41 = vOffset.x + a_rOutMatrix.m_f41;
+	a_rOutMatrix.m_f42 = vOffset.y + a_rOutMatrix.m_f42;
+	a_rOutMatrix.m_f43 = vOffset.z + a_rOutMatrix.m_f43;
+
+	a_rOutMatrix.RotateX( 1.5707964f );
+}
+
 // $Barnyard: FUNCTION 0056eac0
 void ARacingCarSteer::Reset( TVector4 a_vPosition, TVector4 a_vDirection )
 {

@@ -5,6 +5,9 @@
 
 #  include "AOptionsState.h"
 #  include "AOptions.h"
+#  include "Cameras/ACameraHelper.h"
+#  include "Cameras/ACameraManager.h"
+#  include "Cameras/AFirstPersonCamera.h"
 #  include "Sound/ASoundManager.h"
 #  include "SoundBank/ui.h"
 #  include "GUI/T2GUIFontManager.h"
@@ -212,6 +215,7 @@ ACameraOptionsState::~ACameraOptionsState()
 // ("Camera Speed", CAMERA_SPEED_TEXT, is both the button and the label there), so the texts are in English
 static const TWCHAR* s_aOptionTexts[ ACameraOptionsState::CAMERAOPTIONS_NUMOF ] = {
 	L"Speed",
+	L"First Person",
 	L"Wii Style",
 	L"Follow Jumps",
 };
@@ -229,6 +233,10 @@ const TWCHAR* ACameraOptionsState::GetCameraText()
 static TBOOL GetOptionsToggle( TINT a_iOption )
 {
 	AOptions* pOptions = AOptions::GetSingleton();
+
+	if ( a_iOption == ACameraOptionsState::CAMERAOPTIONS_FIRSTPERSON )
+		return pOptions->IsFirstPersonCamera();
+
 	return ( a_iOption == ACameraOptionsState::CAMERAOPTIONS_WIISTYLE ) ? pOptions->IsWiiStyleCamera() : pOptions->IsFollowJumpsCamera();
 }
 
@@ -236,12 +244,28 @@ void ACameraOptionsState::SetToggle( TINT a_iOption, TBOOL a_bValue )
 {
 	AOptions* pOptions = AOptions::GetSingleton();
 
-	if ( a_iOption == CAMERAOPTIONS_WIISTYLE )
+	if ( a_iOption == CAMERAOPTIONS_FIRSTPERSON )
+	{
+		pOptions->SetFirstPersonCamera( a_bValue );
+
+		// Refresh the active camera right away so the toggle previews live behind the pause menu
+		if ( ACameraManager::IsSingletonCreated() )
+		{
+			ACameraManager* pCamMgr = ACameraManager::GetSingleton();
+
+			if ( !a_bValue )
+				AFirstPersonCamera::RestoreAll();
+
+			if ( ACameraHelper* pHelper = pCamMgr->GetCurrentCameraHelper() )
+				pHelper->OnUpdate( 0.0f );
+		}
+	}
+	else if ( a_iOption == CAMERAOPTIONS_WIISTYLE )
 		pOptions->SetWiiStyleCamera( a_bValue );
 	else
 		pOptions->SetFollowJumpsCamera( a_bValue );
 
-	TINT iToggle           = a_iOption - CAMERAOPTIONS_WIISTYLE;
+	TINT iToggle           = a_iOption - FIRST_TOGGLE;
 	m_abToggles[ iToggle ] = a_bValue;
 	m_aToggleSliders[ iToggle ].SetText( g_pLocaleManager->GetString( a_bValue ? TEXT_ON : TEXT_OFF ) );
 }
@@ -250,7 +274,7 @@ void ACameraOptionsState::SwitchToggle( TINT a_iOption )
 {
 	// Applied right away like the speed, so the camera can be checked from the pause menu
 	ASoundManager::GetSingleton()->PlayCue( soundbank::UI_MENUCLICK );
-	SetToggle( a_iOption, !m_abToggles[ a_iOption - CAMERAOPTIONS_WIISTYLE ] );
+	SetToggle( a_iOption, !m_abToggles[ a_iOption - FIRST_TOGGLE ] );
 
 	AOptions::GetSingleton()->ApplySettings();
 	AOptionsState::ms_bSettingsChanged = TTRUE;
@@ -578,7 +602,7 @@ void ACameraOptionsState::OnInsertion()
 
 	for ( TINT i = 0; i < NUM_TOGGLES; i++ )
 	{
-		TINT iOption = CAMERAOPTIONS_WIISTYLE + i;
+		TINT iOption = FIRST_TOGGLE + i;
 
 		fnCreateLabel( m_aToggleTexts[ i ], s_aOptionTexts[ iOption ], iOption );
 		m_oGridMenu.AddMenuGridItem( m_aToggleTexts[ i ] );
@@ -746,7 +770,7 @@ void ACameraOptionsState::OnMenuClose()
 		{
 			if ( m_abToggles[ i ] != m_abOriginalToggles[ i ] )
 			{
-				SetToggle( CAMERAOPTIONS_WIISTYLE + i, m_abOriginalToggles[ i ] );
+				SetToggle( FIRST_TOGGLE + i, m_abOriginalToggles[ i ] );
 				pOptions->ApplySettings();
 			}
 		}

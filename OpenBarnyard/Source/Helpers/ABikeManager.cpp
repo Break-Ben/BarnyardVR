@@ -25,6 +25,7 @@
 #include "Render/ARenderer.h"
 #include "Cameras/ACameraManager.h"
 #include "Cameras/AGTAStyleCameraHelper.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "Animation/AModel.h"
 #include "Physics/ACollisionObjectUnit.h"
 #include "Physics/AVehicleManager.h"
@@ -1122,6 +1123,18 @@ void ABikeManager::DetachRideCamera( TFLOAT a_fTransitionTime, TBOOL a_bBehindRi
 
 		TVector4 vecCameraPos = pCameraManager->GetCurrentCamera()->GetMatrix().AsBasisVector4( BASISVECTOR_TRANSLATION );
 		TVector4 vecTarget( 0.0f, -1.2f, 0.0f, 1.0f );
+
+		if ( AFirstPersonCamera::IsOnFootPlayerTarget( pRider ) )
+		{
+			TVector4 vecForward;
+			pCameraManager->GetCurrentCamera()->GetFlatDirection( vecForward );
+
+			if ( vecForward.MagnitudeSqXZ() < 0.0001f )
+				pRider->GetSteer()->CopyDirection( vecForward );
+
+			vecTarget.Set( vecCameraPos.x + vecForward.x, vecCameraPos.y, vecCameraPos.z + vecForward.z, 1.0f );
+		}
+
 		pGTAHelper->SetPosition( vecCameraPos, vecTarget, TFALSE );
 
 		if ( a_fTransitionTime <= 0.0f )
@@ -1135,7 +1148,7 @@ void ABikeManager::DetachRideCamera( TFLOAT a_fTransitionTime, TBOOL a_bBehindRi
 
 			ASteer*  pRiderSteer = pRider->GetSteer();
 			TVector4 vecOffset;
-			vecOffset.Multiply( *pRiderSteer->GetDirection(), 5.0f );
+			vecOffset.Multiply( *pRiderSteer->GetDirection(), AFirstPersonCamera::IsOnFootPlayerTarget( pRider ) ? -5.0f : 5.0f );
 			TVector4 vecPosition;
 			vecPosition.Add( *pRiderSteer->GetPosition(), vecOffset );
 			vecPosition.y -= pGTAHelper->GetHeightOffset();

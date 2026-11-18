@@ -11,6 +11,7 @@
 #include "Cameras/ACameraManager.h"
 #include "Cameras/ACamera.h"
 #include "Cameras/AGTAStyleCameraHelper.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "FX/AMilkManager.h"
 #include "FX/AParticleEffectManager.h"
 #include "GameInterface/AGameStateController.h"
@@ -668,8 +669,18 @@ TBOOL AHoneyCollectingGame::ProcessCommand( AInputCommand a_eInputCommand, const
 			ASteer*  pSteer  = m_pPlayer->GetSteer();
 			ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
 			TVector4 vToCamera;
-			vToCamera.Substract( pCamera->GetMatrix().AsBasisVector4( BASISVECTOR_TRANSLATION ), *pSteer->GetPosition() );
-			vToCamera.Normalise();
+
+			if ( AFirstPersonCamera::IsUnitInOnFootFirstPerson( m_pPlayer ) )
+			{
+				pCamera->GetFlatDirection( vToCamera );
+				vToCamera.x = -vToCamera.x;
+				vToCamera.z = -vToCamera.z;
+			}
+			else
+			{
+				vToCamera.Substract( pCamera->GetMatrix().AsBasisVector4( BASISVECTOR_TRANSLATION ), *pSteer->GetPosition() );
+				vToCamera.Normalise();
+			}
 
 			TVector4 vSide = m_avHiveDirections[ m_iHive ];
 			vSide.AsVector3().RotateY( TMath::HALF_PI );
@@ -2279,7 +2290,9 @@ LABEL_UPDATE_ACTIONS:
 	{
 		AGTAStyleCameraHelper* pHelper = TSTATICCAST( AGTAStyleCameraHelper, ACameraManager::GetSingleton()->GetCurrentCameraHelper() );
 
-		TVector4        vCamera  = pHelper->GetCamera()->GetMatrix().AsBasisVector4( BASISVECTOR_TRANSLATION );
+		TVector4 vCamera = AFirstPersonCamera::IsUnitInOnFootFirstPerson( m_pPlayer )
+		    ? pHelper->GetPosition()
+		    : pHelper->GetCamera()->GetMatrix().AsBasisVector4( BASISVECTOR_TRANSLATION );
 		const TVector4& rcTarget = s_avHiveCameraPositions[ m_iHive ];
 
 		TFLOAT fDX = rcTarget.x - vCamera.x;

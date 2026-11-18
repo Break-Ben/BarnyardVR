@@ -4,6 +4,7 @@
 #include "Projectiles/AProjectileLauncher.h"
 #include "Cameras/ACameraManager.h"
 #include "Cameras/ACamera.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "UnitMovement/Steering/APlayerSteer.h"
 #include "UnitMovement/Steering/ASteerTraits.h"
 #include "Player/APlayerProfileManager.h"
@@ -270,7 +271,7 @@ void ASimplePlayerControlComponent::UpdateMovement( TFLOAT a_fDeltaTime, TFLOAT 
 			fMagnitude = 1.0f;
 		}
 
-		if ( fMagnitude < 0.8f )
+		if ( fMagnitude < 0.8f && !AFirstPersonCamera::IsUnitInFirstPerson( pOwner ) )
 		{
 			// Turns on the spot first if the input points away from the current direction
 			TVector4 vDirection;

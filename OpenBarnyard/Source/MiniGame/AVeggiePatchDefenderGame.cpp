@@ -1153,7 +1153,11 @@ void AVeggiePatchDefenderGame::UpdateGameOver( TFLOAT a_fDeltaTime )
 				ASteer*  pSteer = m_pPlayer->GetSteer();
 				TVector4 vToCamera;
 				vToCamera.Substract( ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix().GetTranslation(), *pSteer->GetPosition() );
-				NormaliseXZ( vToCamera );
+
+				if ( vToCamera.MagnitudeSqXZ() < 0.0001f )
+					pSteer->CopyDirection( vToCamera );
+				else
+					NormaliseXZ( vToCamera );
 
 				if ( TVector4::DotProduct3( *m_pPlayer->GetSteer()->GetDirection(), vToCamera ) <= 0.98f )
 				{

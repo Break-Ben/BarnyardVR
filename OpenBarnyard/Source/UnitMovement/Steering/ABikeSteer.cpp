@@ -1745,6 +1745,15 @@ void ABikeSteer::UpdateEffects( TFLOAT a_fDeltaTime )
 	}
 }
 
+void ABikeSteer::SyncLightTransforms()
+{
+	if ( m_pTailLight && m_pTailLight->GetInstance() )
+		m_pTailLight->Update( 0.0f );
+
+	if ( m_pFrontLight && m_pFrontLight->GetInstance() )
+		m_pFrontLight->Update( 0.0f );
+}
+
 // $Barnyard: FUNCTION 0055c380
 void ABikeSteer::UpdateCollisions( TFLOAT a_fDeltaTime )
 {

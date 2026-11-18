@@ -8,6 +8,8 @@
 #include "UnitMovement/Steering/ABikeSteer.h"
 #include "UnitMovement/Steering/ASteerTraits.h"
 #include "Physics/APhysicsBike.h"
+#include "Physics/AVehicleManager.h"
+#include "Cameras/AFirstPersonCamera.h"
 
 #include <Render/TAnimation.h>
 #include <Render/TSkeleton.h>
@@ -225,6 +227,94 @@ void ABikeAnimController::UpdateTransform( TFLOAT a_fDeltaTime )
 	m_pAnimatableObject->GetModelInstance()->SetTransform( matTransform );
 }
 
+static void SyncAttachedSubtree( AAnimatableObject* a_pObject )
+{
+	if ( !a_pObject )
+		return;
+
+	a_pObject->UpdateAttachedObjectTransforms();
+
+	T2_FOREACH( a_pObject->GetAttachedObjects(), it )
+	{
+		if ( !it->GetAttachedObjects().IsEmpty() )
+			SyncAttachedSubtree( it.Get() );
+	}
+}
+
+void ABikeAnimController::SyncInterpolatedTransform()
+{
+	if ( !m_pOwner || !m_pAnimatableObject )
+		return;
+
+	AUnit*  pUnit  = TSTATICCAST( AUnit, m_pOwner );
+	ASteer* pBase  = pUnit->GetSteer();
+
+	if ( !pBase || !pBase->IsA( &TGetClass( ABikeSteer ) ) )
+		return;
+
+	ABikeSteer*   pSteer   = TSTATICCAST( ABikeSteer, pBase );
+	APhysicsBike* pPhysics = pSteer->GetPhysics();
+
+	if ( !pPhysics )
+		return;
+
+	TMatrix44 matTransform;
+	AVehicleManager::GetInterpolatedBodyTransform( pPhysics->GetBody(), matTransform );
+
+	AToshiAnimationInterface& rAnimInterface = m_pAnimatableObject->GetToshiAnimInterface();
+	ANamedAnimationSet*       pAnimSet       = rAnimInterface.GetAnimationSet();
+	TSkeletonInstance*        pSkeleton      = m_pAnimatableObject->GetModelInstance()->GetSkeletonInstance();
+
+	if ( pAnimSet && pSkeleton )
+	{
+		ANamedAnimation* pSlideLeft     = pAnimSet->GetNamedAnimation( TPS8( bk_slide_left ) );
+		ANamedAnimation* pSlideRight    = pAnimSet->GetNamedAnimation( TPS8( bk_slide_right ) );
+		TAnimation*      pSlideLeftAnim = pSlideLeft ? pSkeleton->GetAnimation( pSlideLeft->GetSequenceId() ) : TNULL;
+		TAnimation*      pSlideRightAnm = pSlideRight ? pSkeleton->GetAnimation( pSlideRight->GetSequenceId() ) : TNULL;
+
+		TFLOAT fSlideWeight = 0.0f;
+		TBOOL  bSliding     = TTRUE;
+
+		if ( pSlideLeftAnim )
+			fSlideWeight = pSlideLeftAnim->GetWeight();
+		else if ( pSlideRightAnm )
+			fSlideWeight = pSlideRightAnm->GetWeight();
+		else
+			bSliding = TFALSE;
+
+		if ( bSliding && fSlideWeight > 0.0f )
+		{
+			TVector4& rRight   = matTransform.AsBasisVector4( BASISVECTOR_RIGHT );
+			TVector4& rUp      = matTransform.AsBasisVector4( BASISVECTOR_UP );
+			TVector4& rForward = matTransform.AsBasisVector4( BASISVECTOR_FORWARD );
+
+			TVector4 vUp = TVector4::VEC_POSY;
+			vUp.Lerp4( rUp, vUp, fSlideWeight );
+
+			rRight.CrossProduct( vUp, rForward );
+			rRight.w = 0.0f;
+			rRight.Normalise();
+			rUp.CrossProduct( rForward, rRight );
+			rUp.Normalise();
+		}
+	}
+
+	TVector4 vOffset;
+	TMatrix44::RotateVector( vOffset, matTransform, MODEL_OFFSET );
+
+	TVector4& rTranslation = matTransform.GetTranslation();
+	rTranslation.x         = rTranslation.x + vOffset.x;
+	rTranslation.y         = rTranslation.y + vOffset.y;
+	rTranslation.z         = rTranslation.z + vOffset.z;
+
+	matTransform.RotateY( TMath::PI );
+	matTransform.RotateX( 1.5707964f );
+
+	m_pAnimatableObject->GetModelInstance()->SetTransform( matTransform );
+	SyncAttachedSubtree( m_pAnimatableObject );
+	pSteer->SyncLightTransforms();
+}
+
 // $Barnyard: FUNCTION 00587180
 void ABikeAnimController::UpdateBikeAnimations( TFLOAT a_fDeltaTime )
 {
@@ -258,8 +348,17 @@ void ABikeAnimController::UpdateBikeAnimations( TFLOAT a_fDeltaTime )
 	else
 		rBikeAnims.PlayAnim( TPS8( bk_rear_wheel_spin ), -1.0f, TFALSE );
 
-	// Steering
-	m_fWheelTurn = TMath::LERP( m_fWheelTurn, pSteer->GetPhysics()->m_fSteeringAngle, 0.75f );
+	// Steering (frame-rate-independent against the interpolated steering angle in first-person)
+	if ( AFirstPersonCamera::IsEnabled() )
+	{
+		const TFLOAT fTargetSteering = AVehicleManager::GetInterpolatedSteeringAngle( *pSteer->GetPhysics() );
+		const TFLOAT fBlend          = ( a_fDeltaTime > 0.0f ) ? ( 1.0f - expf( -83.17766f * a_fDeltaTime ) ) : 0.75f;
+		m_fWheelTurn                 = TMath::LERP( m_fWheelTurn, fTargetSteering, fBlend );
+	}
+	else
+	{
+		m_fWheelTurn = TMath::LERP( m_fWheelTurn, pSteer->GetPhysics()->m_fSteeringAngle, 0.75f );
+	}
 
 	if ( AToshiAnimationInterface::GetAnimationRef( rBikeAnims.GetOverlayAnimRefs(), TPS8( bk_front_wheel_turn_right ) ) )
 	{

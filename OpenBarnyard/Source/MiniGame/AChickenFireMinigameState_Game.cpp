@@ -9,6 +9,7 @@
 #include "ARandom.h"
 #include "Cameras/ACamera.h"
 #include "Cameras/ACameraManager.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "FX/AAniEffectManager.h"
 #include "FX/AGameTimeFXManager.h"
 #include "FX/AParticleSystem.h"
@@ -232,6 +233,37 @@ void AChickenFireMinigameState::PlayPeckAnim( TINT a_eAnim )
 void AChickenFireMinigameState::UpdateFlightCamera( TFLOAT a_fDeltaTime )
 {
 	ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
+
+	if ( AFirstPersonCamera::IsEnabled() && ( m_eState == STATE_FLYING || m_eState == STATE_DIVE ) )
+	{
+		AUnit*   pPeck = GetPeckUnit();
+		TVector4 vForward( m_vPeckDir.x, m_vPeckDir.y, m_vPeckDir.z, 1.0f );
+
+		if ( vForward.MagnitudeSq() < 0.0001f )
+			vForward = TVector4::VEC_POSZ;
+		else
+			vForward.Normalise();
+
+		// Cockpit view from Peck's head along his flight vector
+		TVector4 vEyePos(
+		    m_vPeckPos.x + vForward.x * 0.12f,
+		    m_vPeckPos.y - 0.30f + vForward.y * 0.12f,
+		    m_vPeckPos.z + vForward.z * 0.12f,
+		    1.0f
+		);
+
+		const TFLOAT fFOV       = pCamera->GetFOV();
+		const TFLOAT fTargetFOV = ( m_bBoosted == TTRUE || m_fPower > 1.0f )
+		    ? AFirstPersonCamera::GetVehicleBoostFOV()
+		    : AFirstPersonCamera::GetVehicleFOV();
+
+		pCamera->SetFOV( TMath::LERPClamped( fFOV, fTargetFOV, a_fDeltaTime * 3.0f ) );
+		pCamera->GetMatrix().GetTranslation() = vEyePos;
+		pCamera->LookAtDirection( vForward );
+
+		AFirstPersonCamera::RegisterFlightView( pPeck, vEyePos );
+		return;
+	}
 
 	TVector4 vCameraPos = pCamera->GetMatrix().GetTranslation();
 

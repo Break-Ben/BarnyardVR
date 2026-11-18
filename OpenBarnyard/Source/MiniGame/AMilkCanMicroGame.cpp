@@ -300,6 +300,9 @@ TBOOL AMilkCanMicroGame::OnUpdate( TFLOAT a_fDeltaTime )
 		vecToPlayer.y  = 0.0f;
 		vecDirection.y = 0.0f;
 
+		if ( vecToPlayer.MagnitudeSqXZ() < 0.0001f )
+			pHelper->GetCamera()->GetFlatDirection( vecToPlayer );
+
 		TVector4 vecCross;
 		vecCross.CrossProduct( vecToPlayer, vecDirection );
 
