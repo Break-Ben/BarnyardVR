@@ -15,9 +15,9 @@
 #include <GUI/T2GUITextureSectionManager.h>
 
 #include "Render/ABackend.h"
+#include "Input/AInputHandler.h"
 
 #ifdef TOSHI_SKU_WASM
-#  include "Input/AInputHandler.h"
 #  include <Platform/WASM/Input/TInputDeviceController_WASM.h>
 #endif
 
@@ -38,13 +38,16 @@
 
 TOSHI_NAMESPACE_USING
 
-#ifdef TOSHI_SKU_WASM
-// The cursor only makes sense with a mouse, not with a pad or the touch buttons
+// The cursor only makes sense with a mouse, not with controller input.
 static TBOOL ShouldHideCursor()
 {
-	return TInputWASMDeviceController::IsMouseMissing() || ( AInputHandler::IsSingletonCreated() && AInputHandler::GetSingleton()->IsControllerUsed() );
-}
+	const TBOOL bControllerUsed = AInputHandler::IsSingletonCreated() && AInputHandler::GetSingleton()->IsControllerUsed();
+#ifdef TOSHI_SKU_WASM
+	return TInputWASMDeviceController::IsMouseMissing() || bControllerUsed;
+#else
+	return bControllerUsed;
 #endif
+}
 
 // NOTE: GetClass 00635350, CreateObject 00635b40, CreateObjectInPlace 00635ba0
 TDEFINE_CLASS( AGUI2 );
@@ -438,11 +441,7 @@ void AGUI2::MainPostRenderCallback()
 {
 	FIRE_EVENT( AGUI2::PostRender );
 
-#ifdef TOSHI_SKU_WASM
 	if ( AGUI2::GetSingleton()->IsCursorVisible() && !ShouldHideCursor() )
-#else
-	if ( AGUI2::GetSingleton()->IsCursorVisible() )
-#endif
 	{
 		auto& mouseCursor = AGUI2::GetSingleton()->m_oMouseCursor;
 

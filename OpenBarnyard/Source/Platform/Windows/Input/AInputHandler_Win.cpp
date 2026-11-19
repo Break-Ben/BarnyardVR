@@ -105,6 +105,8 @@ TBOOL AInputHandler::OnCreate()
 			{
 				pInputInterface->AddDevice( pOpenXRController );
 				m_Devices.PushBack( pOpenXRController );
+				// Start in controller mode in VR so cursor visibility and prompts match until desktop input is used.
+				SetControllerUsed( TTRUE );
 			}
 		}
 #  endif
