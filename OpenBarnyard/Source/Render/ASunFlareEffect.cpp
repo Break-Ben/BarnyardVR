@@ -41,8 +41,8 @@ static constexpr TUINT16 kVRCelestialMaxIndices    = 2 * ( kVRCelestialGridSegme
 static constexpr TFLOAT  kVRCelestialDepth         = 199.0f; // Just inside the legacy orthographic far-plane depth (200).
 
 // Build a tangent frame fixed to the celestial direction and world-up, then
-// express it in the active eye. Sun/moon patches use the frame directly; the
-// flare uses its projected right axis to orient a radial spherical patch.
+// express it in the active eye. The sphere patch below uses this frame rather
+// than extending a camera-facing quad in screen pixels.
 static TBOOL GetVRWorldLockedViewFrame( TVector3& a_rOutDirection, TVector3& a_rOutRight, TVector3& a_rOutUp, TRenderContext* a_pContext, const TVector4& a_rcWorldDirection )
 {
 	TVector3 vecDirection( a_rcWorldDirection.x, a_rcWorldDirection.y, a_rcWorldDirection.z );
@@ -108,20 +108,8 @@ static TBOOL GetVRWorldLockedViewFrame( TVector3& a_rOutDirection, TVector3& a_r
 	return a_rOutDirection.z > 0.0f;
 }
 
-static TVector3 GetVRWorldLockedPatchRay( const TVector3& a_rcDirection, const TVector3& a_rcRight, const TVector3& a_rcUp, TFLOAT a_fRightOffset, TFLOAT a_fUpOffset )
-{
-	TVector3 vecRay(
-	    a_rcDirection.x + a_rcRight.x * a_fRightOffset + a_rcUp.x * a_fUpOffset,
-	    a_rcDirection.y + a_rcRight.y * a_fRightOffset + a_rcUp.y * a_fUpOffset,
-	    a_rcDirection.z + a_rcRight.z * a_fRightOffset + a_rcUp.z * a_fUpOffset
-	);
-	vecRay.Normalize();
-	return vecRay;
-}
-
-// Project the world-locked right axis into the active eye's image plane. Its
-// perpendicular gives the flare's radial screen axes without letting headset
-// roll choose the texture orientation.
+// Project the world-locked right axis through the active eye for the screen-space
+// radial flare. The celestial texture itself uses the full 3D frame above.
 static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOutUp, TRenderContext* a_pContext, const TVector4& a_rcWorldDirection )
 {
 	TVector3 vecViewDirection;
@@ -130,11 +118,8 @@ static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOut
 	if ( !GetVRWorldLockedViewFrame( vecViewDirection, vecViewRight, vecViewUp, a_pContext, a_rcWorldDirection ) )
 		return TFALSE;
 
-	const TRenderContext::PROJECTIONPARAMS& rcProjection = a_pContext->GetProjectionParams();
-	if ( rcProjection.m_Proj.x <= 0.0f || rcProjection.m_Proj.y <= 0.0f )
-		return TFALSE;
-
 	const TFLOAT fInvZSq = 1.0f / ( vecViewDirection.z * vecViewDirection.z );
+	const TRenderContext::PROJECTIONPARAMS& rcProjection = a_pContext->GetProjectionParams();
 	a_rOutRight.Set(
 	    rcProjection.m_Proj.x * ( vecViewRight.x * vecViewDirection.z - vecViewDirection.x * vecViewRight.z ) * fInvZSq,
 	    rcProjection.m_Proj.y * ( vecViewRight.y * vecViewDirection.z - vecViewDirection.y * vecViewRight.z ) * fInvZSq
@@ -147,21 +132,6 @@ static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOut
 	a_rOutUp.Set( a_rOutRight.y, -a_rOutRight.x );
 	return TTRUE;
 }
-
-// Convert a screen-space flare offset back to a view ray, then place it on the
-// same spherical sky shell as the sun. This preserves a circular radial flare
-// under the eye's asymmetric perspective projection without using a flat quad.
-static TVector3 GetVRSphericalScreenOffsetRay( const TRenderContext::PROJECTIONPARAMS& a_rcProjection, const TVector4& a_rcScreenPos, TFLOAT a_fScreenOffsetX, TFLOAT a_fScreenOffsetY )
-{
-	TVector3 vecRay(
-	    ( a_rcScreenPos.x + a_fScreenOffsetX - a_rcProjection.m_Centre.x ) / a_rcProjection.m_Proj.x,
-	    ( a_rcScreenPos.y + a_fScreenOffsetY - a_rcProjection.m_Centre.y ) / a_rcProjection.m_Proj.y,
-	    1.0f
-	);
-	vecRay.Normalize();
-	return vecRay;
-}
-
 #endif
 
 // $Barnyard: FUNCTION 0060edd0
@@ -311,6 +281,9 @@ void ASunFlareEffect::Render()
 
 	TMatrix44                        oOldModelView  = pContext->GetModelViewMatrix();
 	TRenderContext::PROJECTIONPARAMS oOldProjParams = pContext->GetProjectionParams();
+#if defined( TRENDERINTERFACE_DX11 )
+	TRenderContext::CameraMode eOldCameraMode = pContext->GetCameraMode();
+#endif
 	TRenderContext::PROJECTIONPARAMS oScreenProjParams;
 	oScreenProjParams.m_Centre.x  = 0.0f;
 	oScreenProjParams.m_Centre.y  = 0.0f;
@@ -332,17 +305,25 @@ void ASunFlareEffect::Render()
 #if defined( TRENDERINTERFACE_DX11 )
 	if ( bVRView )
 	{
-		// Finish the world pass before drawing the world-locked flare and celestial
-		// patches. All three use view-space spherical geometry with this eye's
-		// perspective projection; the flare remains radial around the sun.
+		// Finish the world pass before changing projection state. The lens flare
+		// remains a radial screen-space effect; the sun/moon patches are rendered
+		// separately through the active eye's perspective projection.
 		pRender->FlushOrderTables();
-		pContext->SetModelViewMatrix( oIdentity );
 
 		if ( m_bSunVisible == TTRUE )
 		{
+			pContext->SetCameraMode( TRenderContext::CameraMode_Orthographic );
+			pContext->SetProjectionParams( oScreenProjParams );
+			pContext->Update();
+			pContext->SetModelViewMatrix( oIdentity );
 			m_pFlareMesh->Render();
 			pRender->FlushOrderTables();
 		}
+
+		pContext->SetCameraMode( eOldCameraMode );
+		pContext->SetProjectionParams( oOldProjParams );
+		pContext->Update();
+		pContext->SetModelViewMatrix( oIdentity );
 
 		if ( m_bSunVisible == TTRUE )
 			m_pSunMesh->Render();
@@ -654,9 +635,14 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 
 				for ( TUINT32 uiColumn = 0; uiColumn <= kVRCelestialGridSegments; uiColumn++ )
 				{
-					const TFLOAT   fU = TFLOAT( uiColumn ) / TFLOAT( kVRCelestialGridSegments );
-					const TFLOAT   fHorizontalOffset = ( 2.0f * fU - 1.0f ) * fTangentScaleX;
-					const TVector3 vecRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fHorizontalOffset, fVerticalOffset );
+					const TFLOAT fU = TFLOAT( uiColumn ) / TFLOAT( kVRCelestialGridSegments );
+					const TFLOAT fHorizontalOffset = ( 2.0f * fU - 1.0f ) * fTangentScaleX;
+					TVector3       vecRay(
+					    vecViewDirection.x + vecViewRight.x * fHorizontalOffset + vecViewUp.x * fVerticalOffset,
+					    vecViewDirection.y + vecViewRight.y * fHorizontalOffset + vecViewUp.y * fVerticalOffset,
+					    vecViewDirection.z + vecViewRight.z * fHorizontalOffset + vecViewUp.z * fVerticalOffset
+					);
+					vecRay.Normalize();
 
 					pVertices[ uiVertex ].vPosition.Set(
 					    vecRay.x * kVRCelestialDepth,
@@ -691,16 +677,21 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 			pMesh->SetMaterial( a_bMoon ? m_pMoonMaterial : m_pSunMaterial );
 			return;
 		}
-
-		pMesh->Unlock( 0, 0 );
-		pMesh->Validate();
-		return;
 	}
 #endif
 
 	TFLOAT   fZ       = a_rcScreenPos.z + 199.0f;
 	TVector2 vecRight( 1.0f, 0.0f );
 	TVector2 vecUp( 0.0f, -1.0f );
+
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( IsVRViewRendering() )
+	{
+		TRenderContext* pContext = TRenderInterface::GetSingleton()->GetCurrentContext();
+		const TVector4& vecWorldDirection = a_bMoon ? m_vecMoonDir : m_vecSunDir;
+		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext, vecWorldDirection );
+	}
+#endif
 
 	const TFLOAT fRightX = vecRight.x * fSize;
 	const TFLOAT fRightY = vecRight.y * fSize;
@@ -779,21 +770,15 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 		    TINT( pDisplayParams->uiWidth ) * m_fSunSize,
 		    0.2f
 		);
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-
-		TVector2 vecScreenRight( 1.0f, 0.0f );
-		TVector2 vecScreenUp( 0.0f, -1.0f );
-		if ( !GetVRWorldLockedScreenAxes( vecScreenRight, vecScreenUp, pContext, m_vecSunDir ) )
-		{
-			m_pFlareMesh->Unlock( 0, 0 );
-			m_pFlareMesh->Validate();
-			return;
-		}
-
 		const TFLOAT fInnerRadius = fSunSize * 0.9f;
 		const TFLOAT fOuterRadius = fSunSize * 1.35f;
-		TVector3*    pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-		TINT         iNumVerts = 0;
+
+		TVector2 vecRight( 1.0f, 0.0f );
+		TVector2 vecUp( 0.0f, -1.0f );
+		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext, m_vecSunDir );
+
+		TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
+		TINT       iNumVerts = 0;
 
 		for ( TINT i = 11; i != 0; i-- )
 		{
@@ -801,27 +786,17 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 			const TFLOAT fInnerY = pRayDir2D->y * fInnerRadius;
 			const TFLOAT fOuterX = pRayDir2D->x * fOuterRadius;
 			const TFLOAT fOuterY = pRayDir2D->y * fOuterRadius;
-			const TFLOAT fInnerScreenOffsetX = vecScreenRight.x * fInnerX + vecScreenUp.x * fInnerY;
-			const TFLOAT fInnerScreenOffsetY = vecScreenRight.y * fInnerX + vecScreenUp.y * fInnerY;
-			const TFLOAT fOuterScreenOffsetX = vecScreenRight.x * fOuterX + vecScreenUp.x * fOuterY;
-			const TFLOAT fOuterScreenOffsetY = vecScreenRight.y * fOuterX + vecScreenUp.y * fOuterY;
-			const TVector3 vecInnerRay = GetVRSphericalScreenOffsetRay( rcProjection, a_rcScreenPos, fInnerScreenOffsetX, fInnerScreenOffsetY );
-			const TVector3 vecOuterRay = GetVRSphericalScreenOffsetRay( rcProjection, a_rcScreenPos, fOuterScreenOffsetX, fOuterScreenOffsetY );
+			const TFLOAT fInnerScreenX = a_rcScreenPos.x + vecRight.x * fInnerX + vecUp.x * fInnerY;
+			const TFLOAT fInnerScreenY = a_rcScreenPos.y + vecRight.y * fInnerX + vecUp.y * fInnerY;
+			const TFLOAT fOuterScreenX = a_rcScreenPos.x + vecRight.x * fOuterX + vecUp.x * fOuterY;
+			const TFLOAT fOuterScreenY = a_rcScreenPos.y + vecRight.y * fOuterX + vecUp.y * fOuterY;
 
-			pVertices[ iNumVerts ].vPosition.Set(
-			    vecInnerRay.x * kVRCelestialDepth,
-			    vecInnerRay.y * kVRCelestialDepth,
-			    vecInnerRay.z * kVRCelestialDepth
-			);
+			pVertices[ iNumVerts ].vPosition.Set( fInnerScreenX, fInnerScreenY, 199.5f );
 			pVertices[ iNumVerts ].vUV.Set( fU, 0.2f );
 			pVertices[ iNumVerts ].uiColor = uiColour;
 			iNumVerts++;
 
-			pVertices[ iNumVerts ].vPosition.Set(
-			    vecOuterRay.x * kVRCelestialDepth,
-			    vecOuterRay.y * kVRCelestialDepth,
-			    vecOuterRay.z * kVRCelestialDepth
-			);
+			pVertices[ iNumVerts ].vPosition.Set( fOuterScreenX, fOuterScreenY, 199.5f );
 			pVertices[ iNumVerts ].vUV.Set( fU, 0.95f );
 			pVertices[ iNumVerts ].uiColor = uiColour;
 			iNumVerts++;
@@ -845,7 +820,11 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	TMatrix44::RotateVector( vecSunView, pContext->GetModelViewMatrix(), m_vecSunDir );
 
 	TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-	TFLOAT    fFlareRotation = ( vecSunView.y + vecSunView.x ) * 0.6f;
+	TFLOAT fFlareRotation = ( vecSunView.y + vecSunView.x ) * 0.6f;
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+		fFlareRotation = 0.0f;
+#endif
 	pRayDir2D->RotateZ( fFlareRotation );
 
 	TVector4 vecInner;
@@ -856,21 +835,42 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	vecInner.z   = 1.6f;
 	vecSunView.z = 170.0f;
 
-	// Preserve the legacy flat-screen lens-flare placement.
-	TFLOAT fX = a_rcScreenPos.x - pContext->GetWidth() * 0.5f;
-	TFLOAT fY = a_rcScreenPos.y - pContext->GetHeight() * 0.5f;
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+	{
+		// In VR the two eyes have different asymmetric frusta. Invert the active
+		// eye's projection so the flare's outer rays land on the same projected
+		// sun position as its screen-space quad.
+		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
+		vecSunView.x = ( a_rcScreenPos.x - rcProjection.m_Centre.x ) * vecSunView.z / rcProjection.m_Proj.x;
+		vecSunView.y = ( a_rcScreenPos.y - rcProjection.m_Centre.y ) * vecSunView.z / rcProjection.m_Proj.y;
+	}
+	else
+#endif
+	{
+		// Preserve the legacy flat-screen lens-flare placement.
+		TFLOAT fX = a_rcScreenPos.x - pContext->GetWidth() * 0.5f;
+		TFLOAT fY = a_rcScreenPos.y - pContext->GetHeight() * 0.5f;
 
-	static TFLOAT s_fScaleX = 640.0f / pContext->GetWidth() * 1.6f;
-	static TFLOAT s_fScaleY = 448.0f / pContext->GetHeight() * 2.3f;
+		static TFLOAT s_fScaleX = 640.0f / pContext->GetWidth() * 1.6f;
+		static TFLOAT s_fScaleY = 448.0f / pContext->GetHeight() * 2.3f;
 
-	vecSunView.x = 1.0f / ( pContext->GetProjectionParams().m_Proj.x / pContext->GetProjectionParams().m_Centre.x ) * ( s_fScaleX * ( 1.0f / 3.0f ) ) * fX;
-	vecSunView.y = 1.0f / ( pContext->GetProjectionParams().m_Proj.y / pContext->GetProjectionParams().m_Centre.y ) * ( s_fScaleY * ( 1.0f / 3.0f ) ) * fY;
+		vecSunView.x = 1.0f / ( pContext->GetProjectionParams().m_Proj.x / pContext->GetProjectionParams().m_Centre.x ) * ( s_fScaleX * ( 1.0f / 3.0f ) ) * fX;
+		vecSunView.y = 1.0f / ( pContext->GetProjectionParams().m_Proj.y / pContext->GetProjectionParams().m_Centre.y ) * ( s_fScaleY * ( 1.0f / 3.0f ) ) * fY;
+	}
 
 	vecInner.x = vecSunView.x * s_fFlareOffset;
 	vecInner.y = vecSunView.y * s_fFlareOffset;
 
-	// The flat-screen effect shortens its rays toward the edges.
+	// The flat-screen effect shortens its rays toward the edges. Keep their
+	// length fixed in VR so head rotation only moves the effect, not its scale.
+#if defined( TRENDERINTERFACE_DX11 )
+	TFLOAT fLength = bVRView
+	    ? 0.9f
+	    : 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
+#else
 	TFLOAT fLength = 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
+#endif
 	TMath::Clip( fLength, 0.0f, 1.0f );
 	fLength = TMath::EaseInOut( fLength );
 

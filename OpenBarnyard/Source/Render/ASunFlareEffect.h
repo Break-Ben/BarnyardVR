@@ -7,9 +7,9 @@
 #include <Math/TVector4.h>
 
 //-----------------------------------------------------------------------------
-// Draws the sun, radial lens flare, and moon. DX11/OpenXR celestial sprites
-// and flare rays use tessellated spherical patches aligned to a world-locked
-// sky frame; the flat-screen path retains its legacy rendering.
+// Draws the sun, radial lens flare, and moon. DX11/OpenXR celestial textures
+// are tessellated spherical patches aligned to a world-locked sky frame; the
+// flat-screen path retains its legacy screen-space quads.
 // Created by ARenderer::OnCreate and drawn by ARenderer::RenderMainScene.
 // AGameTimeFX::Apply sets the directions and intensities, in the main game the
 // sun direction follows the time of the day instead.
