@@ -34,60 +34,6 @@ static TBOOL IsVRViewRendering()
 	AVRManager& rVRManager = AVRManager::GetSingleton();
 	return rVRManager.GetCurrentEye() < rVRManager.GetViewCount();
 }
-
-// Projects angular offsets around a center ray into this eye's tangent-space image.
-// This keeps billboards a constant apparent size as the ray moves across the view.
-struct VRAngularScreenProjector
-{
-	VRAngularScreenProjector( const TRenderContext::PROJECTIONPARAMS& a_rcProjection, const TVector4& a_rcCenter )
-	    : m_rcProjection( a_rcProjection )
-	{
-		const TFLOAT fTanX = ( a_rcCenter.x - a_rcProjection.m_Centre.x ) / a_rcProjection.m_Proj.x;
-		const TFLOAT fTanY = ( a_rcCenter.y - a_rcProjection.m_Centre.y ) / a_rcProjection.m_Proj.y;
-		const TFLOAT fDirectionLength = TMath::Sqrt( fTanX * fTanX + fTanY * fTanY + 1.0f );
-		const TFLOAT fRightLength     = TMath::Sqrt( fTanX * fTanX + 1.0f );
-
-		m_vDirection.Set( fTanX / fDirectionLength, fTanY / fDirectionLength, 1.0f / fDirectionLength );
-		m_vRight.Set( 1.0f / fRightLength, 0.0f, -fTanX / fRightLength );
-		m_vDown.Set(
-		    m_vDirection.y * m_vRight.z,
-		    m_vDirection.z * m_vRight.x - m_vDirection.x * m_vRight.z,
-		    -m_vDirection.y * m_vRight.x
-		);
-	}
-
-	void Project( TFLOAT a_fRightAngle, TFLOAT a_fDownAngle, TFLOAT& a_rfScreenX, TFLOAT& a_rfScreenY ) const
-	{
-		const TFLOAT fAngleSq = a_fRightAngle * a_fRightAngle + a_fDownAngle * a_fDownAngle;
-		TFLOAT       fRayX   = m_vDirection.x;
-		TFLOAT       fRayY   = m_vDirection.y;
-		TFLOAT       fRayZ   = m_vDirection.z;
-
-		if ( fAngleSq > 1.0e-8f )
-		{
-			const TFLOAT fAngle = TMath::Sqrt( fAngleSq );
-			TFLOAT       fSin;
-			TFLOAT       fCos;
-			TMath::SinCos( fAngle, fSin, fCos );
-
-			const TFLOAT fOffsetScale = fSin / fAngle;
-			fRayX = m_vDirection.x * fCos + ( m_vRight.x * a_fRightAngle + m_vDown.x * a_fDownAngle ) * fOffsetScale;
-			fRayY = m_vDirection.y * fCos + ( m_vRight.y * a_fRightAngle + m_vDown.y * a_fDownAngle ) * fOffsetScale;
-			fRayZ = m_vDirection.z * fCos + ( m_vRight.z * a_fRightAngle + m_vDown.z * a_fDownAngle ) * fOffsetScale;
-		}
-
-		if ( fRayZ <= 1.0e-4f )
-			fRayZ = 1.0e-4f;
-
-		a_rfScreenX = m_rcProjection.m_Centre.x + m_rcProjection.m_Proj.x * fRayX / fRayZ;
-		a_rfScreenY = m_rcProjection.m_Centre.y + m_rcProjection.m_Proj.y * fRayY / fRayZ;
-	}
-
-	const TRenderContext::PROJECTIONPARAMS& m_rcProjection;
-	TVector3                                m_vDirection;
-	TVector3                                m_vRight;
-	TVector3                                m_vDown;
-};
 #endif
 
 // $Barnyard: FUNCTION 0060edd0
@@ -238,19 +184,16 @@ void ASunFlareEffect::Render()
 	oScreenProjParams.m_fFarClip  = 200.0f;
 
 #if defined( TRENDERINTERFACE_DX11 )
-	const TBOOL bVRView = IsVRViewRendering();
 	// Project through each eye's frustum, but advance shared fade/glow state once.
 	Update( AVRManager::GetSingleton().GetCurrentEye() != 1 );
 #else
-	const TBOOL bVRView = TFALSE;
 	Update( TTRUE );
 #endif
 
 	TMatrix44 oIdentity = TMatrix44::IDENTITY;
 
-	// The legacy flat-screen flare is view-space. VR builds its flare in angular
-	// screen space and draws it together with the sun after switching to ortho.
-	if ( m_bSunVisible == TTRUE && !bVRView )
+	// The lens flare is in view space
+	if ( m_bSunVisible == TTRUE )
 	{
 		pContext->SetModelViewMatrix( TMatrix44::IDENTITY );
 		m_pFlareMesh->Render();
@@ -258,17 +201,11 @@ void ASunFlareEffect::Render()
 
 	pRender->FlushOrderTables();
 
-	// The sun and the moon are screen-space angular billboards in VR.
+	// The sun and the moon are in screen space
 	pContext->SetCameraMode( TRenderContext::CameraMode_Orthographic );
 	pContext->SetProjectionParams( oScreenProjParams );
 	pContext->Update();
 	pContext->SetModelViewMatrix( oIdentity );
-
-	if ( m_bSunVisible == TTRUE && bVRView )
-	{
-		m_pFlareMesh->Render();
-		pRender->FlushOrderTables();
-	}
 
 	if ( m_bSunVisible == TTRUE )
 		m_pSunMesh->Render();
@@ -480,9 +417,6 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 	TFLOAT fSunSize  = TINT( pDisplayParams->uiWidth ) * m_fSunSize;
 	TFLOAT fMoonSize = TINT( pDisplayParams->uiHeight ) * m_fMoonSize;
 	TFLOAT fSize     = fMoonSize * 0.875f;
-#if defined( TRENDERINTERFACE_DX11 )
-	const TBOOL bVRView = IsVRViewRendering();
-#endif
 
 	ASysMesh* pMesh = a_bMoon ? m_pMoonMesh : m_pSunMesh;
 
@@ -498,10 +432,10 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 	if ( !a_bMoon )
 	{
 #if defined( TRENDERINTERFACE_DX11 )
-		if ( bVRView )
+		if ( IsVRViewRendering() )
 		{
-			// Keep a fixed angular size in VR; the projector below compensates for
-			// the off-axis perspective as the head turns.
+			// The flat-screen sizing varies with distance from screen center. In VR,
+			// keep the center-screen size fixed as the head moves the sun toward an edge.
 			fSize = TMath::LERP( fMoonSize, fSunSize, 0.2f );
 		}
 		else
@@ -528,54 +462,21 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 		uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xffffff;
 	}
 
-	TFLOAT fVertexX[ 4 ] = {
-	    a_rcScreenPos.x + fSize,
-	    a_rcScreenPos.x - fSize,
-	    a_rcScreenPos.x + fSize,
-	    a_rcScreenPos.x - fSize,
-	};
-	TFLOAT fVertexY[ 4 ] = {
-	    a_rcScreenPos.y - fSize,
-	    a_rcScreenPos.y - fSize,
-	    a_rcScreenPos.y + fSize,
-	    a_rcScreenPos.y + fSize,
-	};
-
-#if defined( TRENDERINTERFACE_DX11 )
-	if ( bVRView )
-	{
-		TRenderContext* pContext = TRenderInterface::GetSingleton()->GetCurrentContext();
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-		const VRAngularScreenProjector oProjector( rcProjection, a_rcScreenPos );
-		const TFLOAT fHalfAngleX = TMath::ATan( fSize / rcProjection.m_Proj.x );
-		const TFLOAT fHalfAngleY = TMath::ATan( fSize / rcProjection.m_Proj.y );
-
-		oProjector.Project( fHalfAngleX, -fHalfAngleY, fVertexX[ 0 ], fVertexY[ 0 ] );
-		oProjector.Project( -fHalfAngleX, -fHalfAngleY, fVertexX[ 1 ], fVertexY[ 1 ] );
-		oProjector.Project( fHalfAngleX, fHalfAngleY, fVertexX[ 2 ], fVertexY[ 2 ] );
-		oProjector.Project( -fHalfAngleX, fHalfAngleY, fVertexX[ 3 ], fVertexY[ 3 ] );
-	}
-#endif
-
 	TFLOAT fZ = a_rcScreenPos.z + 199.0f;
-#if defined( TRENDERINTERFACE_DX11 )
-	if ( bVRView )
-		fZ -= 1.0f;
-#endif
 
-	pVertices[ 0 ].vPosition.Set( fVertexX[ 0 ], fVertexY[ 0 ], fZ );
+	pVertices[ 0 ].vPosition.Set( a_rcScreenPos.x + fSize, a_rcScreenPos.y - fSize, fZ );
 	pVertices[ 0 ].uiColor = uiColour;
 	pVertices[ 0 ].vUV.Set( 1.0f, 0.0f );
 
-	pVertices[ 1 ].vPosition.Set( fVertexX[ 1 ], fVertexY[ 1 ], fZ );
+	pVertices[ 1 ].vPosition.Set( a_rcScreenPos.x - fSize, a_rcScreenPos.y - fSize, fZ );
 	pVertices[ 1 ].uiColor = uiColour;
 	pVertices[ 1 ].vUV.Set( 0.0f, 0.0f );
 
-	pVertices[ 2 ].vPosition.Set( fVertexX[ 2 ], fVertexY[ 2 ], fZ );
+	pVertices[ 2 ].vPosition.Set( a_rcScreenPos.x + fSize, a_rcScreenPos.y + fSize, fZ );
 	pVertices[ 2 ].uiColor = uiColour;
 	pVertices[ 2 ].vUV.Set( 1.0f, 1.0f );
 
-	pVertices[ 3 ].vPosition.Set( fVertexX[ 3 ], fVertexY[ 3 ], fZ );
+	pVertices[ 3 ].vPosition.Set( a_rcScreenPos.x - fSize, a_rcScreenPos.y + fSize, fZ );
 	pVertices[ 3 ].uiColor = uiColour;
 	pVertices[ 3 ].vUV.Set( 0.0f, 1.0f );
 
@@ -606,7 +507,9 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha )
 {
 	TRenderInterface* pRender = TRenderInterface::GetSingleton();
-	TRenderContext*   pContext = pRender->GetCurrentContext();
+	pRender->GetCurrentDisplayParams();
+
+	TRenderContext* pContext = pRender->GetCurrentContext();
 
 	ASysMesh::LockBuffer oLockBuffer;
 	TUtil::MemClear( &oLockBuffer, sizeof( oLockBuffer ) );
@@ -616,93 +519,75 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	TUINT16*          pIndices  = oLockBuffer.IndexLock.pBuffer;
 
 	const TFLOAT fAngleStep = TMath::TWO_PI * 0.1f;
-	TVector4     vecRayDir( 1.0f, 0.0f, 0.0f, 1.0f );
-	TUINT32      uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xe4d049;
-	TFLOAT       fU       = -1.5f;
-	TINT         iNumVerts = 0;
-
 #if defined( TRENDERINTERFACE_DX11 )
-	if ( IsVRViewRendering() )
-	{
-		// Treat the corona as a rigid angular star around the sun. The old
-		// near/far view-space strip stretched from screen center to the sun,
-		// changing its size and shape as the headset rotated.
-		TRenderInterface::DISPLAYPARAMS* pDisplayParams = pRender->GetCurrentDisplayParams();
-		const TFLOAT fSunSize = TMath::LERP(
-		    TINT( pDisplayParams->uiHeight ) * m_fMoonSize,
-		    TINT( pDisplayParams->uiWidth ) * m_fSunSize,
-		    0.2f
-		);
-
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-		const VRAngularScreenProjector oProjector( rcProjection, a_rcScreenPos );
-		const TFLOAT fProjectionScale = TMath::Sqrt( rcProjection.m_Proj.x * rcProjection.m_Proj.y );
-		const TFLOAT fInnerAngle = TMath::ATan( fSunSize * 0.9f / fProjectionScale );
-		const TFLOAT fOuterAngle = TMath::ATan( fSunSize * 1.35f / fProjectionScale );
-		TVector3*   pRayDir2D      = TREINTERPRETCAST( TVector3*, &vecRayDir );
-
-		for ( TINT i = 11; i != 0; i-- )
-		{
-			TFLOAT fScreenX;
-			TFLOAT fScreenY;
-			oProjector.Project( pRayDir2D->x * fInnerAngle, pRayDir2D->y * fInnerAngle, fScreenX, fScreenY );
-			pVertices[ iNumVerts ].vPosition.Set( fScreenX, fScreenY, 199.5f );
-			pVertices[ iNumVerts ].vUV.Set( fU, 0.2f );
-			pVertices[ iNumVerts ].uiColor = uiColour;
-			iNumVerts++;
-
-			oProjector.Project( pRayDir2D->x * fOuterAngle, pRayDir2D->y * fOuterAngle, fScreenX, fScreenY );
-			pVertices[ iNumVerts ].vPosition.Set( fScreenX, fScreenY, 199.5f );
-			pVertices[ iNumVerts ].vUV.Set( fU, 0.95f );
-			pVertices[ iNumVerts ].uiColor = uiColour;
-			iNumVerts++;
-
-			pRayDir2D->RotateZ( fAngleStep );
-			fU += 0.3f;
-		}
-
-		TINT iNumIndices = 0;
-		for ( TINT i = 0; i < iNumVerts; i++ )
-			pIndices[ iNumIndices++ ] = i;
-
-		m_pFlareMesh->Unlock( iNumVerts, iNumIndices );
-		m_pFlareMesh->Validate();
-		return;
-	}
+	const TBOOL bVRView = IsVRViewRendering();
 #endif
 
-	// Preserve the original flat-screen lens-flare placement and motion.
+	TVector4 vecRayDir( 1.0f, 0.0f, 0.0f, 1.0f );
+	TUINT32  uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xe4d049;
+	TFLOAT   fU       = -1.5f;
+
+	// The sun in view space
 	TVector4 vecSunView;
 	TMatrix44::RotateVector( vecSunView, pContext->GetModelViewMatrix(), m_vecSunDir );
 
 	TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-	pRayDir2D->RotateZ( ( vecSunView.y + vecSunView.x ) * 0.6f );
+	TFLOAT fFlareRotation = ( vecSunView.y + vecSunView.x ) * 0.6f;
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+		fFlareRotation = 0.0f;
+#endif
+	pRayDir2D->RotateZ( fFlareRotation );
 
 	TVector4 vecInner;
 	vecInner.Multiply( vecSunView, -2.0f );
 	vecInner.z = -vecInner.z;
 
 	vecSunView.Multiply( 180.0f );
-
-	TFLOAT fX = a_rcScreenPos.x - pContext->GetWidth() * 0.5f;
-	TFLOAT fY = a_rcScreenPos.y - pContext->GetHeight() * 0.5f;
-
-	static TFLOAT s_fScaleX = 640.0f / pContext->GetWidth() * 1.6f;
-	static TFLOAT s_fScaleY = 448.0f / pContext->GetHeight() * 2.3f;
-
 	vecInner.z   = 1.6f;
 	vecSunView.z = 170.0f;
-	vecSunView.x = 1.0f / ( pContext->GetProjectionParams().m_Proj.x / pContext->GetProjectionParams().m_Centre.x ) * ( s_fScaleX * ( 1.0f / 3.0f ) ) * fX;
-	vecSunView.y = 1.0f / ( pContext->GetProjectionParams().m_Proj.y / pContext->GetProjectionParams().m_Centre.y ) * ( s_fScaleY * ( 1.0f / 3.0f ) ) * fY;
-	vecInner.x   = vecSunView.x * s_fFlareOffset;
-	vecInner.y   = vecSunView.y * s_fFlareOffset;
 
-	// The flat-screen effect shortens its rays toward the edges.
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+	{
+		// In VR the two eyes have different asymmetric frusta. Invert the active
+		// eye's projection so the flare's outer rays land on the same projected
+		// sun position as its screen-space quad.
+		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
+		vecSunView.x = ( a_rcScreenPos.x - rcProjection.m_Centre.x ) * vecSunView.z / rcProjection.m_Proj.x;
+		vecSunView.y = ( a_rcScreenPos.y - rcProjection.m_Centre.y ) * vecSunView.z / rcProjection.m_Proj.y;
+	}
+	else
+#endif
+	{
+		// Preserve the legacy flat-screen lens-flare placement.
+		TFLOAT fX = a_rcScreenPos.x - pContext->GetWidth() * 0.5f;
+		TFLOAT fY = a_rcScreenPos.y - pContext->GetHeight() * 0.5f;
+
+		static TFLOAT s_fScaleX = 640.0f / pContext->GetWidth() * 1.6f;
+		static TFLOAT s_fScaleY = 448.0f / pContext->GetHeight() * 2.3f;
+
+		vecSunView.x = 1.0f / ( pContext->GetProjectionParams().m_Proj.x / pContext->GetProjectionParams().m_Centre.x ) * ( s_fScaleX * ( 1.0f / 3.0f ) ) * fX;
+		vecSunView.y = 1.0f / ( pContext->GetProjectionParams().m_Proj.y / pContext->GetProjectionParams().m_Centre.y ) * ( s_fScaleY * ( 1.0f / 3.0f ) ) * fY;
+	}
+
+	vecInner.x = vecSunView.x * s_fFlareOffset;
+	vecInner.y = vecSunView.y * s_fFlareOffset;
+
+	// The flat-screen effect shortens its rays toward the edges. Keep their
+	// length fixed in VR so head rotation only moves the effect, not its scale.
+#if defined( TRENDERINTERFACE_DX11 )
+	TFLOAT fLength = bVRView
+	    ? 0.9f
+	    : 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
+#else
 	TFLOAT fLength = 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
+#endif
 	TMath::Clip( fLength, 0.0f, 1.0f );
 	fLength = TMath::EaseInOut( fLength );
 
 	TFLOAT fInnerScale = fLength * 6.0f + 4.0f;
+	TINT   iNumVerts   = 0;
 
 	for ( TINT i = 11; i != 0; i-- )
 	{
@@ -735,6 +620,7 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	}
 
 	TINT iNumIndices = 0;
+
 	for ( TINT i = 0; i < iNumVerts; i++ )
 		pIndices[ iNumIndices++ ] = i;
 
