@@ -301,7 +301,6 @@ public:
 	TFORCEINLINE ID3D11Texture2D*        GetRenderTargetTexture() const { return m_bExternalTargetActive ? m_pExternalTexture : ( m_bSceneTargetActive ? m_pSceneTexture : m_pBackBuffer ); }
 	TFORCEINLINE ID3D11RenderTargetView* GetRenderTargetView() const { return m_bExternalTargetActive ? m_pExternalRTView : ( m_bSceneTargetActive ? m_pSceneRTView : m_pBackBufferRTView ); }
 	TFORCEINLINE ID3D11Texture2D*        GetBackBufferTexture() const { return m_pBackBuffer; }
-	TFORCEINLINE ID3D11RenderTargetView* GetBackBufferRTView() const { return m_pBackBufferRTView; }
 	TFORCEINLINE TUINT32                 GetBackBufferWidth() const { return m_uiBackBufferWidth; }
 	TFORCEINLINE TUINT32                 GetBackBufferHeight() const { return m_uiBackBufferHeight; }
 	TFORCEINLINE TUINT32                 GetActiveTargetWidth() const { return m_bExternalTargetActive ? m_uiExternalWidth : m_uiBackBufferWidth; }
