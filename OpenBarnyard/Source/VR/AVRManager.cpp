@@ -337,8 +337,6 @@ struct AVRManager::Impl
 	ID3D11PixelShader* pMirrorPixelShader = TNULL;
 	ID3D11PixelShader* pColorResolvePixelShader = TNULL;
 	ID3D11PixelShader* pColorResolveUIPixelShader = TNULL;
-	ID3D11PixelShader* pMirrorLinearPixelShader = TNULL;
-	ID3D11PixelShader* pMirrorLinearUIPixelShader = TNULL;
 	ID3D11SamplerState* pMirrorSampler = TNULL;
 	ID3D11RasterizerState* pMirrorRasterizer = TNULL;
 	ID3D11BlendState* pMirrorAlphaBlend = TNULL;
@@ -382,8 +380,6 @@ static void DestroyMirrorPipeline( AVRManager::Impl& a_rImpl )
 	    &a_rImpl.pMirrorPixelShader,
 	    &a_rImpl.pColorResolvePixelShader,
 	    &a_rImpl.pColorResolveUIPixelShader,
-	    &a_rImpl.pMirrorLinearPixelShader,
-	    &a_rImpl.pMirrorLinearUIPixelShader,
 	};
 	for ( ID3D11PixelShader** ppShader : apPixelShaders )
 	{
@@ -606,8 +602,7 @@ using t_D3DCompile = HRESULT ( WINAPI* )( LPCVOID, SIZE_T, LPCSTR, const D3D_SHA
 static TBOOL CreateMirrorPipeline( AVRManager::Impl& a_rImpl )
 {
 	if ( a_rImpl.pMirrorVertexShader && a_rImpl.pMirrorPixelShader && a_rImpl.pColorResolvePixelShader &&
-	     a_rImpl.pColorResolveUIPixelShader && a_rImpl.pMirrorLinearPixelShader && a_rImpl.pMirrorLinearUIPixelShader &&
-	     a_rImpl.pMirrorSampler && a_rImpl.pMirrorRasterizer && a_rImpl.pMirrorAlphaBlend )
+	     a_rImpl.pColorResolveUIPixelShader && a_rImpl.pMirrorSampler && a_rImpl.pMirrorRasterizer && a_rImpl.pMirrorAlphaBlend )
 	{
 		a_rImpl.bColorCorrectionAvailable = TTRUE;
 		return TTRUE;
@@ -650,16 +645,6 @@ float3 SrgbToLinear(float3 c)
 	              c.b <= 0.04045 ? low.b : high.b);
 }
 
-float3 LinearToSrgb(float3 c)
-{
-	c = max(c, 0.0);
-	float3 low = 12.92 * c;
-	float3 high = 1.055 * pow(c, 1.0 / 2.4) - 0.055;
-	return saturate(float3(c.r <= 0.0031308 ? low.r : high.r,
-	                       c.g <= 0.0031308 ? low.g : high.g,
-	                       c.b <= 0.0031308 ? low.b : high.b));
-}
-
 float4 PSCopy(V i) : SV_Target
 {
 	return sourceTexture.Sample(sourceSampler, i.uv);
@@ -679,19 +664,6 @@ float4 PSResolvePremultiplied(V i) : SV_Target
 	return float4(SrgbToLinear(straight) * alpha, alpha);
 }
 
-float4 PSMirror(V i) : SV_Target
-{
-	float4 c = sourceTexture.Sample(sourceSampler, i.uv);
-	return float4(LinearToSrgb(c.rgb), c.a);
-}
-
-float4 PSMirrorPremultiplied(V i) : SV_Target
-{
-	float4 c = sourceTexture.Sample(sourceSampler, i.uv);
-	float alpha = saturate(c.a);
-	float3 straight = alpha > 0.000001 ? c.rgb / alpha : float3(0.0, 0.0, 0.0);
-	return float4(LinearToSrgb(straight) * alpha, alpha);
-}
 )";
 
 	ID3DBlob* pVS = TNULL;
@@ -717,8 +689,6 @@ float4 PSMirrorPremultiplied(V i) : SV_Target
 	if ( SUCCEEDED( hRes ) ) hRes = fnCreatePixelShader( "PSCopy", &a_rImpl.pMirrorPixelShader );
 	if ( SUCCEEDED( hRes ) ) hRes = fnCreatePixelShader( "PSResolve", &a_rImpl.pColorResolvePixelShader );
 	if ( SUCCEEDED( hRes ) ) hRes = fnCreatePixelShader( "PSResolvePremultiplied", &a_rImpl.pColorResolveUIPixelShader );
-	if ( SUCCEEDED( hRes ) ) hRes = fnCreatePixelShader( "PSMirror", &a_rImpl.pMirrorLinearPixelShader );
-	if ( SUCCEEDED( hRes ) ) hRes = fnCreatePixelShader( "PSMirrorPremultiplied", &a_rImpl.pMirrorLinearUIPixelShader );
 	FreeLibrary( hCompiler );
 	if ( FAILED( hRes ) )
 	{
@@ -1202,20 +1172,15 @@ TUINT32 AVRManager::GetCurrentEye() const
 	return m_pImpl->bEyeActive ? m_pImpl->uiActiveEye : std::numeric_limits<TUINT32>::max();
 }
 
-static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetView* a_pRenderTarget, TUINT32 a_uiWidth, TUINT32 a_uiHeight, ID3D11ShaderResourceView* a_pSource, ID3D11PixelShader* a_pPixelShader, TBOOL a_bAlphaBlend )
+static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetView* a_pRenderTarget, const D3D11_VIEWPORT& a_rcViewport, ID3D11ShaderResourceView* a_pSource, ID3D11PixelShader* a_pPixelShader, TBOOL a_bAlphaBlend )
 {
-	if ( !a_rImpl.pMirrorVertexShader || !a_pPixelShader || !a_pSource || !a_pRenderTarget || !a_uiWidth || !a_uiHeight )
+	if ( !a_rImpl.pMirrorVertexShader || !a_pPixelShader || !a_pSource || !a_pRenderTarget || a_rcViewport.Width <= 0.0f || a_rcViewport.Height <= 0.0f )
 		return TFALSE;
 
-	D3D11_VIEWPORT oViewport = {};
-	oViewport.Width    = TFLOAT( a_uiWidth );
-	oViewport.Height   = TFLOAT( a_uiHeight );
-	oViewport.MinDepth = 0.0f;
-	oViewport.MaxDepth = 1.0f;
 	ID3D11ShaderResourceView* pNullSRV = TNULL;
 
 	a_rImpl.pD3D11Context->OMSetRenderTargets( 1, &a_pRenderTarget, TNULL );
-	a_rImpl.pD3D11Context->RSSetViewports( 1, &oViewport );
+	a_rImpl.pD3D11Context->RSSetViewports( 1, &a_rcViewport );
 	a_rImpl.pD3D11Context->RSSetState( a_rImpl.pMirrorRasterizer );
 	a_rImpl.pD3D11Context->OMSetBlendState( a_bAlphaBlend ? a_rImpl.pMirrorAlphaBlend : TNULL, TNULL, 0xFFFFFFFF );
 	a_rImpl.pD3D11Context->IASetInputLayout( TNULL );
@@ -1227,7 +1192,10 @@ static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetV
 	a_rImpl.pD3D11Context->Draw( 3, 0 );
 	a_rImpl.pD3D11Context->PSSetShaderResources( 0, 1, &pNullSRV );
 
-	static_cast<Toshi::TRenderD3DInterface*>( a_rImpl.pRenderer )->InvalidateStateCache();
+	// The raw D3D draw changed blend/rasterizer state as well as shader bindings.
+	// ResetStateCache invalidates the renderer's state-object caches; invalidating
+	// only the pipeline cache leaves stale alpha blending for the next eye.
+	static_cast<Toshi::TRenderD3DInterface*>( a_rImpl.pRenderer )->ResetStateCache();
 	return TTRUE;
 }
 
@@ -1238,11 +1206,15 @@ static TBOOL ResolveTargetToOpenXR( AVRManager::Impl& a_rImpl, AVRManager::Impl:
 
 	// The content has been written using the game's display-encoded color convention.
 	// Decode it once so OpenXR blending/compositing receives linear-light values.
+	D3D11_VIEWPORT oViewport = {};
+	oViewport.Width    = TFLOAT( a_rTarget.uiWidth );
+	oViewport.Height   = TFLOAT( a_rTarget.uiHeight );
+	oViewport.MinDepth = 0.0f;
+	oViewport.MaxDepth = 1.0f;
 	const TBOOL bResolved = DrawD3D11Fullscreen(
 	    a_rImpl,
 	    a_rTarget.aRenderTargetViews[ a_uiImageIndex ],
-	    a_rTarget.uiWidth,
-	    a_rTarget.uiHeight,
+	    oViewport,
 	    a_rTarget.pColorShaderResourceView,
 	    a_bPremultipliedAlpha ? a_rImpl.pColorResolveUIPixelShader : a_rImpl.pColorResolvePixelShader,
 	    TFALSE );
@@ -1279,13 +1251,37 @@ static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Targe
 		return TFALSE;
 
 	ID3D11ShaderResourceView* pSRV = a_rSource.aShaderResourceViews[ a_uiImageIndex ];
-	ID3D11PixelShader* pPixelShader = a_rImpl.pMirrorPixelShader;
 	if ( a_rImpl.bColorCorrectionAvailable )
-	{
 		pSRV = a_rSource.pColorShaderResourceView;
-		pPixelShader = a_bAlphaBlend ? a_rImpl.pMirrorLinearUIPixelShader : a_rImpl.pMirrorLinearPixelShader;
+	if ( !pSRV || !a_rImpl.pMirrorPixelShader )
+		return TFALSE;
+
+	// The intermediate contains the game's original display-encoded pixels; copy
+	// those directly to the desktop instead of applying the linear-to-sRGB resolve.
+	if ( !a_bAlphaBlend )
+	{
+		const FLOAT aBlack[ 4 ] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		a_rImpl.pD3D11Context->ClearRenderTargetView( pRenderTarget, aBlack );
 	}
-	return DrawD3D11Fullscreen( a_rImpl, pRenderTarget, uiMirrorWidth, uiMirrorHeight, pSRV, pPixelShader, a_bAlphaBlend );
+
+	const TFLOAT fSourceAspect = TFLOAT( a_rSource.uiWidth ) / TFLOAT( a_rSource.uiHeight );
+	const TFLOAT fTargetAspect = TFLOAT( uiMirrorWidth ) / TFLOAT( uiMirrorHeight );
+	D3D11_VIEWPORT oViewport = {};
+	if ( fSourceAspect > fTargetAspect )
+	{
+		oViewport.Width  = TFLOAT( uiMirrorWidth );
+		oViewport.Height = TFLOAT( uiMirrorWidth ) / fSourceAspect;
+		oViewport.TopLeftY = ( TFLOAT( uiMirrorHeight ) - oViewport.Height ) * 0.5f;
+	}
+	else
+	{
+		oViewport.Width  = TFLOAT( uiMirrorHeight ) * fSourceAspect;
+		oViewport.Height = TFLOAT( uiMirrorHeight );
+		oViewport.TopLeftX = ( TFLOAT( uiMirrorWidth ) - oViewport.Width ) * 0.5f;
+	}
+	oViewport.MinDepth = 0.0f;
+	oViewport.MaxDepth = 1.0f;
+	return DrawD3D11Fullscreen( a_rImpl, pRenderTarget, oViewport, pSRV, a_rImpl.pMirrorPixelShader, a_bAlphaBlend );
 }
 
 

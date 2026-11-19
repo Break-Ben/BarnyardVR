@@ -422,17 +422,29 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 
 	if ( !a_bMoon )
 	{
-		// The sun gets bigger towards the edges of the screen
-		TVector3 vecFromCentre(
-		    a_rcScreenPos.x / TINT( pDisplayParams->uiWidth ) - 0.5f,
-		    a_rcScreenPos.y / TINT( pDisplayParams->uiHeight ) - 0.5f,
-		    0.0f
-		);
+#if defined( TRENDERINTERFACE_DX11 )
+		if ( AVRManager::GetSingleton().IsActive() )
+		{
+			// The original effect grows as it moves toward the edges of a flat
+			// screen. Head rotation moves the sun across the VR view, so keep its
+			// center-screen size fixed and use alpha only for fading.
+			fSize = TMath::LERP( fMoonSize, fSunSize, 0.2f );
+		}
+		else
+#endif
+		{
+			// The sun gets bigger towards the edges of the screen
+			TVector3 vecFromCentre(
+			    a_rcScreenPos.x / TINT( pDisplayParams->uiWidth ) - 0.5f,
+			    a_rcScreenPos.y / TINT( pDisplayParams->uiHeight ) - 0.5f,
+			    0.0f
+			);
 
-		TFLOAT fProgress = vecFromCentre.Magnitude() * 2.0f + 0.2f;
-		TMath::Clip( fProgress, 0.0f, 1.0f );
+			TFLOAT fProgress = vecFromCentre.Magnitude() * 2.0f + 0.2f;
+			TMath::Clip( fProgress, 0.0f, 1.0f );
 
-		fSize = TMath::LERP( fMoonSize, fSunSize, fProgress ) * a_fAlpha;
+			fSize = TMath::LERP( fMoonSize, fSunSize, fProgress ) * a_fAlpha;
+		}
 
 		TUINT32 uiGrey = TUINT32( a_fAlpha * 255.0f );
 		uiColour       = ( ( ( uiGrey | 0xffffff00 ) << 8 | uiGrey ) << 8 ) | uiGrey;
