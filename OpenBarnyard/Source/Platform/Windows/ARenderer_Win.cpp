@@ -1212,8 +1212,21 @@ void ARenderer::WorldToScreen( TVector4& a_rPoint )
 	TRenderContext*                         pRenderContext = m_pViewport->GetRenderContext();
 	const TRenderContext::PROJECTIONPARAMS& rcProjParams   = pRenderContext->GetProjectionParams();
 
+	TMatrix44 mCenterCameraView;
+	const TMatrix44* pWorldView = &pRenderContext->GetWorldViewMatrix();
+
+	// A VR eye render leaves its view matrix in the context after EndEye. Shared GUI
+	// projections run outside an active eye and must use the center game camera instead.
+	AVRManager& rVRManager = AVRManager::GetSingleton();
+	if ( rVRManager.IsActive() && rVRManager.GetCurrentEye() >= rVRManager.GetViewCount() )
+	{
+		mCenterCameraView = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
+		mCenterCameraView.InvertOrthogonal();
+		pWorldView = &mCenterCameraView;
+	}
+
 	TVector4 vView;
-	TMatrix44::TransformVector( vView, pRenderContext->GetWorldViewMatrix(), a_rPoint );
+	TMatrix44::TransformVector( vView, *pWorldView, a_rPoint );
 
 	if ( vView.z >= rcProjParams.m_fNearClip )
 	{
