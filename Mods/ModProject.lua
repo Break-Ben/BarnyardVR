@@ -15,7 +15,7 @@ function ModProject( name )
 
 	-- Link against the game's import library, never against Toshi
 	dependson { "OpenBarnyard" }
-	links { "OpenBarnyard.lib" }
+	links { "BarnyardVR.lib" }
 	libdirs { "%{wks.location}/bin/" .. outputdir .. "/OpenBarnyard" }
 
 	defines { "MODAPI_MOD" }
@@ -38,7 +38,7 @@ function ModProject( name )
 	}
 
 	debugdir ( "%{wks.location}/../Game" )
-	debugcommand ( "%{wks.location}/bin/" .. outputdir .. "/OpenBarnyard/OpenBarnyard.exe" )
+	debugcommand ( "%{wks.location}/bin/" .. outputdir .. "/OpenBarnyard/BarnyardVR.exe" )
 
 	postbuildcommands
 	{

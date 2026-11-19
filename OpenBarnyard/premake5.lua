@@ -2,6 +2,11 @@ project "OpenBarnyard"
 	language "C++"
 	staticruntime "off"
 
+	-- Keep the inherited project name, but brand the Windows executable.
+	filter "system:windows"
+		targetname "BarnyardVR"
+	filter {}
+
 	-- Set debug dir to the Game folder
 	debugdir ("%{wks.location}/../Game")
 
