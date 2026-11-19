@@ -29,16 +29,22 @@ static TFLOAT ClampAxis( TFLOAT a_fValue )
 	return std::max( -1.0f, std::min( a_fValue, 1.0f ) );
 }
 
-static TFLOAT ApplyStickDeadzone( TFLOAT a_fValue )
+static void ApplyStickDeadzone( TFLOAT& a_rfX, TFLOAT& a_rfY )
 {
-	a_fValue = ClampAxis( a_fValue );
-	const TFLOAT fMagnitude = std::fabs( a_fValue );
-
+	const TFLOAT fMagnitude = std::sqrt( a_rfX * a_rfX + a_rfY * a_rfY );
 	if ( fMagnitude <= kStickDeadzone )
-		return 0.0f;
+	{
+		a_rfX = 0.0f;
+		a_rfY = 0.0f;
+		return;
+	}
 
-	const TFLOAT fAdjusted = std::min( ( fMagnitude - kStickDeadzone ) / ( kStickSaturate - kStickDeadzone ), 1.0f );
-	return std::copysign( fAdjusted, a_fValue );
+	// Use a radial deadzone and normalize by vector length. Per-axis deadzones
+	// leave a diagonal short of full magnitude even when the stick is at its rim.
+	const TFLOAT fAdjustedMagnitude = std::min( ( fMagnitude - kStickDeadzone ) / ( kStickSaturate - kStickDeadzone ), 1.0f );
+	const TFLOAT fScale = fAdjustedMagnitude / fMagnitude;
+	a_rfX *= fScale;
+	a_rfY *= fScale;
 }
 
 static TBOOL IsButtonDoodad( TInputDevice::Doodad a_iDoodad )
@@ -97,7 +103,9 @@ void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )
 	m_afRawSticks[ 3 ] = ClampAxis( -oState.fRightStickY );
 
 	for ( TINT i = 0; i < TARRAYSIZE( m_afSticks ); i++ )
-		m_afSticks[ i ] = ApplyStickDeadzone( m_afRawSticks[ i ] );
+		m_afSticks[ i ] = m_afRawSticks[ i ];
+	ApplyStickDeadzone( m_afSticks[ 0 ], m_afSticks[ 1 ] );
+	ApplyStickDeadzone( m_afSticks[ 2 ], m_afSticks[ 3 ] );
 
 	UpdateVirtualButtons();
 	m_bPolled = TTRUE;
