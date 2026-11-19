@@ -34,6 +34,22 @@ static TBOOL IsVRViewRendering()
 	AVRManager& rVRManager = AVRManager::GetSingleton();
 	return rVRManager.GetCurrentEye() < rVRManager.GetViewCount();
 }
+
+// Places a world-space direction on a fixed-depth, eye-aligned plane. Keeping
+// every vertex of a VR billboard on one plane makes its projection affine, so
+// its shape and orientation do not change as the head turns.
+static TBOOL GetVRViewSpacePosition( TVector4& a_rOutPosition, TRenderContext* a_pContext, const TVector4& a_rcWorldDirection, TFLOAT a_fDepth )
+{
+	TVector4 vecViewDirection;
+	TMatrix44::RotateVector( vecViewDirection, a_pContext->GetWorldViewMatrix(), a_rcWorldDirection );
+
+	if ( vecViewDirection.z <= 0.0f )
+		return TFALSE;
+
+	const TFLOAT fScale = a_fDepth / vecViewDirection.z;
+	a_rOutPosition.Set( vecViewDirection.x * fScale, vecViewDirection.y * fScale, a_fDepth, 1.0f );
+	return TTRUE;
+}
 #endif
 
 // $Barnyard: FUNCTION 0060edd0
@@ -184,6 +200,7 @@ void ASunFlareEffect::Render()
 	oScreenProjParams.m_fFarClip  = 200.0f;
 
 #if defined( TRENDERINTERFACE_DX11 )
+	const TBOOL bVRView = IsVRViewRendering();
 	// Project through each eye's frustum, but advance shared fade/glow state once.
 	Update( AVRManager::GetSingleton().GetCurrentEye() != 1 );
 #else
@@ -192,7 +209,32 @@ void ASunFlareEffect::Render()
 
 	TMatrix44 oIdentity = TMatrix44::IDENTITY;
 
-	// The lens flare is in view space
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+	{
+		// The VR meshes are already built in view space on a fixed-depth plane.
+		// Draw them with the active eye's perspective projection rather than
+		// switching to an orthographic overlay.
+		pContext->SetModelViewMatrix( oIdentity );
+
+		if ( m_bSunVisible == TTRUE )
+			m_pFlareMesh->Render();
+
+		pRender->FlushOrderTables();
+
+		if ( m_bSunVisible == TTRUE )
+			m_pSunMesh->Render();
+
+		if ( m_bMoonVisible == TTRUE )
+			m_pMoonMesh->Render();
+
+		pRender->FlushOrderTables();
+		pContext->SetModelViewMatrix( oOldModelView );
+		return;
+	}
+#endif
+
+	// Preserve the legacy flat-screen lens flare and orthographic billboards.
 	if ( m_bSunVisible == TTRUE )
 	{
 		pContext->SetModelViewMatrix( TMatrix44::IDENTITY );
@@ -201,7 +243,6 @@ void ASunFlareEffect::Render()
 
 	pRender->FlushOrderTables();
 
-	// The sun and the moon are in screen space
 	pContext->SetCameraMode( TRenderContext::CameraMode_Orthographic );
 	pContext->SetProjectionParams( oScreenProjParams );
 	pContext->Update();
@@ -462,21 +503,44 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 		uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xffffff;
 	}
 
-	TFLOAT fZ = a_rcScreenPos.z + 199.0f;
+	TFLOAT fCentreX    = a_rcScreenPos.x;
+	TFLOAT fCentreY    = a_rcScreenPos.y;
+	TFLOAT fHalfSizeX  = fSize;
+	TFLOAT fHalfSizeY  = fSize;
+	TFLOAT fZ          = a_rcScreenPos.z + 199.0f;
 
-	pVertices[ 0 ].vPosition.Set( a_rcScreenPos.x + fSize, a_rcScreenPos.y - fSize, fZ );
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( IsVRViewRendering() )
+	{
+		TRenderContext* pContext = TRenderInterface::GetSingleton()->GetCurrentContext();
+		const TVector4& vecWorldDirection = a_bMoon ? m_vecMoonDir : m_vecSunDir;
+		TVector4        vecViewPosition;
+
+		if ( GetVRViewSpacePosition( vecViewPosition, pContext, vecWorldDirection, 180.0f ) )
+		{
+			const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
+			fCentreX   = vecViewPosition.x;
+			fCentreY   = vecViewPosition.y;
+			fZ         = vecViewPosition.z;
+			fHalfSizeX = fSize * fZ / rcProjection.m_Proj.x;
+			fHalfSizeY = fSize * fZ / rcProjection.m_Proj.y;
+		}
+	}
+#endif
+
+	pVertices[ 0 ].vPosition.Set( fCentreX + fHalfSizeX, fCentreY - fHalfSizeY, fZ );
 	pVertices[ 0 ].uiColor = uiColour;
 	pVertices[ 0 ].vUV.Set( 1.0f, 0.0f );
 
-	pVertices[ 1 ].vPosition.Set( a_rcScreenPos.x - fSize, a_rcScreenPos.y - fSize, fZ );
+	pVertices[ 1 ].vPosition.Set( fCentreX - fHalfSizeX, fCentreY - fHalfSizeY, fZ );
 	pVertices[ 1 ].uiColor = uiColour;
 	pVertices[ 1 ].vUV.Set( 0.0f, 0.0f );
 
-	pVertices[ 2 ].vPosition.Set( a_rcScreenPos.x + fSize, a_rcScreenPos.y + fSize, fZ );
+	pVertices[ 2 ].vPosition.Set( fCentreX + fHalfSizeX, fCentreY + fHalfSizeY, fZ );
 	pVertices[ 2 ].uiColor = uiColour;
 	pVertices[ 2 ].vUV.Set( 1.0f, 1.0f );
 
-	pVertices[ 3 ].vPosition.Set( a_rcScreenPos.x - fSize, a_rcScreenPos.y + fSize, fZ );
+	pVertices[ 3 ].vPosition.Set( fCentreX - fHalfSizeX, fCentreY + fHalfSizeY, fZ );
 	pVertices[ 3 ].uiColor = uiColour;
 	pVertices[ 3 ].vUV.Set( 0.0f, 1.0f );
 
@@ -527,12 +591,18 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	TUINT32  uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xe4d049;
 	TFLOAT   fU       = -1.5f;
 
-	// The sun in view space
-	TVector4 vecSunView;
-	TMatrix44::RotateVector( vecSunView, pContext->GetModelViewMatrix(), m_vecSunDir );
+	// Use the active eye's world-view matrix in VR. The model-view matrix may
+	// still contain the last scene object's transform at this point in the pass.
+	TVector4 vecSunDirection;
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+		TMatrix44::RotateVector( vecSunDirection, pContext->GetWorldViewMatrix(), m_vecSunDir );
+	else
+#endif
+		TMatrix44::RotateVector( vecSunDirection, pContext->GetModelViewMatrix(), m_vecSunDir );
 
 	TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-	TFLOAT fFlareRotation = ( vecSunView.y + vecSunView.x ) * 0.6f;
+	TFLOAT fFlareRotation = ( vecSunDirection.y + vecSunDirection.x ) * 0.6f;
 #if defined( TRENDERINTERFACE_DX11 )
 	if ( bVRView )
 		fFlareRotation = 0.0f;
@@ -540,24 +610,30 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	pRayDir2D->RotateZ( fFlareRotation );
 
 	TVector4 vecInner;
-	vecInner.Multiply( vecSunView, -2.0f );
+	vecInner.Multiply( vecSunDirection, -2.0f );
 	vecInner.z = -vecInner.z;
 
-	vecSunView.Multiply( 180.0f );
-	vecInner.z   = 1.6f;
-	vecSunView.z = 170.0f;
-
+	TVector4 vecSunView;
 #if defined( TRENDERINTERFACE_DX11 )
 	if ( bVRView )
 	{
-		// In VR the two eyes have different asymmetric frusta. Invert the active
-		// eye's projection so the flare's outer rays land on the same projected
-		// sun position as its screen-space quad.
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-		vecSunView.x = ( a_rcScreenPos.x - rcProjection.m_Centre.x ) * vecSunView.z / rcProjection.m_Proj.x;
-		vecSunView.y = ( a_rcScreenPos.y - rcProjection.m_Centre.y ) * vecSunView.z / rcProjection.m_Proj.y;
+		// Put the sun and every flare vertex on one eye-aligned plane. This avoids
+		// the near-to-far perspective stretch in the legacy flare geometry.
+		if ( !GetVRViewSpacePosition( vecSunView, pContext, m_vecSunDir, 170.0f ) )
+			vecSunView.Set( 0.0f, 0.0f, 170.0f, 1.0f );
+		vecInner.z = vecSunView.z;
 	}
 	else
+#endif
+	{
+		vecSunView = vecSunDirection;
+		vecSunView.Multiply( 180.0f );
+		vecInner.z   = 1.6f;
+		vecSunView.z = 170.0f;
+	}
+
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( !bVRView )
 #endif
 	{
 		// Preserve the legacy flat-screen lens-flare placement.
