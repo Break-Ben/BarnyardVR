@@ -7,8 +7,9 @@
 #include <Math/TVector4.h>
 
 //-----------------------------------------------------------------------------
-// Draws the sun (with its lens flare) and the moon as screen-space quads.
-// DX11/OpenXR sprite orientation is projected from a world-locked sky frame.
+// Draws the sun, radial lens flare, and moon. DX11/OpenXR celestial textures
+// are tessellated spherical patches aligned to a world-locked sky frame; the
+// flat-screen path retains its legacy screen-space quads.
 // Created by ARenderer::OnCreate and drawn by ARenderer::RenderMainScene.
 // AGameTimeFX::Apply sets the directions and intensities, in the main game the
 // sun direction follows the time of the day instead.
@@ -49,7 +50,7 @@ public:
 
 private:
 	// Updates the sun/time/visibility and rebuilds meshes for the active eye.
-	// VR sprite orientation comes from the world-locked sky frame.
+	// VR sprite geometry is generated from the world-locked sky frame.
 	// a_bAdvanceState is false on subsequent stereo eyes so frame timers only advance once.
 	void Update( TBOOL a_bAdvanceState );
 
