@@ -33,6 +33,8 @@ constexpr TUINT32 kEyeCount = 2;
 constexpr TFLOAT  kUiQuadWidthMeters = 1.95f;
 constexpr TFLOAT  kUiWorldDistance = 1.75f;
 constexpr TFLOAT  kUiMenuDistance = 2.1f;
+constexpr TFLOAT  kGripButtonThreshold = 0.5f;
+constexpr TFLOAT  kTriggerButtonThreshold = 0.12f;
 
 static bool IsCommandLineOption( const char* a_szCommandLine, const char* a_szOption )
 {
@@ -300,6 +302,28 @@ struct AVRManager::Impl
 	XrInstance hInstance = XR_NULL_HANDLE;
 	XrSystemId hSystem = XR_NULL_SYSTEM_ID;
 	XrSession hSession = XR_NULL_HANDLE;
+	XrActionSet hGameplayActionSet = XR_NULL_HANDLE;
+	XrPath hLeftHandPath = XR_NULL_PATH;
+	XrPath hRightHandPath = XR_NULL_PATH;
+	XrAction hLeftStickAction = XR_NULL_HANDLE;
+	XrAction hRightStickAction = XR_NULL_HANDLE;
+	XrAction hLeftMenuAction = XR_NULL_HANDLE;
+	XrAction hRightMenuAction = XR_NULL_HANDLE;
+	XrAction hLeftStickClickAction = XR_NULL_HANDLE;
+	XrAction hRightStickClickAction = XR_NULL_HANDLE;
+	XrAction hContext1Action = XR_NULL_HANDLE;
+	XrAction hContext2Action = XR_NULL_HANDLE;
+	XrAction hContext3Action = XR_NULL_HANDLE;
+	XrAction hContext4Action = XR_NULL_HANDLE;
+	XrAction hLeftSqueezeAction = XR_NULL_HANDLE;
+	XrAction hRightSqueezeAction = XR_NULL_HANDLE;
+	XrAction hLeftTriggerAction = XR_NULL_HANDLE;
+	XrAction hRightTriggerAction = XR_NULL_HANDLE;
+	AVRManager::ControllerInputState oControllerInputState;
+	TBOOL bInputActionsReady = TFALSE;
+	TBOOL bInputActionsAttached = TFALSE;
+	TBOOL bSessionFocused = TFALSE;
+	TBOOL bLoggedInputSyncFailure = TFALSE;
 	XrSpace hLocalSpace = XR_NULL_HANDLE;
 	XrEnvironmentBlendMode eBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	XrFrameState oFrameState = { XR_TYPE_FRAME_STATE };
@@ -352,6 +376,320 @@ AVRManager& AVRManager::GetSingleton()
 {
 	static AVRManager s_oInstance;
 	return s_oInstance;
+}
+
+static void ClearControllerInputState( AVRManager::Impl& a_rImpl )
+{
+	a_rImpl.oControllerInputState = {};
+}
+
+static void DestroyInputActions( AVRManager::Impl& a_rImpl )
+{
+	XrAction* apActions[] = {
+	    &a_rImpl.hLeftStickAction,
+	    &a_rImpl.hRightStickAction,
+	    &a_rImpl.hLeftMenuAction,
+	    &a_rImpl.hRightMenuAction,
+	    &a_rImpl.hLeftStickClickAction,
+	    &a_rImpl.hRightStickClickAction,
+	    &a_rImpl.hContext1Action,
+	    &a_rImpl.hContext2Action,
+	    &a_rImpl.hContext3Action,
+	    &a_rImpl.hContext4Action,
+	    &a_rImpl.hLeftSqueezeAction,
+	    &a_rImpl.hRightSqueezeAction,
+	    &a_rImpl.hLeftTriggerAction,
+	    &a_rImpl.hRightTriggerAction,
+	};
+
+	for ( XrAction* pAction : apActions )
+	{
+		if ( *pAction != XR_NULL_HANDLE )
+		{
+			xrDestroyAction( *pAction );
+			*pAction = XR_NULL_HANDLE;
+		}
+	}
+
+	if ( a_rImpl.hGameplayActionSet != XR_NULL_HANDLE )
+	{
+		xrDestroyActionSet( a_rImpl.hGameplayActionSet );
+		a_rImpl.hGameplayActionSet = XR_NULL_HANDLE;
+	}
+
+	a_rImpl.hLeftHandPath = XR_NULL_PATH;
+	a_rImpl.hRightHandPath = XR_NULL_PATH;
+	a_rImpl.bInputActionsReady = TFALSE;
+	a_rImpl.bInputActionsAttached = TFALSE;
+	a_rImpl.bLoggedInputSyncFailure = TFALSE;
+	ClearControllerInputState( a_rImpl );
+}
+
+static bool CreateInputAction( AVRManager::Impl& a_rImpl, XrActionType a_eType, const char* a_szName, const char* a_szLocalizedName, XrPath a_hSubactionPath, XrAction& a_rAction )
+{
+	XrActionCreateInfo oActionInfo = { XR_TYPE_ACTION_CREATE_INFO };
+	std::strncpy( oActionInfo.actionName, a_szName, sizeof( oActionInfo.actionName ) - 1 );
+	std::strncpy( oActionInfo.localizedActionName, a_szLocalizedName, sizeof( oActionInfo.localizedActionName ) - 1 );
+	oActionInfo.actionType = a_eType;
+	oActionInfo.countSubactionPaths = 1;
+	oActionInfo.subactionPaths = &a_hSubactionPath;
+	return XR_SUCCEEDED( xrCreateAction( a_rImpl.hGameplayActionSet, &oActionInfo, &a_rAction ) );
+}
+
+struct ActionBinding
+{
+	XrAction   hAction;
+	const char* szPath;
+};
+
+static bool SuggestInteractionProfileBindings( AVRManager::Impl& a_rImpl, const char* a_szProfile, const ActionBinding* a_pBindings, size_t a_uiNumBindings )
+{
+	XrPath hProfilePath = XR_NULL_PATH;
+	if ( XR_FAILED( xrStringToPath( a_rImpl.hInstance, a_szProfile, &hProfilePath ) ) )
+		return false;
+
+	std::vector<XrActionSuggestedBinding> aSuggestedBindings;
+	aSuggestedBindings.reserve( a_uiNumBindings );
+	for ( size_t i = 0; i < a_uiNumBindings; i++ )
+	{
+		XrPath hBindingPath = XR_NULL_PATH;
+		if ( XR_SUCCEEDED( xrStringToPath( a_rImpl.hInstance, a_pBindings[ i ].szPath, &hBindingPath ) ) )
+			aSuggestedBindings.push_back( { a_pBindings[ i ].hAction, hBindingPath } );
+	}
+
+	if ( aSuggestedBindings.empty() )
+		return false;
+
+	XrInteractionProfileSuggestedBinding oSuggested = { XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING };
+	oSuggested.interactionProfile = hProfilePath;
+	oSuggested.countSuggestedBindings = uint32_t( aSuggestedBindings.size() );
+	oSuggested.suggestedBindings = aSuggestedBindings.data();
+	const XrResult eResult = xrSuggestInteractionProfileBindings( a_rImpl.hInstance, &oSuggested );
+	if ( XR_SUCCEEDED( eResult ) )
+		return true;
+
+	// A runtime is allowed not to support an interaction profile. The other profiles
+	// remain available, so only report errors other than that normal case.
+	if ( eResult != XR_ERROR_PATH_UNSUPPORTED )
+		TWARN( "OpenXR: could not suggest bindings for interaction profile %s (result %d).\n", a_szProfile, int( eResult ) );
+
+	return false;
+}
+
+static TBOOL CreateInputActions( AVRManager::Impl& a_rImpl )
+{
+	if ( XR_FAILED( xrStringToPath( a_rImpl.hInstance, "/user/hand/left", &a_rImpl.hLeftHandPath ) ) ||
+	     XR_FAILED( xrStringToPath( a_rImpl.hInstance, "/user/hand/right", &a_rImpl.hRightHandPath ) ) )
+		return TFALSE;
+
+	XrActionSetCreateInfo oActionSetInfo = { XR_TYPE_ACTION_SET_CREATE_INFO };
+	std::strncpy( oActionSetInfo.actionSetName, "barnyard_gameplay", sizeof( oActionSetInfo.actionSetName ) - 1 );
+	std::strncpy( oActionSetInfo.localizedActionSetName, "Barnyard Gameplay", sizeof( oActionSetInfo.localizedActionSetName ) - 1 );
+	if ( XR_FAILED( xrCreateActionSet( a_rImpl.hInstance, &oActionSetInfo, &a_rImpl.hGameplayActionSet ) ) )
+		return TFALSE;
+
+	const bool bActionsCreated =
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_VECTOR2F_INPUT, "left_stick", "Left Stick", a_rImpl.hLeftHandPath, a_rImpl.hLeftStickAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_VECTOR2F_INPUT, "right_stick", "Right Stick", a_rImpl.hRightHandPath, a_rImpl.hRightStickAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "left_menu", "Left Menu", a_rImpl.hLeftHandPath, a_rImpl.hLeftMenuAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "right_menu", "Right Menu", a_rImpl.hRightHandPath, a_rImpl.hRightMenuAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "left_stick_click", "Left Stick Click", a_rImpl.hLeftHandPath, a_rImpl.hLeftStickClickAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "right_stick_click", "Right Stick Click", a_rImpl.hRightHandPath, a_rImpl.hRightStickClickAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "context_1", "Top Face Button", a_rImpl.hLeftHandPath, a_rImpl.hContext1Action ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "context_2", "Right Face Button", a_rImpl.hRightHandPath, a_rImpl.hContext2Action ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "context_3", "Bottom Face Button", a_rImpl.hRightHandPath, a_rImpl.hContext3Action ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_BOOLEAN_INPUT, "context_4", "Left Face Button", a_rImpl.hLeftHandPath, a_rImpl.hContext4Action ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "left_squeeze", "Left Squeeze", a_rImpl.hLeftHandPath, a_rImpl.hLeftSqueezeAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "right_squeeze", "Right Squeeze", a_rImpl.hRightHandPath, a_rImpl.hRightSqueezeAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "left_trigger", "Left Trigger", a_rImpl.hLeftHandPath, a_rImpl.hLeftTriggerAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "right_trigger", "Right Trigger", a_rImpl.hRightHandPath, a_rImpl.hRightTriggerAction );
+
+	if ( !bActionsCreated )
+	{
+		DestroyInputActions( a_rImpl );
+		return TFALSE;
+	}
+
+	const ActionBinding aTouchBindings[] = {
+	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/thumbstick" },
+	    { a_rImpl.hRightStickAction, "/user/hand/right/input/thumbstick" },
+	    { a_rImpl.hLeftMenuAction, "/user/hand/left/input/menu/click" },
+	    { a_rImpl.hLeftStickClickAction, "/user/hand/left/input/thumbstick/click" },
+	    { a_rImpl.hRightStickClickAction, "/user/hand/right/input/thumbstick/click" },
+	    { a_rImpl.hContext1Action, "/user/hand/left/input/y/click" },
+	    { a_rImpl.hContext2Action, "/user/hand/right/input/b/click" },
+	    { a_rImpl.hContext3Action, "/user/hand/right/input/a/click" },
+	    { a_rImpl.hContext4Action, "/user/hand/left/input/x/click" },
+	    { a_rImpl.hLeftSqueezeAction, "/user/hand/left/input/squeeze/value" },
+	    { a_rImpl.hRightSqueezeAction, "/user/hand/right/input/squeeze/value" },
+	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
+	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	};
+	const ActionBinding aIndexBindings[] = {
+	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/thumbstick" },
+	    { a_rImpl.hRightStickAction, "/user/hand/right/input/thumbstick" },
+	    { a_rImpl.hLeftStickClickAction, "/user/hand/left/input/thumbstick/click" },
+	    { a_rImpl.hRightStickClickAction, "/user/hand/right/input/thumbstick/click" },
+	    { a_rImpl.hContext1Action, "/user/hand/left/input/a/click" },
+	    { a_rImpl.hContext4Action, "/user/hand/left/input/b/click" },
+	    { a_rImpl.hContext2Action, "/user/hand/right/input/b/click" },
+	    { a_rImpl.hContext3Action, "/user/hand/right/input/a/click" },
+	    { a_rImpl.hLeftSqueezeAction, "/user/hand/left/input/squeeze/value" },
+	    { a_rImpl.hRightSqueezeAction, "/user/hand/right/input/squeeze/value" },
+	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
+	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	};
+	const ActionBinding aMicrosoftBindings[] = {
+	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/thumbstick" },
+	    { a_rImpl.hRightStickAction, "/user/hand/right/input/thumbstick" },
+	    { a_rImpl.hLeftMenuAction, "/user/hand/left/input/menu/click" },
+	    { a_rImpl.hRightMenuAction, "/user/hand/right/input/menu/click" },
+	    { a_rImpl.hLeftStickClickAction, "/user/hand/left/input/thumbstick/click" },
+	    { a_rImpl.hRightStickClickAction, "/user/hand/right/input/thumbstick/click" },
+	    { a_rImpl.hContext1Action, "/user/hand/left/input/y/click" },
+	    { a_rImpl.hContext2Action, "/user/hand/right/input/b/click" },
+	    { a_rImpl.hContext3Action, "/user/hand/right/input/a/click" },
+	    { a_rImpl.hContext4Action, "/user/hand/left/input/x/click" },
+	    { a_rImpl.hLeftSqueezeAction, "/user/hand/left/input/squeeze/value" },
+	    { a_rImpl.hRightSqueezeAction, "/user/hand/right/input/squeeze/value" },
+	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
+	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	};
+	const ActionBinding aViveBindings[] = {
+	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/trackpad" },
+	    { a_rImpl.hRightStickAction, "/user/hand/right/input/trackpad" },
+	    { a_rImpl.hLeftMenuAction, "/user/hand/left/input/menu/click" },
+	    { a_rImpl.hRightMenuAction, "/user/hand/right/input/menu/click" },
+	    { a_rImpl.hLeftStickClickAction, "/user/hand/left/input/trackpad/click" },
+	    { a_rImpl.hRightStickClickAction, "/user/hand/right/input/trackpad/click" },
+	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
+	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	};
+
+	TBOOL bHasBindings = TFALSE;
+	bHasBindings |= SuggestInteractionProfileBindings( a_rImpl, "/interaction_profiles/oculus/touch_controller", aTouchBindings, TARRAYSIZE( aTouchBindings ) );
+	bHasBindings |= SuggestInteractionProfileBindings( a_rImpl, "/interaction_profiles/meta/touch_controller_plus", aTouchBindings, TARRAYSIZE( aTouchBindings ) );
+	bHasBindings |= SuggestInteractionProfileBindings( a_rImpl, "/interaction_profiles/facebook/touch_controller_pro", aTouchBindings, TARRAYSIZE( aTouchBindings ) );
+	bHasBindings |= SuggestInteractionProfileBindings( a_rImpl, "/interaction_profiles/valve/index_controller", aIndexBindings, TARRAYSIZE( aIndexBindings ) );
+	bHasBindings |= SuggestInteractionProfileBindings( a_rImpl, "/interaction_profiles/microsoft/motion_controller", aMicrosoftBindings, TARRAYSIZE( aMicrosoftBindings ) );
+	bHasBindings |= SuggestInteractionProfileBindings( a_rImpl, "/interaction_profiles/htc/vive_controller", aViveBindings, TARRAYSIZE( aViveBindings ) );
+	if ( !bHasBindings )
+	{
+		TWARN( "OpenXR: no supported controller interaction profile accepted Barnyard's standard bindings.\n" );
+		DestroyInputActions( a_rImpl );
+		return TFALSE;
+	}
+
+	a_rImpl.bInputActionsReady = TTRUE;
+	return TTRUE;
+}
+
+static void AttachInputActions( AVRManager::Impl& a_rImpl )
+{
+	a_rImpl.bInputActionsAttached = TFALSE;
+	ClearControllerInputState( a_rImpl );
+	if ( !a_rImpl.bInputActionsReady || a_rImpl.hSession == XR_NULL_HANDLE )
+		return;
+
+	XrSessionActionSetsAttachInfo oAttachInfo = { XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO };
+	oAttachInfo.countActionSets = 1;
+	oAttachInfo.actionSets = &a_rImpl.hGameplayActionSet;
+	const XrResult eResult = xrAttachSessionActionSets( a_rImpl.hSession, &oAttachInfo );
+	if ( XR_SUCCEEDED( eResult ) )
+	{
+		a_rImpl.bInputActionsAttached = TTRUE;
+		a_rImpl.bLoggedInputSyncFailure = TFALSE;
+	}
+	else
+	{
+		TWARN( "OpenXR: could not attach the gameplay action set to the session (result %d).\n", int( eResult ) );
+	}
+}
+
+static TBOOL ReadBooleanAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath )
+{
+	XrActionStateGetInfo oGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
+	oGetInfo.action = a_hAction;
+	oGetInfo.subactionPath = a_hSubactionPath;
+	XrActionStateBoolean oState = { XR_TYPE_ACTION_STATE_BOOLEAN };
+	if ( XR_FAILED( xrGetActionStateBoolean( a_rImpl.hSession, &oGetInfo, &oState ) ) )
+		return TFALSE;
+	return oState.isActive && oState.currentState;
+}
+
+static TFLOAT ReadFloatAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath )
+{
+	XrActionStateGetInfo oGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
+	oGetInfo.action = a_hAction;
+	oGetInfo.subactionPath = a_hSubactionPath;
+	XrActionStateFloat oState = { XR_TYPE_ACTION_STATE_FLOAT };
+	if ( XR_FAILED( xrGetActionStateFloat( a_rImpl.hSession, &oGetInfo, &oState ) ) || !oState.isActive || !std::isfinite( oState.currentState ) )
+		return 0.0f;
+	return std::max( 0.0f, std::min( oState.currentState, 1.0f ) );
+}
+
+static XrVector2f ReadVector2Action( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath )
+{
+	XrActionStateGetInfo oGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
+	oGetInfo.action = a_hAction;
+	oGetInfo.subactionPath = a_hSubactionPath;
+	XrActionStateVector2f oState = { XR_TYPE_ACTION_STATE_VECTOR2F };
+	if ( XR_FAILED( xrGetActionStateVector2f( a_rImpl.hSession, &oGetInfo, &oState ) ) || !oState.isActive )
+		return { 0.0f, 0.0f };
+
+	return {
+	    std::isfinite( oState.currentState.x ) ? std::max( -1.0f, std::min( oState.currentState.x, 1.0f ) ) : 0.0f,
+	    std::isfinite( oState.currentState.y ) ? std::max( -1.0f, std::min( oState.currentState.y, 1.0f ) ) : 0.0f,
+	};
+}
+
+static void SyncControllerInput( AVRManager::Impl& a_rImpl )
+{
+	ClearControllerInputState( a_rImpl );
+	if ( !a_rImpl.bInputActionsReady || !a_rImpl.bInputActionsAttached || !a_rImpl.bSessionRunning || !a_rImpl.bSessionFocused )
+		return;
+
+	XrActiveActionSet oActiveActionSet = { a_rImpl.hGameplayActionSet, XR_NULL_PATH };
+	XrActionsSyncInfo oSyncInfo = { XR_TYPE_ACTIONS_SYNC_INFO };
+	oSyncInfo.countActiveActionSets = 1;
+	oSyncInfo.activeActionSets = &oActiveActionSet;
+	const XrResult eSyncResult = xrSyncActions( a_rImpl.hSession, &oSyncInfo );
+	if ( eSyncResult == XR_SESSION_NOT_FOCUSED )
+		return;
+	if ( XR_FAILED( eSyncResult ) )
+	{
+		if ( !a_rImpl.bLoggedInputSyncFailure )
+		{
+			TWARN( "OpenXR: controller input synchronization failed (result %d).\n", int( eSyncResult ) );
+			a_rImpl.bLoggedInputSyncFailure = TTRUE;
+		}
+		return;
+	}
+	a_rImpl.bLoggedInputSyncFailure = TFALSE;
+
+	const XrVector2f oLeftStick = ReadVector2Action( a_rImpl, a_rImpl.hLeftStickAction, a_rImpl.hLeftHandPath );
+	const XrVector2f oRightStick = ReadVector2Action( a_rImpl, a_rImpl.hRightStickAction, a_rImpl.hRightHandPath );
+	a_rImpl.oControllerInputState.fLeftStickX = oLeftStick.x;
+	a_rImpl.oControllerInputState.fLeftStickY = oLeftStick.y;
+	a_rImpl.oControllerInputState.fRightStickX = oRightStick.x;
+	a_rImpl.oControllerInputState.fRightStickY = oRightStick.y;
+
+	auto SetButton = [&a_rImpl]( AVRManager::ControllerButton a_eButton, TBOOL a_bDown ) {
+		if ( a_bDown )
+			a_rImpl.oControllerInputState.uiButtonMask |= TUINT32( a_eButton );
+	};
+	SetButton( AVRManager::CONTROLLER_BUTTON_SELECT, ReadBooleanAction( a_rImpl, a_rImpl.hLeftMenuAction, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_START, ReadBooleanAction( a_rImpl, a_rImpl.hRightMenuAction, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_STICK_LEFT, ReadBooleanAction( a_rImpl, a_rImpl.hLeftStickClickAction, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_STICK_RIGHT, ReadBooleanAction( a_rImpl, a_rImpl.hRightStickClickAction, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_1, ReadBooleanAction( a_rImpl, a_rImpl.hContext1Action, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_2, ReadBooleanAction( a_rImpl, a_rImpl.hContext2Action, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_3, ReadBooleanAction( a_rImpl, a_rImpl.hContext3Action, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_4, ReadBooleanAction( a_rImpl, a_rImpl.hContext4Action, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_1, ReadFloatAction( a_rImpl, a_rImpl.hLeftSqueezeAction, a_rImpl.hLeftHandPath ) >= kGripButtonThreshold );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_1, ReadFloatAction( a_rImpl, a_rImpl.hRightSqueezeAction, a_rImpl.hRightHandPath ) >= kGripButtonThreshold );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_2, ReadFloatAction( a_rImpl, a_rImpl.hLeftTriggerAction, a_rImpl.hLeftHandPath ) >= kTriggerButtonThreshold );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_2, ReadFloatAction( a_rImpl, a_rImpl.hRightTriggerAction, a_rImpl.hRightHandPath ) >= kTriggerButtonThreshold );
 }
 
 static void DestroyMirrorPipeline( AVRManager::Impl& a_rImpl )
@@ -798,6 +1136,9 @@ TBOOL AVRManager::Prepare( Toshi::TRenderInterface* a_pRenderer )
 	}
 	static_cast<Toshi::TRenderD3DInterface*>( a_pRenderer )->SetPreferredAdapterLuid( rImpl.oD3D11Requirements.adapterLuid, rImpl.oD3D11Requirements.minFeatureLevel );
 
+	if ( !CreateInputActions( rImpl ) )
+		TWARN( "OpenXR: controller actions could not be created; continuing with headset rendering only.\n" );
+
 	rImpl.bPrepared = TTRUE;
 	return TTRUE;
 }
@@ -842,6 +1183,10 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	a_rImpl.bProjectionReady = TFALSE;
 	a_rImpl.bUILayerReady = TFALSE;
 	a_rImpl.bHasNeutralPose = TFALSE;
+	a_rImpl.bInputActionsAttached = TFALSE;
+	a_rImpl.bSessionFocused = TFALSE;
+	a_rImpl.bLoggedInputSyncFailure = TFALSE;
+	ClearControllerInputState( a_rImpl );
 }
 
 static TBOOL CreateSessionAndTargets( AVRManager::Impl& a_rImpl )
@@ -857,6 +1202,8 @@ static TBOOL CreateSessionAndTargets( AVRManager::Impl& a_rImpl )
 
 	if ( XR_FAILED( xrCreateSession( a_rImpl.hInstance, &oSessionInfo, &a_rImpl.hSession ) ) )
 		return TFALSE;
+
+	AttachInputActions( a_rImpl );
 
 	XrReferenceSpaceCreateInfo oSpaceInfo = { XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
 	oSpaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
@@ -1003,6 +1350,8 @@ static void MarkRuntimeLost( AVRManager::Impl& a_rImpl )
 {
 	a_rImpl.bRuntimeLost = TTRUE;
 	a_rImpl.bSessionRunning = TFALSE;
+	a_rImpl.bSessionFocused = TFALSE;
+	ClearControllerInputState( a_rImpl );
 	SetVSyncAndKeepRunning( a_rImpl, TFALSE );
 }
 
@@ -1029,6 +1378,10 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 				// down and recreates the session on the same OpenXR instance.
 				if ( pStateEvent->session != a_rImpl.hSession )
 					break;
+
+				a_rImpl.bSessionFocused = pStateEvent->state == XR_SESSION_STATE_FOCUSED;
+				if ( !a_rImpl.bSessionFocused )
+					ClearControllerInputState( a_rImpl );
 
 				switch ( pStateEvent->state )
 				{
@@ -1097,6 +1450,21 @@ TBOOL AVRManager::IsActive() const
 	return m_pImpl->bGraphicsReady && m_pImpl->bSessionRunning && !m_pImpl->bRuntimeLost;
 }
 
+TBOOL AVRManager::HasControllerInput() const
+{
+	return m_pImpl->bInputActionsReady && m_pImpl->bInputActionsAttached;
+}
+
+TBOOL AVRManager::GetControllerInputState( ControllerInputState& a_rState ) const
+{
+	a_rState = {};
+	if ( !HasControllerInput() )
+		return TFALSE;
+
+	a_rState = m_pImpl->oControllerInputState;
+	return TTRUE;
+}
+
 TBOOL AVRManager::ShouldExit() const
 {
 	return m_pImpl->bExitRequested;
@@ -1137,6 +1505,7 @@ TBOOL AVRManager::BeginFrame()
 	rImpl.uiCompletedEyeMask = 0;
 	rImpl.uiActiveEye = std::numeric_limits<TUINT32>::max();
 	rImpl.bHasMirrorFrame = TFALSE;
+	SyncControllerInput( rImpl );
 
 	if ( !rImpl.bShouldRender )
 		return TTRUE;
@@ -1616,6 +1985,7 @@ void AVRManager::Shutdown()
 	SetVSyncAndKeepRunning( rImpl, TFALSE );
 
 	DestroyMirrorPipeline( rImpl );
+	DestroyInputActions( rImpl );
 
 	if ( rImpl.hInstance != XR_NULL_HANDLE )
 	{
@@ -1655,6 +2025,8 @@ TBOOL AVRManager::Prepare( Toshi::TRenderInterface* ) { return TFALSE; }
 TBOOL AVRManager::Initialize( Toshi::TRenderInterface* ) { return TFALSE; }
 void AVRManager::Shutdown() {}
 TBOOL AVRManager::IsActive() const { return TFALSE; }
+TBOOL AVRManager::HasControllerInput() const { return TFALSE; }
+TBOOL AVRManager::GetControllerInputState( ControllerInputState& a_rState ) const { a_rState = {}; return TFALSE; }
 TBOOL AVRManager::ShouldExit() const { return TFALSE; }
 TBOOL AVRManager::BeginFrame() { return TFALSE; }
 TBOOL AVRManager::ShouldRender() const { return TFALSE; }
