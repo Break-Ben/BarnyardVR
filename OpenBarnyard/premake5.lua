@@ -81,6 +81,8 @@ project "OpenBarnyard"
 		"Source/Units/**.cpp",
 		"Source/Quests/**.h",
 		"Source/Quests/**.cpp",
+		"Source/VR/**.h",
+		"Source/VR/**.cpp",
 		"Source/Mod/**.h",
 		"Source/Mod/**.cpp",
 
@@ -135,6 +137,18 @@ project "OpenBarnyard"
 			"binkw32.lib"
 		}
 
+	filter { "system:windows", "options:renderer=DX11" }
+		includedirs
+		{
+			"%{IncludeDir.openxr}"
+		}
+		links
+		{
+			"OpenXR",
+			"advapi32.lib"
+		}
+
+	filter "system:windows"
 		linkoptions
 		{
 			"%{wks.location}/bin-int/" .. outputdir .. "/Toshi/Toshi.res",

@@ -20,7 +20,7 @@ jobs:
         version: ${{ env.PREMAKE_VERSION }}
 
     - name: Premake
-      run: premake5 vs2026 --arch=x86 --renderer=DX8
+      run: premake5 vs2026 --arch=x86 --renderer=DX11
     
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
@@ -44,4 +44,4 @@ jobs:
         prerelease: true
         body: 'Automatic releases are being uploaded after any new commit.'
         files: |
-          ./bin/Debug_Win32_x86_DX8/OpenBarnyard/OpenBarnyard.exe
+          ./bin/Debug_Win32_x86_DX11/OpenBarnyard/OpenBarnyard.exe

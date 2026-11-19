@@ -3,6 +3,9 @@
 #include "Render/TBackend.h"
 
 #include "ABINKMoviePlayer.h"
+#if defined( TRENDERINTERFACE_DX11 )
+#  include "VR/AVRManager.h"
+#endif
 
 #include <Toshi/TSystem.h>
 #include <Render/TTextureFactory.h>
@@ -290,12 +293,15 @@ TBOOL ABINKMoviePlayer::CreateSurfaces()
 	switch ( desc.Format )
 	{
 		case DXGI_FORMAT_R8G8B8A8_UNORM:
+		case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
 			m_eFormat = BINKSURFACE32R;
 			break;
 		case DXGI_FORMAT_B8G8R8A8_UNORM:
+		case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
 			m_eFormat = BINKSURFACE32A;
 			break;
 		case DXGI_FORMAT_B8G8R8X8_UNORM:
+		case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
 			m_eFormat = BINKSURFACE32;
 			break;
 		case DXGI_FORMAT_B5G6R5_UNORM:
@@ -311,7 +317,12 @@ TBOOL ABINKMoviePlayer::CreateSurfaces()
 
 	HRESULT hRes = S_OK;
 
-	if ( desc.Width == m_Bink->Width && desc.Height == m_Bink->Height )
+	if ( AVRManager::GetSingleton().IsActive() )
+	{
+		m_bVideoFitsBackBuffer = TFALSE;
+		hRes = CreateAGUISurfaces( desc.Width, desc.Height, desc.Format ) ? S_OK : E_FAIL;
+	}
+	else if ( desc.Width == m_Bink->Width && desc.Height == m_Bink->Height )
 	{
 		m_bVideoFitsBackBuffer = TTRUE;
 
@@ -374,6 +385,17 @@ void ABINKMoviePlayer::Render( TFLOAT a_fDeltaTime )
 {
 	if ( IsMoviePlaying() && m_bVisible )
 	{
+#if defined( TRENDERINTERFACE_DX11 )
+		if ( AVRManager::GetSingleton().IsActive() && m_bVideoFitsBackBuffer )
+		{
+			DestroySurfaces();
+			m_bVideoFitsBackBuffer = TFALSE;
+			if ( !CreateSurfaces() )
+				return;
+			m_eFormat |= BINKCOPYALL;
+		}
+#endif
+
 #if defined( TRENDERINTERFACE_DX8 )
 		auto pDevice = TRenderInterfaceHAL::Interface()->GetDirect3DDevice();
 #endif
@@ -550,12 +572,13 @@ TBOOL ABINKMoviePlayer::CreateAGUISurfaces( TUINT a_uiWidth, TUINT a_uiHeight, D
 		m_eFormat = BINKSURFACE32;
 #  else
 		// NOTE: the textures are B8G8R8A8/B8G8R8X8 like on D3D8, which the back buffer (R8G8B8A8) isn't
-		if ( a_eFormat == DXGI_FORMAT_B8G8R8A8_UNORM )
+		if ( a_eFormat == DXGI_FORMAT_B8G8R8A8_UNORM || a_eFormat == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB )
 		{
 			eFormat   = TTEXTURERESOURCEFORMAT::R8G8B8A8;
 			m_eFormat = BINKSURFACE32A;
 		}
-		else if ( a_eFormat == DXGI_FORMAT_B8G8R8X8_UNORM || a_eFormat == DXGI_FORMAT_R8G8B8A8_UNORM )
+		else if ( a_eFormat == DXGI_FORMAT_B8G8R8X8_UNORM || a_eFormat == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB ||
+		          a_eFormat == DXGI_FORMAT_R8G8B8A8_UNORM || a_eFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB )
 		{
 			eFormat   = TTEXTURERESOURCEFORMAT::R8G8B8;
 			m_eFormat = BINKSURFACE32;

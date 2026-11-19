@@ -7,7 +7,9 @@
 #include <Math/TVector4.h>
 
 //-----------------------------------------------------------------------------
-// Draws the sun (with its lens flare) and the moon as screen space quads.
+// Draws the sun, radial lens flare, and moon. DX11/OpenXR celestial sprites
+// and flare rays are tessellated spherical patches aligned to a world-locked
+// sky frame; the flat-screen path retains its legacy rendering.
 // Created by ARenderer::OnCreate and drawn by ARenderer::RenderMainScene.
 // AGameTimeFX::Apply sets the directions and intensities, in the main game the
 // sun direction follows the time of the day instead.
@@ -47,8 +49,10 @@ public:
 	void SetUseTime( TBOOL a_bUseTime ) { m_bUseTime = a_bUseTime; }
 
 private:
-	// Moves the sun with the time of the day, updates the visibility and fills the meshes
-	void Update();
+	// Updates the sun/time/visibility and rebuilds meshes for the active eye.
+	// VR sprite geometry is generated from the world-locked sky frame.
+	// a_bAdvanceState is false on subsequent stereo eyes so frame timers only advance once.
+	void Update( TBOOL a_bAdvanceState );
 
 	// Projects a_rcDirection to the screen, returns TFALSE if it's behind the camera or too far off the screen.
 	// a_pOutVisible receives TFALSE if a_bCollide is set and the ray to the sun hits something.

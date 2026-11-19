@@ -147,10 +147,21 @@ TRenderD3DInterface::TRenderD3DInterface()
 	m_pSceneRTView       = TNULL;
 	m_pSceneSRV          = TNULL;
 	m_oSceneDepth        = {};
-	m_eSceneFormat       = DXGI_FORMAT_UNKNOWN;
-	m_uiSceneSampleCount = 1;
-	m_bSceneTargetActive = TFALSE;
-	m_uiBackBufferWidth  = 0;
+	m_eSceneFormat                = DXGI_FORMAT_UNKNOWN;
+	m_uiSceneSampleCount          = 1;
+	m_bSceneTargetActive          = TFALSE;
+	m_pExternalTexture            = TNULL;
+	m_pExternalRTView             = TNULL;
+	m_oExternalDepth              = {};
+	m_uiExternalWidth             = 0;
+	m_uiExternalHeight            = 0;
+	m_bExternalTargetActive       = TFALSE;
+	m_bExternalPremultipliedAlpha = TFALSE;
+	m_bHasPreferredAdapterLuid    = TFALSE;
+	m_oPreferredAdapterLuid       = {};
+	m_eMinFeatureLevel            = D3D_FEATURE_LEVEL_10_0;
+	m_bVSyncEnabled               = TTRUE;
+	m_uiBackBufferWidth           = 0;
 	m_uiBackBufferHeight = 0;
 	m_bOccluded          = TFALSE;
 
@@ -436,7 +447,9 @@ TBOOL TRenderD3DInterface::BeginScene()
 	{
 		ResetStateCache();
 
-		m_bSceneTargetActive = TFALSE;
+		m_bSceneTargetActive          = TFALSE;
+		m_bExternalTargetActive       = TFALSE;
+		m_bExternalPremultipliedAlpha = TFALSE;
 		SetRenderTargets( m_pBackBufferRTView, m_oDepth.pView );
 
 		D3D11_VIEWPORT viewport = {
@@ -466,6 +479,7 @@ TBOOL TRenderD3DInterface::EndScene()
 	{
 		m_EndSceneEmitter.Throw( TNULL );
 		TASSERT( !m_bSceneTargetActive && "EndSceneTarget wasn't called" );
+		TASSERT( !m_bExternalTargetActive && "EndExternalTarget wasn't called" );
 
 		if ( m_pPendingCapture )
 		{
@@ -473,8 +487,8 @@ TBOOL TRenderD3DInterface::EndScene()
 			m_pPendingCapture = TNULL;
 		}
 
-		// Background (test) runs aren't synced to the display
-		HRESULT hPresentRes = m_pSwapChain->Present( ( m_bOccluded || TMSWindow::IsBackgroundMode() ) ? 0 : 1, m_bOccluded ? DXGI_PRESENT_TEST : 0 );
+		// Background (test) runs and VR desktop mirrors aren't synced to the display
+		HRESULT hPresentRes = m_pSwapChain->Present( ( m_bOccluded || TMSWindow::IsBackgroundMode() || !m_bVSyncEnabled ) ? 0 : 1, m_bOccluded ? DXGI_PRESENT_TEST : 0 );
 		m_bOccluded         = hPresentRes == DXGI_STATUS_OCCLUDED;
 
 		if ( hPresentRes == DXGI_ERROR_DEVICE_REMOVED || hPresentRes == DXGI_ERROR_DEVICE_RESET )
@@ -1413,7 +1427,9 @@ void TRenderD3DInterface::SetTextureAddress( TINT a_iStage, ADDRESSINGMODE a_eAd
 
 void TRenderD3DInterface::ClearRegion( TINT a_iX, TINT a_iY, TINT a_iWidth, TINT a_iHeight, CLEARFLAGS a_eClearFlags, TUINT8 a_uiColorR, TUINT8 a_uiColorG, TUINT8 a_uiColorB, TFLOAT a_fZ, TUINT a_uiStencil )
 {
-	const TBOOL bWholeTarget = a_iX <= 0 && a_iY <= 0 && a_iX + a_iWidth >= TINT( m_uiBackBufferWidth ) && a_iY + a_iHeight >= TINT( m_uiBackBufferHeight );
+	const TUINT32 uiTargetWidth  = GetActiveTargetWidth();
+	const TUINT32 uiTargetHeight = GetActiveTargetHeight();
+	const TBOOL   bWholeTarget   = a_iX <= 0 && a_iY <= 0 && a_iX + a_iWidth >= TINT( uiTargetWidth ) && a_iY + a_iHeight >= TINT( uiTargetHeight );
 
 	if ( a_eClearFlags & CLEARFLAGS_TARGET )
 	{
@@ -1509,15 +1525,73 @@ TBOOL TRenderD3DInterface::Create( const TCHAR* a_szWindowName )
 		uiFlags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
-		HRESULT hRes = D3D11CreateDevice( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, uiFlags, s_aFeatureLevels, TARRAYSIZE( s_aFeatureLevels ), D3D11_SDK_VERSION, &m_pDevice11, TNULL, &m_pDeviceContext );
+		IDXGIAdapter1* pPreferredAdapter = TNULL;
 
-		// No SDK layers installed
-		if ( FAILED( hRes ) && uiFlags != 0 )
-			hRes = D3D11CreateDevice( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, s_aFeatureLevels, TARRAYSIZE( s_aFeatureLevels ), D3D11_SDK_VERSION, &m_pDevice11, TNULL, &m_pDeviceContext );
+		if ( m_bHasPreferredAdapterLuid )
+		{
+			IDXGIFactory1* pFactory = TNULL;
+
+			if ( SUCCEEDED( CreateDXGIFactory1( __uuidof( IDXGIFactory1 ), (void**)&pFactory ) ) )
+			{
+				for ( UINT uiAdapter = 0;; uiAdapter++ )
+				{
+					IDXGIAdapter1* pAdapter = TNULL;
+					const HRESULT hEnumResult = pFactory->EnumAdapters1( uiAdapter, &pAdapter );
+					if ( hEnumResult == DXGI_ERROR_NOT_FOUND )
+						break;
+					if ( FAILED( hEnumResult ) || !pAdapter )
+						break;
+
+					DXGI_ADAPTER_DESC1 oDesc = {};
+					if ( SUCCEEDED( pAdapter->GetDesc1( &oDesc ) ) &&
+					     oDesc.AdapterLuid.LowPart == m_oPreferredAdapterLuid.LowPart &&
+					     oDesc.AdapterLuid.HighPart == m_oPreferredAdapterLuid.HighPart )
+					{
+						pPreferredAdapter = pAdapter;
+						break;
+					}
+
+					pAdapter->Release();
+				}
+
+				pFactory->Release();
+			}
+		}
+
+		const D3D_DRIVER_TYPE eDriverType = pPreferredAdapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE;
+		D3D_FEATURE_LEVEL     eCreatedFL  = D3D_FEATURE_LEVEL_10_0;
+
+		// An OpenXR graphics binding must use the runtime's adapter. Do not silently
+		// create a device on a different GPU when the requested LUID cannot be found.
+		HRESULT hRes = ( !m_bHasPreferredAdapterLuid || pPreferredAdapter )
+		    ? D3D11CreateDevice( pPreferredAdapter, eDriverType, NULL, uiFlags, s_aFeatureLevels, TARRAYSIZE( s_aFeatureLevels ), D3D11_SDK_VERSION, &m_pDevice11, &eCreatedFL, &m_pDeviceContext )
+		    : E_FAIL;
+
+		// No SDK layers installed. Never fall back to the default GPU when OpenXR
+		// supplied a required adapter LUID.
+		if ( FAILED( hRes ) && uiFlags != 0 && ( !m_bHasPreferredAdapterLuid || pPreferredAdapter ) )
+			hRes = D3D11CreateDevice( pPreferredAdapter, eDriverType, NULL, 0, s_aFeatureLevels, TARRAYSIZE( s_aFeatureLevels ), D3D11_SDK_VERSION, &m_pDevice11, &eCreatedFL, &m_pDeviceContext );
 
 		// The Direct3D 11.0 runtime doesn't know 11_1
 		if ( hRes == E_INVALIDARG )
-			hRes = D3D11CreateDevice( NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, s_aFeatureLevels + 1, TARRAYSIZE( s_aFeatureLevels ) - 1, D3D11_SDK_VERSION, &m_pDevice11, TNULL, &m_pDeviceContext );
+			hRes = D3D11CreateDevice( pPreferredAdapter, eDriverType, NULL, 0, s_aFeatureLevels + 1, TARRAYSIZE( s_aFeatureLevels ) - 1, D3D11_SDK_VERSION, &m_pDevice11, &eCreatedFL, &m_pDeviceContext );
+
+		if ( pPreferredAdapter )
+		{
+			pPreferredAdapter->Release();
+			pPreferredAdapter = TNULL;
+		}
+
+		if ( SUCCEEDED( hRes ) && eCreatedFL < m_eMinFeatureLevel )
+		{
+			if ( m_pDeviceContext )
+				m_pDeviceContext->Release();
+			if ( m_pDevice11 )
+				m_pDevice11->Release();
+			m_pDeviceContext = TNULL;
+			m_pDevice11      = TNULL;
+			hRes             = E_FAIL;
+		}
 
 		if ( SUCCEEDED( hRes ) )
 		{
@@ -1657,8 +1731,19 @@ TBOOL TRenderD3DInterface::CreateBackBufferViews()
 
 TBOOL TRenderD3DInterface::CreateDepthTarget( UINT a_uiSampleCount, DEPTHTARGET& a_rTarget )
 {
+	return CreateCustomDepthTarget(
+	    m_uiBackBufferWidth,
+	    m_uiBackBufferHeight,
+	    TD3DAdapter::Mode::Device::DEPTHSTENCILFORMATS[ m_oDisplayParams.eDepthStencilFormat ],
+	    a_uiSampleCount,
+	    a_rTarget
+	);
+}
+
+TBOOL TRenderD3DInterface::CreateCustomDepthTarget( TUINT32 a_uiWidth, TUINT32 a_uiHeight, DXGI_FORMAT a_eDepthFormat, UINT a_uiSampleCount, DEPTHTARGET& a_rTarget )
+{
 	// The texture is typeless so shaders can read it through a view of the matching colour format
-	const DXGI_FORMAT eDepthFormat = TD3DAdapter::Mode::Device::DEPTHSTENCILFORMATS[ m_oDisplayParams.eDepthStencilFormat ];
+	const DXGI_FORMAT eDepthFormat = a_eDepthFormat;
 	DXGI_FORMAT       eTypelessFormat;
 	DXGI_FORMAT       eReadFormat;
 	UINT              uiReadOnlyFlags = D3D11_DSV_READ_ONLY_DEPTH;
@@ -1683,8 +1768,8 @@ TBOOL TRenderD3DInterface::CreateDepthTarget( UINT a_uiSampleCount, DEPTHTARGET&
 	const TBOOL bMultisampled = a_uiSampleCount > 1;
 
 	D3D11_TEXTURE2D_DESC oDepthDesc = {};
-	oDepthDesc.Width                = m_uiBackBufferWidth;
-	oDepthDesc.Height               = m_uiBackBufferHeight;
+	oDepthDesc.Width                = a_uiWidth;
+	oDepthDesc.Height               = a_uiHeight;
 	oDepthDesc.MipLevels            = 1;
 	oDepthDesc.ArraySize            = 1;
 	oDepthDesc.Format               = eTypelessFormat;
@@ -1783,6 +1868,87 @@ void TRenderD3DInterface::EndSceneTarget()
 
 	m_bSceneTargetActive = TFALSE;
 	SetRenderTargets( m_pBackBufferRTView, m_oDepth.pView );
+}
+
+void TRenderD3DInterface::SetPreferredAdapterLuid( const LUID& a_rcAdapterLuid, D3D_FEATURE_LEVEL a_eMinFeatureLevel )
+{
+	m_bHasPreferredAdapterLuid = TTRUE;
+	m_oPreferredAdapterLuid    = a_rcAdapterLuid;
+	m_eMinFeatureLevel         = a_eMinFeatureLevel;
+}
+
+void TRenderD3DInterface::BeginExternalTarget( ID3D11Texture2D* a_pTexture, ID3D11RenderTargetView* a_pRTView, const DEPTHTARGET& a_rcDepth, TUINT32 a_uiWidth, TUINT32 a_uiHeight, TBOOL a_bPremultipliedAlpha )
+{
+	TASSERT( IsInScene() && !m_bSceneTargetActive );
+	FlushShaders();
+
+	m_pExternalTexture            = a_pTexture;
+	m_pExternalRTView             = a_pRTView;
+	m_oExternalDepth              = a_rcDepth;
+	m_uiExternalWidth             = a_uiWidth;
+	m_uiExternalHeight            = a_uiHeight;
+	m_bExternalTargetActive       = TTRUE;
+	m_bExternalPremultipliedAlpha = a_bPremultipliedAlpha;
+
+	SetRenderTargets( m_pExternalRTView, m_oExternalDepth.pView );
+	m_pDeviceContext->OMSetRenderTargets( 1, &m_pExternalRTView, m_oExternalDepth.pView );
+
+	D3D11_VIEWPORT oViewport = {
+		.TopLeftX = 0.0f,
+		.TopLeftY = 0.0f,
+		.Width    = TFLOAT( a_uiWidth ),
+		.Height   = TFLOAT( a_uiHeight ),
+		.MinDepth = 0.0f,
+		.MaxDepth = 1.0f,
+	};
+	m_pDeviceContext->RSSetViewports( 1, &oViewport );
+	InvalidateStateCache();
+}
+
+void TRenderD3DInterface::EndExternalTarget()
+{
+	if ( !m_bExternalTargetActive )
+		return;
+
+	FlushShaders();
+
+	m_pExternalTexture            = TNULL;
+	m_pExternalRTView             = TNULL;
+	m_oExternalDepth              = {};
+	m_uiExternalWidth             = 0;
+	m_uiExternalHeight            = 0;
+	m_bExternalTargetActive       = TFALSE;
+	m_bExternalPremultipliedAlpha = TFALSE;
+
+	SetRenderTargets( m_pBackBufferRTView, m_oDepth.pView );
+	ID3D11RenderTargetView* pBackBufferRTView = m_pBackBufferRTView;
+	m_pDeviceContext->OMSetRenderTargets( 1, &pBackBufferRTView, m_oDepth.pView );
+
+	D3D11_VIEWPORT oViewport = {
+		.TopLeftX = 0.0f,
+		.TopLeftY = 0.0f,
+		.Width    = TFLOAT( m_uiBackBufferWidth ),
+		.Height   = TFLOAT( m_uiBackBufferHeight ),
+		.MinDepth = 0.0f,
+		.MaxDepth = 1.0f,
+	};
+	m_pDeviceContext->RSSetViewports( 1, &oViewport );
+	InvalidateStateCache();
+}
+
+void TRenderD3DInterface::ClearCurrentTargetRGBA( TFLOAT a_fR, TFLOAT a_fG, TFLOAT a_fB, TFLOAT a_fA, TBOOL a_bClearDepth, TFLOAT a_fDepth )
+{
+	if ( ID3D11RenderTargetView* pRTView = GetRenderTargetView() )
+	{
+		const FLOAT aColour[ 4 ] = { a_fR, a_fG, a_fB, a_fA };
+		m_pDeviceContext->ClearRenderTargetView( pRTView, aColour );
+	}
+
+	if ( a_bClearDepth )
+	{
+		if ( ID3D11DepthStencilView* pDSView = GetDepthStencilView() )
+			m_pDeviceContext->ClearDepthStencilView( pDSView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, a_fDepth, 0 );
+	}
 }
 
 TBOOL TRenderD3DInterface::CreateSceneTarget()
@@ -3101,31 +3267,51 @@ void TRenderD3DInterface::UpdateRenderStates()
 		m_CurrentBlendState.Parts.DestBlend    = D3D11_BLEND_ZERO;
 	}
 
-	if ( m_CurrentBlendState.uiRaw != m_PreviousBlendState.uiRaw || TUtil::MemCompare( m_aCurrentBlendFactor, m_aPreviousBlendFactor, sizeof( m_aCurrentBlendFactor ) ) != 0 )
+	BLENDSTATE oEffectiveBlend = m_CurrentBlendState;
+
+	if ( m_bExternalPremultipliedAlpha && oEffectiveBlend.Parts.bBlendEnable &&
+	     oEffectiveBlend.Parts.BlendOp == D3D11_BLEND_OP_ADD &&
+	     oEffectiveBlend.Parts.SrcBlend == D3D11_BLEND_SRC_ALPHA )
+	{
+		if ( oEffectiveBlend.Parts.DestBlend == D3D11_BLEND_INV_SRC_ALPHA )
+		{
+			oEffectiveBlend.Parts.SrcBlendAlpha  = D3D11_BLEND_ONE;
+			oEffectiveBlend.Parts.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+			oEffectiveBlend.Parts.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
+		}
+		else if ( oEffectiveBlend.Parts.DestBlend == D3D11_BLEND_ONE )
+		{
+			oEffectiveBlend.Parts.SrcBlendAlpha  = D3D11_BLEND_ZERO;
+			oEffectiveBlend.Parts.DestBlendAlpha = D3D11_BLEND_ONE;
+			oEffectiveBlend.Parts.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
+		}
+	}
+
+	if ( oEffectiveBlend.uiRaw != m_PreviousBlendState.uiRaw || TUtil::MemCompare( m_aCurrentBlendFactor, m_aPreviousBlendFactor, sizeof( m_aCurrentBlendFactor ) ) != 0 )
 	{
 		ID3D11BlendState* pState = TNULL;
-		auto              it     = m_BlendStates.Find( m_CurrentBlendState.uiRaw );
+		auto              it     = m_BlendStates.Find( oEffectiveBlend.uiRaw );
 
 		if ( it == m_BlendStates.End() )
 		{
-			const auto& rParts = m_CurrentBlendState.Parts;
+			const auto& rParts = oEffectiveBlend.Parts;
 
-			D3D11_BLEND_DESC oDesc                      = {};
-			oDesc.AlphaToCoverageEnable                 = FALSE;
-			oDesc.IndependentBlendEnable                = FALSE;
-			oDesc.RenderTarget[ 0 ].BlendEnable         = rParts.bBlendEnable;
-			oDesc.RenderTarget[ 0 ].SrcBlend            = D3D11_BLEND( rParts.SrcBlend );
-			oDesc.RenderTarget[ 0 ].DestBlend           = D3D11_BLEND( rParts.DestBlend );
-			oDesc.RenderTarget[ 0 ].BlendOp             = D3D11_BLEND_OP( rParts.BlendOp );
-			oDesc.RenderTarget[ 0 ].SrcBlendAlpha       = D3D11_BLEND( rParts.SrcBlendAlpha );
-			oDesc.RenderTarget[ 0 ].DestBlendAlpha      = D3D11_BLEND( rParts.DestBlendAlpha );
-			oDesc.RenderTarget[ 0 ].BlendOpAlpha        = D3D11_BLEND_OP( rParts.BlendOpAlpha );
+			D3D11_BLEND_DESC oDesc                        = {};
+			oDesc.AlphaToCoverageEnable                   = FALSE;
+			oDesc.IndependentBlendEnable                  = FALSE;
+			oDesc.RenderTarget[ 0 ].BlendEnable           = rParts.bBlendEnable;
+			oDesc.RenderTarget[ 0 ].SrcBlend              = D3D11_BLEND( rParts.SrcBlend );
+			oDesc.RenderTarget[ 0 ].DestBlend             = D3D11_BLEND( rParts.DestBlend );
+			oDesc.RenderTarget[ 0 ].BlendOp               = D3D11_BLEND_OP( rParts.BlendOp );
+			oDesc.RenderTarget[ 0 ].SrcBlendAlpha         = D3D11_BLEND( rParts.SrcBlendAlpha );
+			oDesc.RenderTarget[ 0 ].DestBlendAlpha        = D3D11_BLEND( rParts.DestBlendAlpha );
+			oDesc.RenderTarget[ 0 ].BlendOpAlpha          = D3D11_BLEND_OP( rParts.BlendOpAlpha );
 			oDesc.RenderTarget[ 0 ].RenderTargetWriteMask = TUINT8( rParts.RenderTargetWriteMask );
 
 			HRESULT hRes = m_pDevice11->CreateBlendState( &oDesc, &pState );
 			TASSERT( SUCCEEDED( hRes ) );
 
-			m_BlendStates.Insert( m_CurrentBlendState.uiRaw, pState );
+			m_BlendStates.Insert( oEffectiveBlend.uiRaw, pState );
 		}
 		else
 		{
@@ -3133,7 +3319,7 @@ void TRenderD3DInterface::UpdateRenderStates()
 		}
 
 		m_pDeviceContext->OMSetBlendState( pState, m_aCurrentBlendFactor, 0xFFFFFFFF );
-		m_PreviousBlendState = m_CurrentBlendState;
+		m_PreviousBlendState = oEffectiveBlend;
 		TUtil::MemCopy( m_aPreviousBlendFactor, m_aCurrentBlendFactor, sizeof( m_aPreviousBlendFactor ) );
 	}
 }

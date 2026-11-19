@@ -26,6 +26,7 @@ IncludeDir.openbarnyard = OpenBarnyardDir .. "/OpenBarnyard/Source"
 IncludeDir.tracy = OpenBarnyardDir .. "/Utils/TracyProfiler/Source"
 IncludeDir.curl = OpenBarnyardDir .. "/Toshi/Vendor/curl/include"
 IncludeDir.minhook = OpenBarnyardDir .. "/Toshi/Vendor/minhook/include"
+IncludeDir.openxr = OpenBarnyardDir .. "/Toshi/Vendor/openxr/include"
 IncludeDir.imgui = OpenBarnyardDir .. "/Toshi/Vendor/imgui"
 IncludeDir.directxtex = OpenBarnyardDir .. "/Toshi/Vendor/DirectXTex"
 
