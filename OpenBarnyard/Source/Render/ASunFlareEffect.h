@@ -7,8 +7,7 @@
 #include <Math/TVector4.h>
 
 //-----------------------------------------------------------------------------
-// Draws the sun (with its lens flare) and the moon.
-// Flat-screen rendering uses screen-space quads; DX11/OpenXR uses view-space billboards.
+// Draws the sun (with its lens flare) and the moon as screen space quads.
 // Created by ARenderer::OnCreate and drawn by ARenderer::RenderMainScene.
 // AGameTimeFX::Apply sets the directions and intensities, in the main game the
 // sun direction follows the time of the day instead.
@@ -48,8 +47,7 @@ public:
 	void SetUseTime( TBOOL a_bUseTime ) { m_bUseTime = a_bUseTime; }
 
 private:
-	// Updates the sun/time/visibility and rebuilds meshes for the active view.
-	// VR billboards are fixed-depth view-space meshes; flat-screen meshes stay screen-space.
+	// Updates the sun/time/visibility and rebuilds screen-space meshes for the active eye.
 	// a_bAdvanceState is false on subsequent stereo eyes so frame timers only advance once.
 	void Update( TBOOL a_bAdvanceState );
 
