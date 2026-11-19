@@ -35,28 +35,86 @@ static TBOOL IsVRViewRendering()
 	return rVRManager.GetCurrentEye() < rVRManager.GetViewCount();
 }
 
-// Derive the sprite axes from world-up at the eye's optical axis. This lets
-// head roll rotate the sky in the display while yaw/pitch only move its center.
-static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOutUp, TRenderContext* a_pContext )
+// Project the world-locked tangent frame at the celestial direction through the
+// active eye's perspective. The returned axes include the local projection scale
+// (normalized to their on-axis angular scale), so sprites retain angular size as
+// they move toward the edge without non-linear per-vertex/angular projection.
+static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOutUp, TRenderContext* a_pContext, const TVector4& a_rcWorldDirection )
 {
-	TVector4 vecViewUp;
-	TMatrix44::RotateVector( vecViewUp, a_pContext->GetWorldViewMatrix(), TVector4( 0.0f, -1.0f, 0.0f, 0.0f ) );
+	TVector3 vecDirection( a_rcWorldDirection.x, a_rcWorldDirection.y, a_rcWorldDirection.z );
+	if ( vecDirection.MagnitudeSq() < 1.0e-8f )
+		return TFALSE;
+	vecDirection.Normalize();
 
-	const TRenderContext::PROJECTIONPARAMS& rcProjection = a_pContext->GetProjectionParams();
-	a_rOutUp.Set( rcProjection.m_Proj.x * vecViewUp.x, rcProjection.m_Proj.y * vecViewUp.y );
+	// Barnyard's positive Y axis points down, so negative Y is world-up.
+	TVector3 vecUp( 0.0f, -1.0f, 0.0f );
+	TFLOAT   fUpDot = TVector3::DotProduct( vecUp, vecDirection );
+	vecUp.x -= vecDirection.x * fUpDot;
+	vecUp.y -= vecDirection.y * fUpDot;
+	vecUp.z -= vecDirection.z * fUpDot;
 
-	if ( a_rOutUp.MagnitudeSq() < 1.0e-6f )
+	// World-up is singular at the zenith/nadir; use a stable world-forward axis.
+	if ( vecUp.MagnitudeSq() < 1.0e-4f )
 	{
-		// Looking straight along world-up makes that axis singular; use world-forward.
-		TMatrix44::RotateVector( vecViewUp, a_pContext->GetWorldViewMatrix(), TVector4( 0.0f, 0.0f, 1.0f, 0.0f ) );
-		a_rOutUp.Set( rcProjection.m_Proj.x * vecViewUp.x, rcProjection.m_Proj.y * vecViewUp.y );
+		vecUp.Set( 0.0f, 0.0f, 1.0f );
+		fUpDot = TVector3::DotProduct( vecUp, vecDirection );
+		vecUp.x -= vecDirection.x * fUpDot;
+		vecUp.y -= vecDirection.y * fUpDot;
+		vecUp.z -= vecDirection.z * fUpDot;
 	}
+	vecUp.Normalize();
 
-	if ( a_rOutUp.MagnitudeSq() < 1.0e-6f )
+	TVector3 vecRight;
+	vecRight.CrossProduct( vecDirection, vecUp );
+	vecRight.Normalize();
+
+	TVector4 vecViewDirection;
+	TVector4 vecViewRight;
+	TVector4 vecViewUp;
+	TMatrix44::RotateVector(
+	    vecViewDirection,
+	    a_pContext->GetWorldViewMatrix(),
+	    TVector4( vecDirection.x, vecDirection.y, vecDirection.z, 0.0f )
+	);
+	TMatrix44::RotateVector(
+	    vecViewRight,
+	    a_pContext->GetWorldViewMatrix(),
+	    TVector4( vecRight.x, vecRight.y, vecRight.z, 0.0f )
+	);
+	TMatrix44::RotateVector(
+	    vecViewUp,
+	    a_pContext->GetWorldViewMatrix(),
+	    TVector4( vecUp.x, vecUp.y, vecUp.z, 0.0f )
+	);
+
+	if ( vecViewDirection.z <= 1.0e-4f )
 		return TFALSE;
 
-	a_rOutUp.Normalize();
-	a_rOutRight.Set( -a_rOutUp.y, a_rOutUp.x );
+	const TFLOAT fInvZSq = 1.0f / ( vecViewDirection.z * vecViewDirection.z );
+	const TRenderContext::PROJECTIONPARAMS& rcProjection = a_pContext->GetProjectionParams();
+
+	// The gnomonic-projection Jacobian gives the angular footprint at this ray.
+	// Its magnitude is independent of display pixel aspect, so head roll changes
+	// orientation but cannot change the sprite's center-screen size.
+	const TFLOAT fRightX = ( vecViewRight.x * vecViewDirection.z - vecViewDirection.x * vecViewRight.z ) * fInvZSq;
+	const TFLOAT fRightY = ( vecViewRight.y * vecViewDirection.z - vecViewDirection.y * vecViewRight.z ) * fInvZSq;
+	const TFLOAT fUpX    = ( vecViewUp.x * vecViewDirection.z - vecViewDirection.x * vecViewUp.z ) * fInvZSq;
+	const TFLOAT fUpY    = ( vecViewUp.y * vecViewDirection.z - vecViewDirection.y * vecViewUp.z ) * fInvZSq;
+	const TFLOAT fRightScale = TMath::Sqrt( fRightX * fRightX + fRightY * fRightY );
+	const TFLOAT fUpScale    = TMath::Sqrt( fUpX * fUpX + fUpY * fUpY );
+
+	if ( fRightScale < 1.0e-6f || fUpScale < 1.0e-6f )
+		return TFALSE;
+
+	// Use the projected world-right direction for texture orientation, but keep a
+	// rectangular sprite. The local angular scale above corrects off-axis shrink.
+	a_rOutRight.Set( rcProjection.m_Proj.x * fRightX, rcProjection.m_Proj.y * fRightY );
+	if ( a_rOutRight.MagnitudeSq() < 1.0e-6f )
+		return TFALSE;
+	a_rOutRight.Normalize();
+	a_rOutUp.Set( a_rOutRight.y, -a_rOutRight.x );
+	a_rOutRight.Multiply( fRightScale );
+	a_rOutUp.Multiply( fUpScale );
 	return TTRUE;
 }
 #endif
@@ -473,8 +531,8 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 #if defined( TRENDERINTERFACE_DX11 )
 		if ( IsVRViewRendering() )
 		{
-			// The flat-screen sizing varies with distance from screen center. In VR,
-			// keep the center-screen size fixed as the head moves the sun toward an edge.
+			// Calibrate the VR sprite size at screen center. Its local tangent basis
+			// applies the active eye's off-axis scale below.
 			fSize = TMath::LERP( fMoonSize, fSunSize, 0.2f );
 		}
 		else
@@ -509,7 +567,8 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 	if ( IsVRViewRendering() )
 	{
 		TRenderContext* pContext = TRenderInterface::GetSingleton()->GetCurrentContext();
-		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext );
+		const TVector4& vecWorldDirection = a_bMoon ? m_vecMoonDir : m_vecSunDir;
+		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext, vecWorldDirection );
 	}
 #endif
 
@@ -590,12 +649,20 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 		    TINT( pDisplayParams->uiWidth ) * m_fSunSize,
 		    0.2f
 		);
-		const TFLOAT fInnerRadius = fSunSize * 0.9f;
-		const TFLOAT fOuterRadius = fSunSize * 1.35f;
-
 		TVector2 vecRight( 1.0f, 0.0f );
 		TVector2 vecUp( 0.0f, -1.0f );
-		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext );
+		TFLOAT   fFlareScale = 1.0f;
+		if ( GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext, m_vecSunDir ) )
+		{
+			// Keep the corona radial: apply the geometric-mean angular scale
+			// uniformly, then use only the world-locked orientation axes.
+			fFlareScale = TMath::Sqrt( vecRight.Magnitude() * vecUp.Magnitude() );
+			vecRight.Normalize();
+			vecUp.Normalize();
+		}
+
+		const TFLOAT fInnerRadius = fSunSize * 0.9f * fFlareScale;
+		const TFLOAT fOuterRadius = fSunSize * 1.35f * fFlareScale;
 
 		TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
 		TINT       iNumVerts = 0;
