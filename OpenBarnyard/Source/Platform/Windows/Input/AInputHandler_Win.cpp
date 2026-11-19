@@ -13,6 +13,10 @@
 #  include <Platform/Windows/Input/TInputDeviceController_Win.h>
 #  include <Platform/Windows/Input/TInputDeviceController_XInput.h>
 #  include <Platform/Windows/Input/TInputDeviceMouse_Win.h>
+#  ifdef TRENDERINTERFACE_DX11
+#    include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
+#    include "VR/AVRManager.h"
+#  endif
 #elif defined( TOSHI_SKU_WASM )
 #  include <Platform/WASM/Input/TInputDeviceController_WASM.h>
 #endif
@@ -92,6 +96,18 @@ TBOOL AInputHandler::OnCreate()
 #  endif
 				m_Devices.PushBack( it );
 		}
+
+#  ifdef TRENDERINTERFACE_DX11
+		if ( AVRManager::GetSingleton().HasControllerInput() )
+		{
+			auto pOpenXRController = new TInputOpenXRDeviceController();
+			if ( pOpenXRController )
+			{
+				pInputInterface->AddDevice( pOpenXRController );
+				m_Devices.PushBack( pOpenXRController );
+			}
+		}
+#  endif
 	}
 #endif
 
@@ -338,16 +354,19 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 		}
 	}
 
-	if ( m_pMainController == TNULL )
+	if ( m_pMainController == TNULL && pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
 	{
-		if ( pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
+		TBOOL bControllerActivity = a_pEvent->GetEventType() == Toshi::TInputInterface::EVENT_TYPE_GONE_DOWN;
+		if ( !bControllerActivity && a_pEvent->GetEventType() == Toshi::TInputInterface::EVENT_TYPE_VIRTUAL && a_pEvent->GetAxisCount() >= 2 )
 		{
-			if ( a_pEvent->GetEventType() == Toshi::TInputInterface::EVENT_TYPE_GONE_DOWN &&
-			     pInputSource == m_Devices[ 0 ] )
-			{
-				m_pMainController = TSTATICCAST( TInputDeviceController, pInputSource );
-			}
+			const TFLOAT fStickMagnitude = TMath::Abs( a_pEvent->GetMagnitudeFloat( 0 ) ) + TMath::Abs( a_pEvent->GetMagnitudeFloat( 1 ) );
+			bControllerActivity = fStickMagnitude >= 0.1f;
 		}
+
+		// Any controller can become the primary pad once it is actually used. This
+		// also lets analog-only OpenXR movement claim the same controller slot.
+		if ( bControllerActivity )
+			m_pMainController = TSTATICCAST( TInputDeviceController, pInputSource );
 	}
 
 

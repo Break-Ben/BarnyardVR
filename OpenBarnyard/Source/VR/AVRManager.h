@@ -16,7 +16,43 @@ class TViewport;
 class AVRManager
 {
 public:
+	struct ControllerInputState
+	{
+		TFLOAT fLeftStickX = 0.0f;
+		TFLOAT fLeftStickY = 0.0f;
+		TFLOAT fRightStickX = 0.0f;
+		TFLOAT fRightStickY = 0.0f;
+		TUINT32 uiButtonMask = 0;
+	};
+
+	enum ControllerButton : TUINT32
+	{
+		CONTROLLER_BUTTON_DPAD_UP          = 1u << 0,
+		CONTROLLER_BUTTON_DPAD_RIGHT       = 1u << 1,
+		CONTROLLER_BUTTON_DPAD_DOWN        = 1u << 2,
+		CONTROLLER_BUTTON_DPAD_LEFT        = 1u << 3,
+		CONTROLLER_BUTTON_SELECT           = 1u << 4,
+		CONTROLLER_BUTTON_START            = 1u << 5,
+		CONTROLLER_BUTTON_STICK_LEFT       = 1u << 6,
+		CONTROLLER_BUTTON_STICK_RIGHT      = 1u << 7,
+		CONTROLLER_BUTTON_CONTEXT_1        = 1u << 8,
+		CONTROLLER_BUTTON_CONTEXT_2        = 1u << 9,
+		CONTROLLER_BUTTON_CONTEXT_3        = 1u << 10,
+		CONTROLLER_BUTTON_CONTEXT_4        = 1u << 11,
+		CONTROLLER_BUTTON_SHOULDER_LEFT_1  = 1u << 12,
+		CONTROLLER_BUTTON_SHOULDER_LEFT_2  = 1u << 13,
+		CONTROLLER_BUTTON_SHOULDER_RIGHT_1 = 1u << 14,
+		CONTROLLER_BUTTON_SHOULDER_RIGHT_2 = 1u << 15,
+	};
+
+public:
 	static AVRManager& GetSingleton();
+
+	// The OpenXR action set is created with the instance and attached to every session.
+	// The game input device reads this frame's action state through the usual Toshi
+	// controller interface.
+	TBOOL HasControllerInput() const;
+	TBOOL GetControllerInputState( ControllerInputState& a_rState ) const;
 
 	// Prepare is called before the DX11 device is created so the runtime's required
 	// adapter LUID can be used during device selection.
