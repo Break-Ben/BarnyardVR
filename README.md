@@ -2,13 +2,7 @@
 
 [OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard) | [API Docs](https://opentoshi.net/OpenBarnyard/docs/) | [OpenJPOG](https://github.com/AdventureT/OpenJPOG) | [Modifications](https://www.youtube.com/@infc0re) | [Discord](https://discord.gg/j7vbsNP4my)
 
-BarnyardVR is a community project based heavily on [OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard), a decompilation of Barnyard the video game (for Windows) and the proprietary TOSHI 2.0 game engine developed by Blue Tongue Entertainment.
-
-## OpenBarnyard Status
-
-The progress graphic below tracks the OpenBarnyard decompilation.
-
-<img src="https://opentoshi.net/progress/Barnyard.svg" width="100%"/>
+BarnyardVR is a community port of the video game Barnyard into VR with OpenXR, based heavily on [OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard).
 
 ## Notes
 
