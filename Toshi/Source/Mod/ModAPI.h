@@ -11,7 +11,7 @@
 //-----------------------------------------------------------------------------
 
 // Define one of these per project in premake:
-//   MODAPI_HOST - OpenBarnyard.exe and the Toshi it links (exports symbols)
+//   MODAPI_HOST - BarnyardVR.exe and the Toshi it links (exports symbols)
 //   MODAPI_MOD  - mod DLLs (imports symbols from the exe)
 #  if defined( MODAPI_HOST ) && defined( MODAPI_MOD )
 #	error "MODAPI_HOST and MODAPI_MOD are mutually exclusive"
