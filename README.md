@@ -32,7 +32,7 @@ Clone the repository with the following commands:
 	git clone https://github.com/InfiniteC0re/OpenBarnyard.git
 	cd OpenBarnyard
 	git submodule update --init --recursive
-	./GenerateProjects-WIN-DX8-VS2026.bat
+	./GenerateProjects-WIN-DX11-VS2026.bat
 
 Then open the generated solution file with Visual Studio and build it!
 

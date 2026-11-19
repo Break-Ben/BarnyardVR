@@ -52,9 +52,8 @@ static bool IsCommandLineOption( const char* a_szCommandLine, const char* a_szOp
 	return false;
 }
 
-static TFLOAT ParseVRScale( const char* a_szCommandLine, TBOOL& a_rbWasOverridden )
+static TFLOAT ParseVRScale( const char* a_szCommandLine )
 {
-	a_rbWasOverridden = TFALSE;
 	if ( !a_szCommandLine )
 		return 1.0f;
 
@@ -73,7 +72,6 @@ static TFLOAT ParseVRScale( const char* a_szCommandLine, TBOOL& a_rbWasOverridde
 	if ( pEnd == pOption || !std::isfinite( fScale ) || fScale <= 0.0f )
 		return 1.0f;
 
-	a_rbWasOverridden = TTRUE;
 	return std::max( 0.25f, std::min( fScale, 2.0f ) );
 }
 
@@ -276,7 +274,6 @@ struct AVRManager::Impl
 	};
 
 	Toshi::TRenderInterface* pRenderer = TNULL;
-	TBOOL bEnabled = TTRUE;
 	TBOOL bPrepared = TFALSE;
 	TBOOL bGraphicsReady = TFALSE;
 	TBOOL bSessionRunning = TFALSE;
@@ -293,7 +290,6 @@ struct AVRManager::Impl
 	TBOOL bExitRequested = TFALSE;
 	TBOOL bRuntimeLost = TFALSE;
 	TBOOL bDeviceLost = TFALSE;
-	TBOOL bScaleOverridden = TFALSE;
 	TBOOL bColorCorrectionAvailable = TFALSE;
 	TBOOL bHasMirrorFrame = TFALSE;
 	TUINT32 uiCompletedEyeMask = 0;
@@ -305,7 +301,6 @@ struct AVRManager::Impl
 	XrSystemId hSystem = XR_NULL_SYSTEM_ID;
 	XrSession hSession = XR_NULL_HANDLE;
 	XrSpace hLocalSpace = XR_NULL_HANDLE;
-	XrSessionState eSessionState = XR_SESSION_STATE_UNKNOWN;
 	XrEnvironmentBlendMode eBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	XrFrameState oFrameState = { XR_TYPE_FRAME_STATE };
 	XrViewState oViewState = { XR_TYPE_VIEW_STATE };
@@ -746,12 +741,9 @@ TBOOL AVRManager::Prepare( Toshi::TRenderInterface* a_pRenderer )
 	rImpl.pRenderer = a_pRenderer;
 	const char* szCommandLine = GetCommandLineA();
 	if ( IsCommandLineOption( szCommandLine, "-novr" ) )
-	{
-		rImpl.bEnabled = TFALSE;
 		return TFALSE;
-	}
 
-	rImpl.fVRScale = ParseVRScale( szCommandLine, rImpl.bScaleOverridden );
+	rImpl.fVRScale = ParseVRScale( szCommandLine );
 
 	uint32_t uiExtensionCount = 0;
 	if ( XR_FAILED( xrEnumerateInstanceExtensionProperties( TNULL, 0, &uiExtensionCount, TNULL ) ) || uiExtensionCount == 0 )
@@ -837,8 +829,9 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	}
 	if ( a_rImpl.hSession != XR_NULL_HANDLE )
 	{
-		if ( a_rImpl.bSessionRunning )
-			(void)xrEndSession( a_rImpl.hSession );
+		// xrEndSession is only valid after the runtime reports STOPPING. Teardown
+		// can also happen during device loss or app shutdown, so destroy the
+		// session directly rather than issuing an invalid state-dependent call.
 		xrDestroySession( a_rImpl.hSession );
 		a_rImpl.hSession = XR_NULL_HANDLE;
 	}
@@ -935,10 +928,11 @@ static TBOOL CreateSessionAndTargets( AVRManager::Impl& a_rImpl )
 
 	for ( TUINT32 i = 0; i < kEyeCount; i++ )
 	{
-		TUINT32 uiWidth  = TUINT32( std::lround( a_rImpl.aConfigurationViews[ i ].recommendedImageRectWidth * a_rImpl.fVRScale ) );
-		TUINT32 uiHeight = TUINT32( std::lround( a_rImpl.aConfigurationViews[ i ].recommendedImageRectHeight * a_rImpl.fVRScale ) );
-		uiWidth  = std::max( uiWidth, 1u );
-		uiHeight = std::max( uiHeight, 1u );
+		const XrViewConfigurationView& rViewConfig = a_rImpl.aConfigurationViews[ i ];
+		TUINT32 uiWidth  = TUINT32( std::lround( rViewConfig.recommendedImageRectWidth * a_rImpl.fVRScale ) );
+		TUINT32 uiHeight = TUINT32( std::lround( rViewConfig.recommendedImageRectHeight * a_rImpl.fVRScale ) );
+		uiWidth  = std::min( std::max( uiWidth, 1u ), std::max( rViewConfig.maxImageRectWidth, 1u ) );
+		uiHeight = std::min( std::max( uiHeight, 1u ), std::max( rViewConfig.maxImageRectHeight, 1u ) );
 		if ( !CreateTarget( a_rImpl, a_rImpl.aEyes[ i ], uiWidth, uiHeight ) )
 		{
 			DestroySessionTargets( a_rImpl );
@@ -1005,6 +999,13 @@ static void SetVSyncAndKeepRunning( AVRManager::Impl& a_rImpl, TBOOL a_bEnabled 
 #endif
 }
 
+static void MarkRuntimeLost( AVRManager::Impl& a_rImpl )
+{
+	a_rImpl.bRuntimeLost = TTRUE;
+	a_rImpl.bSessionRunning = TFALSE;
+	SetVSyncAndKeepRunning( a_rImpl, TFALSE );
+}
+
 static void PollEvents( AVRManager::Impl& a_rImpl )
 {
 	XrEventDataBuffer oEvent = { XR_TYPE_EVENT_DATA_BUFFER };
@@ -1015,9 +1016,7 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 			break;
 		if ( XR_FAILED( ePollResult ) )
 		{
-			a_rImpl.bRuntimeLost = TTRUE;
-			a_rImpl.bSessionRunning = TFALSE;
-			SetVSyncAndKeepRunning( a_rImpl, TFALSE );
+			MarkRuntimeLost( a_rImpl );
 			break;
 		}
 
@@ -1026,11 +1025,18 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 			case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED:
 			{
 				const auto* pStateEvent = reinterpret_cast<const XrEventDataSessionStateChanged*>( &oEvent );
-				a_rImpl.eSessionState = pStateEvent->state;
+				// Session state events can remain queued while a device reset tears
+				// down and recreates the session on the same OpenXR instance.
+				if ( pStateEvent->session != a_rImpl.hSession )
+					break;
+
 				switch ( pStateEvent->state )
 				{
 					case XR_SESSION_STATE_READY:
 					{
+						if ( a_rImpl.bRuntimeLost || a_rImpl.bExitRequested )
+							break;
+
 						XrSessionBeginInfo oBeginInfo = { XR_TYPE_SESSION_BEGIN_INFO };
 						oBeginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
 						if ( XR_SUCCEEDED( xrBeginSession( a_rImpl.hSession, &oBeginInfo ) ) )
@@ -1038,32 +1044,47 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 							a_rImpl.bSessionRunning = TTRUE;
 							SetVSyncAndKeepRunning( a_rImpl, TTRUE );
 						}
+						else
+						{
+							MarkRuntimeLost( a_rImpl );
+						}
 						break;
 					}
 					case XR_SESSION_STATE_STOPPING:
-						if ( a_rImpl.bSessionRunning )
-							(void)xrEndSession( a_rImpl.hSession );
+					{
+						// xrEndSession is valid only in STOPPING, and the event remains
+						// authoritative even if a preceding frame call failed.
+						const XrResult eEndResult = xrEndSession( a_rImpl.hSession );
 						a_rImpl.bSessionRunning = TFALSE;
-						SetVSyncAndKeepRunning( a_rImpl, TFALSE );
+						if ( XR_FAILED( eEndResult ) )
+							MarkRuntimeLost( a_rImpl );
+						else
+							SetVSyncAndKeepRunning( a_rImpl, TFALSE );
 						break;
+					}
 					case XR_SESSION_STATE_EXITING:
 						a_rImpl.bExitRequested = TTRUE;
 						a_rImpl.bSessionRunning = TFALSE;
 						SetVSyncAndKeepRunning( a_rImpl, TFALSE );
 						break;
 					case XR_SESSION_STATE_LOSS_PENDING:
-						a_rImpl.bRuntimeLost = TTRUE;
-						a_rImpl.bSessionRunning = TFALSE;
-						SetVSyncAndKeepRunning( a_rImpl, TFALSE );
+						MarkRuntimeLost( a_rImpl );
 						break;
 					default:
 						break;
 				}
 				break;
 			}
-			case XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING:
-				a_rImpl.bRecenterPending = TTRUE;
+			case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
+				MarkRuntimeLost( a_rImpl );
 				break;
+			case XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING:
+			{
+				const auto* pSpaceEvent = reinterpret_cast<const XrEventDataReferenceSpaceChangePending*>( &oEvent );
+				if ( pSpaceEvent->session == a_rImpl.hSession )
+					a_rImpl.bRecenterPending = TTRUE;
+				break;
+			}
 			default:
 				break;
 		}
@@ -1094,11 +1115,17 @@ TBOOL AVRManager::BeginFrame()
 	XrFrameWaitInfo oWaitInfo = { XR_TYPE_FRAME_WAIT_INFO };
 	rImpl.oFrameState = { XR_TYPE_FRAME_STATE };
 	if ( XR_FAILED( xrWaitFrame( rImpl.hSession, &oWaitInfo, &rImpl.oFrameState ) ) )
+	{
+		MarkRuntimeLost( rImpl );
 		return TFALSE;
+	}
 
 	XrFrameBeginInfo oBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
 	if ( XR_FAILED( xrBeginFrame( rImpl.hSession, &oBeginInfo ) ) )
+	{
+		MarkRuntimeLost( rImpl );
 		return TFALSE;
+	}
 	rImpl.bFrameBegun = TTRUE;
 	rImpl.bShouldRender = rImpl.oFrameState.shouldRender;
 	rImpl.bViewsValid = TFALSE;
@@ -1514,8 +1541,10 @@ void AVRManager::EndFrame()
 	oEndInfo.environmentBlendMode = rImpl.eBlendMode;
 	oEndInfo.layerCount = uiLayerCount;
 	oEndInfo.layers = uiLayerCount ? aLayers : TNULL;
-	(void)xrEndFrame( rImpl.hSession, &oEndInfo );
+	const XrResult eEndResult = xrEndFrame( rImpl.hSession, &oEndInfo );
 	rImpl.bFrameBegun = TFALSE;
+	if ( XR_FAILED( eEndResult ) && !rImpl.bDeviceLost )
+		MarkRuntimeLost( rImpl );
 
 }
 
@@ -1596,7 +1625,6 @@ void AVRManager::Shutdown()
 	rImpl.hSystem = XR_NULL_SYSTEM_ID;
 	rImpl.pRenderer = TNULL;
 	rImpl.bPrepared = TFALSE;
-	rImpl.bEnabled = TTRUE;
 	rImpl.bExitRequested = TFALSE;
 	rImpl.bRuntimeLost = TFALSE;
 	rImpl.bDeviceLost = TFALSE;
@@ -1606,7 +1634,6 @@ void AVRManager::Shutdown()
 
 struct AVRManager::Impl
 {
-	TBOOL bEnabled = TFALSE;
 };
 
 AVRManager::AVRManager()
