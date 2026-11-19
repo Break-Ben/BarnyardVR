@@ -47,8 +47,9 @@ public:
 	void SetUseTime( TBOOL a_bUseTime ) { m_bUseTime = a_bUseTime; }
 
 private:
-	// Moves the sun with the time of the day, updates the visibility and fills the meshes
-	void Update();
+	// Updates the sun/time/visibility and rebuilds screen-space meshes for the active eye.
+	// a_bAdvanceState is false on subsequent stereo eyes so frame timers only advance once.
+	void Update( TBOOL a_bAdvanceState );
 
 	// Projects a_rcDirection to the screen, returns TFALSE if it's behind the camera or too far off the screen.
 	// a_pOutVisible receives TFALSE if a_bCollide is set and the ray to the sun hits something.

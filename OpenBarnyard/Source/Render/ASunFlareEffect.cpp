@@ -28,6 +28,14 @@ TOSHI_NAMESPACE_USING
 // DAT_0079b32c: offset of the inner points of the flare towards the sun, never written so it's always 0
 static TFLOAT s_fFlareOffset = 0.0f;
 
+#if defined( TRENDERINTERFACE_DX11 )
+static TBOOL IsVRViewRendering()
+{
+	AVRManager& rVRManager = AVRManager::GetSingleton();
+	return rVRManager.GetCurrentEye() < rVRManager.GetViewCount();
+}
+#endif
+
 // $Barnyard: FUNCTION 0060edd0
 ASunFlareEffect::ASunFlareEffect()
 {
@@ -176,11 +184,10 @@ void ASunFlareEffect::Render()
 	oScreenProjParams.m_fFarClip  = 200.0f;
 
 #if defined( TRENDERINTERFACE_DX11 )
-	// Rendering is invoked once per eye; advance the flare state only for the first eye.
-	if ( AVRManager::GetSingleton().GetCurrentEye() != 1 )
-		Update();
+	// Project through each eye's frustum, but advance shared fade/glow state once.
+	Update( AVRManager::GetSingleton().GetCurrentEye() != 1 );
 #else
-	Update();
+	Update( TTRUE );
 #endif
 
 	TMatrix44 oIdentity = TMatrix44::IDENTITY;
@@ -215,7 +222,7 @@ void ASunFlareEffect::Render()
 }
 
 // $Barnyard: FUNCTION 0060f110
-void ASunFlareEffect::Update()
+void ASunFlareEffect::Update( TBOOL a_bAdvanceState )
 {
 	if ( AGameLoader::IsMainGameLoaded() )
 	{
@@ -272,6 +279,8 @@ void ASunFlareEffect::Update()
 	m_bSunVisible  = GetScreenPosition( vecSunPos, m_vecSunDir, &m_bSunUnoccluded, TTRUE, 100.0f, 100.0f );
 
 	TFLOAT fDeltaTime = g_oSystemManager.GetScheduler()->GetCurrentDeltaTime();
+	if ( !a_bAdvanceState )
+		fDeltaTime = 0.0f;
 
 	if ( m_bSunUnoccluded == TTRUE )
 	{
@@ -308,7 +317,7 @@ void ASunFlareEffect::Update()
 		else if ( m_fFadeTime > 0.0f )
 		{
 			// Fade in
-			m_fFadeTime -= g_oSystemManager.GetScheduler()->GetCurrentDeltaTime();
+			m_fFadeTime -= fDeltaTime;
 			fSunAlpha = 1.0f - m_fFadeTime * m_fFadeSpeed;
 
 			if ( fSunAlpha >= 1.0f )
@@ -423,17 +432,16 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 	if ( !a_bMoon )
 	{
 #if defined( TRENDERINTERFACE_DX11 )
-		if ( AVRManager::GetSingleton().IsActive() )
+		if ( IsVRViewRendering() )
 		{
-			// The original effect grows as it moves toward the edges of a flat
-			// screen. Head rotation moves the sun across the VR view, so keep its
-			// center-screen size fixed and use alpha only for fading.
+			// The flat-screen sizing varies with distance from screen center. In VR,
+			// keep the center-screen size fixed as the head moves the sun toward an edge.
 			fSize = TMath::LERP( fMoonSize, fSunSize, 0.2f );
 		}
 		else
 #endif
 		{
-			// The sun gets bigger towards the edges of the screen
+			// Preserve the original flat-screen edge-dependent size adjustment.
 			TVector3 vecFromCentre(
 			    a_rcScreenPos.x / TINT( pDisplayParams->uiWidth ) - 0.5f,
 			    a_rcScreenPos.y / TINT( pDisplayParams->uiHeight ) - 0.5f,
@@ -511,6 +519,9 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	TUINT16*          pIndices  = oLockBuffer.IndexLock.pBuffer;
 
 	const TFLOAT fAngleStep = TMath::TWO_PI * 0.1f;
+#if defined( TRENDERINTERFACE_DX11 )
+	const TBOOL bVRView = IsVRViewRendering();
+#endif
 
 	TVector4 vecRayDir( 1.0f, 0.0f, 0.0f, 1.0f );
 	TUINT32  uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xe4d049;
@@ -521,29 +532,57 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	TMatrix44::RotateVector( vecSunView, pContext->GetModelViewMatrix(), m_vecSunDir );
 
 	TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-	pRayDir2D->RotateZ( ( vecSunView.y + vecSunView.x ) * 0.6f );
+	TFLOAT fFlareRotation = ( vecSunView.y + vecSunView.x ) * 0.6f;
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+		fFlareRotation = 0.0f;
+#endif
+	pRayDir2D->RotateZ( fFlareRotation );
 
 	TVector4 vecInner;
 	vecInner.Multiply( vecSunView, -2.0f );
 	vecInner.z = -vecInner.z;
 
 	vecSunView.Multiply( 180.0f );
-
-	TFLOAT fX = a_rcScreenPos.x - pContext->GetWidth() * 0.5f;
-	TFLOAT fY = a_rcScreenPos.y - pContext->GetHeight() * 0.5f;
-
-	static TFLOAT s_fScaleX = 640.0f / pContext->GetWidth() * 1.6f;
-	static TFLOAT s_fScaleY = 448.0f / pContext->GetHeight() * 2.3f;
-
 	vecInner.z   = 1.6f;
 	vecSunView.z = 170.0f;
-	vecSunView.x = 1.0f / ( pContext->GetProjectionParams().m_Proj.x / pContext->GetProjectionParams().m_Centre.x ) * ( s_fScaleX * ( 1.0f / 3.0f ) ) * fX;
-	vecSunView.y = 1.0f / ( pContext->GetProjectionParams().m_Proj.y / pContext->GetProjectionParams().m_Centre.y ) * ( s_fScaleY * ( 1.0f / 3.0f ) ) * fY;
-	vecInner.x   = vecSunView.x * s_fFlareOffset;
-	vecInner.y   = vecSunView.y * s_fFlareOffset;
 
-	// The rays are longer when the sun is in the middle of the screen
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+	{
+		// In VR the two eyes have different asymmetric frusta. Invert the active
+		// eye's projection so the flare's outer rays land on the same projected
+		// sun position as its screen-space quad.
+		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
+		vecSunView.x = ( a_rcScreenPos.x - rcProjection.m_Centre.x ) * vecSunView.z / rcProjection.m_Proj.x;
+		vecSunView.y = ( a_rcScreenPos.y - rcProjection.m_Centre.y ) * vecSunView.z / rcProjection.m_Proj.y;
+	}
+	else
+#endif
+	{
+		// Preserve the legacy flat-screen lens-flare placement.
+		TFLOAT fX = a_rcScreenPos.x - pContext->GetWidth() * 0.5f;
+		TFLOAT fY = a_rcScreenPos.y - pContext->GetHeight() * 0.5f;
+
+		static TFLOAT s_fScaleX = 640.0f / pContext->GetWidth() * 1.6f;
+		static TFLOAT s_fScaleY = 448.0f / pContext->GetHeight() * 2.3f;
+
+		vecSunView.x = 1.0f / ( pContext->GetProjectionParams().m_Proj.x / pContext->GetProjectionParams().m_Centre.x ) * ( s_fScaleX * ( 1.0f / 3.0f ) ) * fX;
+		vecSunView.y = 1.0f / ( pContext->GetProjectionParams().m_Proj.y / pContext->GetProjectionParams().m_Centre.y ) * ( s_fScaleY * ( 1.0f / 3.0f ) ) * fY;
+	}
+
+	vecInner.x = vecSunView.x * s_fFlareOffset;
+	vecInner.y = vecSunView.y * s_fFlareOffset;
+
+	// The flat-screen effect shortens its rays toward the edges. Keep their
+	// length fixed in VR so head rotation only moves the effect, not its scale.
+#if defined( TRENDERINTERFACE_DX11 )
+	TFLOAT fLength = bVRView
+	    ? 0.9f
+	    : 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
+#else
 	TFLOAT fLength = 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
+#endif
 	TMath::Clip( fLength, 0.0f, 1.0f );
 	fLength = TMath::EaseInOut( fLength );
 
