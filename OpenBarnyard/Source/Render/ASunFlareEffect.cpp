@@ -35,64 +35,28 @@ static TBOOL IsVRViewRendering()
 	return rVRManager.GetCurrentEye() < rVRManager.GetViewCount();
 }
 
-// Derive screen axes from a tangent frame fixed to the celestial direction and
-// world-up. Head rotation only changes how that world-locked frame projects.
-static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOutUp, TRenderContext* a_pContext, const TVector4& a_rcWorldDirection )
+// Derive the sprite axes from world-up at the eye's optical axis. This lets
+// head roll rotate the sky in the display while yaw/pitch only move its center.
+static TBOOL GetVRWorldLockedScreenAxes( TVector2& a_rOutRight, TVector2& a_rOutUp, TRenderContext* a_pContext )
 {
-	TVector3 vecDirection( a_rcWorldDirection.x, a_rcWorldDirection.y, a_rcWorldDirection.z );
-	vecDirection.Normalize();
+	TVector4 vecViewUp;
+	TMatrix44::RotateVector( vecViewUp, a_pContext->GetWorldViewMatrix(), TVector4( 0.0f, -1.0f, 0.0f, 0.0f ) );
 
-	// Barnyard's positive Y axis points down, so negative Y is world-up.
-	TVector3 vecUp( 0.0f, -1.0f, 0.0f );
-	TFLOAT   fUpDot = TVector3::DotProduct( vecUp, vecDirection );
-	vecUp.x -= vecDirection.x * fUpDot;
-	vecUp.y -= vecDirection.y * fUpDot;
-	vecUp.z -= vecDirection.z * fUpDot;
-
-	// At the zenith/nadir world-up is singular; use world-forward as a stable
-	// fallback instead of allowing headset roll to choose the sprite rotation.
-	if ( vecUp.MagnitudeSq() < 1.0e-4f )
-	{
-		vecUp.Set( 0.0f, 0.0f, 1.0f );
-		fUpDot = TVector3::DotProduct( vecUp, vecDirection );
-		vecUp.x -= vecDirection.x * fUpDot;
-		vecUp.y -= vecDirection.y * fUpDot;
-		vecUp.z -= vecDirection.z * fUpDot;
-	}
-	vecUp.Normalize();
-
-	TVector3 vecRight;
-	vecRight.CrossProduct( vecDirection, vecUp );
-	vecRight.Normalize();
-
-	TVector4 vecViewDirection;
-	TVector4 vecViewRight;
-	TMatrix44::RotateVector(
-	    vecViewDirection,
-	    a_pContext->GetWorldViewMatrix(),
-	    TVector4( vecDirection.x, vecDirection.y, vecDirection.z, 0.0f )
-	);
-	TMatrix44::RotateVector(
-	    vecViewRight,
-	    a_pContext->GetWorldViewMatrix(),
-	    TVector4( vecRight.x, vecRight.y, vecRight.z, 0.0f )
-	);
-
-	if ( vecViewDirection.z <= 0.0f )
-		return TFALSE;
-
-	const TFLOAT fInvZSq = 1.0f / ( vecViewDirection.z * vecViewDirection.z );
 	const TRenderContext::PROJECTIONPARAMS& rcProjection = a_pContext->GetProjectionParams();
-	a_rOutRight.Set(
-	    rcProjection.m_Proj.x * ( vecViewRight.x * vecViewDirection.z - vecViewDirection.x * vecViewRight.z ) * fInvZSq,
-	    rcProjection.m_Proj.y * ( vecViewRight.y * vecViewDirection.z - vecViewDirection.y * vecViewRight.z ) * fInvZSq
-	);
+	a_rOutUp.Set( rcProjection.m_Proj.x * vecViewUp.x, rcProjection.m_Proj.y * vecViewUp.y );
 
-	if ( a_rOutRight.MagnitudeSq() < 1.0e-6f )
+	if ( a_rOutUp.MagnitudeSq() < 1.0e-6f )
+	{
+		// Looking straight along world-up makes that axis singular; use world-forward.
+		TMatrix44::RotateVector( vecViewUp, a_pContext->GetWorldViewMatrix(), TVector4( 0.0f, 0.0f, 1.0f, 0.0f ) );
+		a_rOutUp.Set( rcProjection.m_Proj.x * vecViewUp.x, rcProjection.m_Proj.y * vecViewUp.y );
+	}
+
+	if ( a_rOutUp.MagnitudeSq() < 1.0e-6f )
 		return TFALSE;
 
-	a_rOutRight.Normalize();
-	a_rOutUp.Set( a_rOutRight.y, -a_rOutRight.x );
+	a_rOutUp.Normalize();
+	a_rOutRight.Set( -a_rOutUp.y, a_rOutUp.x );
 	return TTRUE;
 }
 #endif
@@ -545,8 +509,7 @@ void ASunFlareEffect::UpdateQuad( const TVector4& a_rcScreenPos, TFLOAT a_fAlpha
 	if ( IsVRViewRendering() )
 	{
 		TRenderContext* pContext = TRenderInterface::GetSingleton()->GetCurrentContext();
-		const TVector4& vecWorldDirection = a_bMoon ? m_vecMoonDir : m_vecSunDir;
-		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext, vecWorldDirection );
+		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext );
 	}
 #endif
 
@@ -632,7 +595,7 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 
 		TVector2 vecRight( 1.0f, 0.0f );
 		TVector2 vecUp( 0.0f, -1.0f );
-		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext, m_vecSunDir );
+		GetVRWorldLockedScreenAxes( vecRight, vecUp, pContext );
 
 		TVector3* pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
 		TINT       iNumVerts = 0;
