@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AMilkFillHudElement.h"
+#include "Render/AWorldSpaceGUI.h"
 
 #include <GUI/T2GUITextureSectionManager.h>
 #include <Math/TMathInline.h>
@@ -105,6 +106,7 @@ TBOOL AMilkFillHudElement::Create()
 // $Barnyard: FUNCTION 004562d0
 void AMilkFillHudElement::Destroy()
 {
+	AWorldSpaceGUI::Remove( this );
 	m_oBackPlate.RemoveSelf();
 	m_oMask.RemoveSelf();
 	m_oMilk.RemoveSelf();

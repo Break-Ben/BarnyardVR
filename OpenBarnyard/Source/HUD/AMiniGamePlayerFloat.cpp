@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AMiniGamePlayerFloat.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "Render/ARenderer.h"
 #include "GUI/AGUI2.h"
 #include "Units/AUnit.h"
@@ -92,6 +93,10 @@ TBOOL AMiniGamePlayerFloat::SetPlayer( TINT a_iSlot, TBOOL a_bHuman, AUnit* a_pU
 	SetDimensions( m_oText.GetWidth(), m_oText.GetHeight() );
 	SetTransform( vecScreenPos.x - GetWidth() * 0.5f, vecScreenPos.y - GetHeight() * 0.5f, 0.0f );
 
+	TVector4 worldPosition;
+	a_pUnit->GetSteer()->CopyPosition( worldPosition );
+	worldPosition.y -= HEIGHT_OFFSET;
+	AWorldSpaceGUI::SetAnchor( *this, worldPosition );
 	m_bEnabled = TFALSE;
 	m_fScale   = 1.0f;
 
@@ -112,6 +117,10 @@ void AMiniGamePlayerFloat::Tick( TFLOAT a_fDeltaTime )
 
 		if ( m_fScale > 0.0f )
 		{
+			TVector4 worldPosition;
+			m_pUnit->GetSteer()->CopyPosition( worldPosition );
+			worldPosition.y -= m_fHeightOffset;
+			AWorldSpaceGUI::SetAnchor( *this, worldPosition );
 			TVector2 vecScreenPos;
 			GetScreenPosition( m_pUnit, m_fHeightOffset, vecScreenPos );
 			SetTransform( vecScreenPos.x - GetWidth() * 0.5f, vecScreenPos.y - GetHeight() * 0.5f, 0.0f );

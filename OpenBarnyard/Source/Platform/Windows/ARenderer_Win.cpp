@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "GUI/ATargetReticle.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "AppBoot.h"
 #include "Assets/AMaterialLibraryManager.h"
 #include "Assets/AKeyFrameLibraryManager.h"
@@ -745,6 +746,9 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 
 		if ( AReplayManager::IsSingletonCreated() )
 			AReplayManager::GetSingleton()->Render( TFALSE );
+
+		if ( m_bRenderGUI )
+			AWorldSpaceGUI::RenderAll();
 
 		pViewport->GetRenderContext()->SetCameraObject( pOldCameraObject );
 		rTransformStack.Pop();

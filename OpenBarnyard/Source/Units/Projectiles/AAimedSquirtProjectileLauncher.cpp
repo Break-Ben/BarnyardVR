@@ -137,6 +137,7 @@ AAimedSquirtProjectileLauncher::~AAimedSquirtProjectileLauncher()
 // $Barnyard: FUNCTION 006659a0
 void AAimedSquirtProjectileLauncher::Activate()
 {
+	m_oReticle.SetWorldSpace( TTRUE );
 	m_oTarget         = TNULL;
 	m_bLockedOnTarget = TFALSE;
 	m_oReticle.SetActive( TFALSE, TFALSE, 0.0f );

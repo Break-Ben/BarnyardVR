@@ -97,6 +97,8 @@ private:
 	void UpdateUnitFloats();
 
 	void DrawFloat( const Float* a_pFloat );
+	void RenderWorld();
+	void DrawWorldFloat( const Float* a_pFloat, const Toshi::TVector4& a_rcPosition );
 
 public:
 	TBOOL                                     m_bCreated;          // 0x54

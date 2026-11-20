@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AMilkReticleManager.h"
+#include "VR/AVRManager.h"
 #include "GUI/AGUI2.h"
 #include "Render/ARenderer.h"
 #include "Cameras/ACameraManager.h"
@@ -58,6 +59,7 @@ AMilkReticleManager::AMilkReticleManager()
 // $Barnyard: FUNCTION 00420890
 AMilkReticleManager::~AMilkReticleManager()
 {
+	SetWorldSpace( TFALSE );
 	for ( TINT i = m_iNumTargets - 1; i >= 0; i-- )
 		m_aTargets[ i ].oUnit = TNULL;
 }
@@ -73,6 +75,8 @@ void AMilkReticleManager::Create( AUnit* a_pCentreUnit, TFLOAT a_fSearchRadius, 
 	for ( TINT i = MAX_NUM_TARGETS - 1; i >= 0; i-- )
 	{
 		m_aTargets[ i ].oReticle.Create( a_pParent );
+		// All consumers represent real animal/enemy targets, never HUD controls.
+		m_aTargets[ i ].oReticle.SetWorldSpace( TTRUE );
 		m_aTargets[ i ].oReticle.SetActive( TFALSE, TFALSE, 0.0f );
 	}
 }
@@ -102,6 +106,7 @@ void AMilkReticleManager::SetActive( TBOOL a_bActive )
 // $Barnyard: FUNCTION 00421870
 void AMilkReticleManager::UpdateSim( TFLOAT a_fDeltaTime )
 {
+	if ( AVRManager::GetSingleton().GetCurrentEye() == 1 ) return;
 	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayerUnit( 0 );
 
 	if ( !pPlayer || !pPlayer->IsA( &TGetClass( AUnitPlayer ) ) )
@@ -129,6 +134,7 @@ void AMilkReticleManager::UpdateSim( TFLOAT a_fDeltaTime )
 	pLauncher->Update( 0.0f );
 
 	ATargetReticle& rReticle = pLauncher->GetReticle();
+	rReticle.SetWorldSpace( TTRUE );
 	AUnit*          pTarget  = pLauncher->GetLockedTarget();
 	TBOOL           bPick    = !pTarget;
 
@@ -172,13 +178,14 @@ void AMilkReticleManager::UpdateSim( TFLOAT a_fDeltaTime )
 // $Barnyard: FUNCTION 00421a50
 void AMilkReticleManager::UpdateMiniGame( TFLOAT a_fDeltaTime )
 {
+	if ( AVRManager::GetSingleton().GetCurrentEye() == 1 ) return;
 	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayerUnit( 0 );
 
 	if ( !pPlayer || !pPlayer->IsA( &TGetClass( AUnitPlayer ) ) )
 		return;
 
 	AProjectileLauncher* pActiveLauncher = TSTATICCAST( AUnitPlayer, pPlayer )->GetActiveLauncher();
-	TBOOL                bAiming         = pActiveLauncher->IsA( &TGetClass( AAimedSquirtProjectileLauncher ) );
+	TBOOL                bAiming         = pActiveLauncher && pActiveLauncher->IsA( &TGetClass( AAimedSquirtProjectileLauncher ) );
 	Update( a_fDeltaTime, bAiming );
 
 	if ( !bAiming )
@@ -193,6 +200,7 @@ void AMilkReticleManager::UpdateMiniGame( TFLOAT a_fDeltaTime )
 
 	AAimedSquirtProjectileLauncher* pLauncher = TSTATICCAST( AAimedSquirtProjectileLauncher, pActiveLauncher );
 	ATargetReticle&                 rReticle  = pLauncher->GetReticle();
+	rReticle.SetWorldSpace( TTRUE );
 	AUnit*                          pTarget   = pLauncher->GetLockedTarget();
 
 	if ( !pTarget )
@@ -249,6 +257,7 @@ void AMilkReticleManager::UpdateMiniGame( TFLOAT a_fDeltaTime )
 // $Barnyard: FUNCTION 00421760
 void AMilkReticleManager::Update( TFLOAT a_fDeltaTime, TBOOL a_bAiming )
 {
+	if ( AVRManager::GetSingleton().GetCurrentEye() == 1 ) return;
 	if ( !m_bAiming && a_bAiming == TTRUE )
 		FindTargets();
 

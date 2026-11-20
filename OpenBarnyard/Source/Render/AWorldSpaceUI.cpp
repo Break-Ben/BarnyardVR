@@ -21,26 +21,16 @@ AWorldSpaceUI::~AWorldSpaceUI()
 	if ( m_pMaterial ) m_pMaterial->Destroy();
 }
 
-void AWorldSpaceUI::Render( const TVector4& a_rcAnchor, const Sprite* a_pSprites, TINT a_iCount, T2GUITextureSection* a_pTexture, TFLOAT a_fWorldScale )
+TBOOL AWorldSpaceUI::GetViewFrame( const TVector4& a_rcAnchor, TVector4& a_rRight, TVector4& a_rUp )
 {
 #if defined( TRENDERINTERFACE_DX11 )
-	AVRManager& rVR = AVRManager::GetSingleton();
-	if ( rVR.GetCurrentEye() >= rVR.GetViewCount() || !a_pTexture || !a_pTexture->GetMaterial() || !a_pSprites || a_iCount <= 0 || a_iCount > 6 || !( a_fWorldScale > 0.0f ) )
-		return;
-
-	auto pRender = TRenderInterfaceHAL::Interface();
-	auto pContext = pRender->GetCurrentContext();
-	TVector4 vAnchor;
-	TMatrix44::TransformVector( vAnchor, pContext->GetWorldViewMatrix(), a_rcAnchor );
-	if ( !( vAnchor.z > pContext->GetProjectionParams().m_fNearClip ) )
-		return;
-
+	auto pContext = TRenderInterfaceHAL::Interface()->GetCurrentContext();
 	// Match the sun/moon's world-up tangent frame, not the eye's XY axes.
 	// Only the eye position chooses the facing direction; headset rotation must
 	// not choose the ring's rotation. Positive Y is down in Barnyard.
 	const TVector4& eyePosition = pContext->GetViewWorldMatrix().GetTranslation();
 	TVector3 direction( a_rcAnchor.x - eyePosition.x, a_rcAnchor.y - eyePosition.y, a_rcAnchor.z - eyePosition.z );
-	if ( direction.MagnitudeSq() < 1.0e-6f ) return;
+	if ( direction.MagnitudeSq() < 1.0e-6f ) return TFALSE;
 	direction.Normalize();
 	TVector3 up( 0.0f, -1.0f, 0.0f );
 	TFLOAT dot = TVector3::DotProduct( up, direction );
@@ -57,9 +47,34 @@ void AWorldSpaceUI::Render( const TVector4& a_rcAnchor, const Sprite* a_pSprites
 	right.Normalize();
 	up.CrossProduct( right, direction );
 	up.Normalize();
+	TMatrix44::RotateVector( a_rRight, pContext->GetWorldViewMatrix(), TVector4( right.x, right.y, right.z, 0.0f ) );
+	TMatrix44::RotateVector( a_rUp, pContext->GetWorldViewMatrix(), TVector4( up.x, up.y, up.z, 0.0f ) );
+
+	return TTRUE;
+#else
+	(void)a_rcAnchor;
+	(void)a_rRight;
+	(void)a_rUp;
+	return TFALSE;
+#endif
+}
+
+void AWorldSpaceUI::Render( const TVector4& a_rcAnchor, const Sprite* a_pSprites, TINT a_iCount, T2GUITextureSection* a_pTexture, TFLOAT a_fWorldScale )
+{
+#if defined( TRENDERINTERFACE_DX11 )
+	AVRManager& rVR = AVRManager::GetSingleton();
+	if ( rVR.GetCurrentEye() >= rVR.GetViewCount() || !a_pTexture || !a_pTexture->GetMaterial() || !a_pSprites || a_iCount <= 0 || a_iCount > 6 || !( a_fWorldScale > 0.0f ) )
+		return;
+
+	auto pRender = TRenderInterfaceHAL::Interface();
+	auto pContext = pRender->GetCurrentContext();
+	TVector4 vAnchor;
+	TMatrix44::TransformVector( vAnchor, pContext->GetWorldViewMatrix(), a_rcAnchor );
+	if ( !( vAnchor.z > pContext->GetProjectionParams().m_fNearClip ) )
+		return;
+
 	TVector4 viewRight, viewUp;
-	TMatrix44::RotateVector( viewRight, pContext->GetWorldViewMatrix(), TVector4( right.x, right.y, right.z, 0.0f ) );
-	TMatrix44::RotateVector( viewUp, pContext->GetWorldViewMatrix(), TVector4( up.x, up.y, up.z, 0.0f ) );
+	if ( !GetViewFrame( a_rcAnchor, viewRight, viewUp ) ) return;
 
 	if ( !m_pMaterial )
 	{

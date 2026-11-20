@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <Render/TCameraObject.h>
 #include "ATapperMiniGameState.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "Helpers/APlayerProgress.h"
 #include "AMiniGameManager.h"
 #include "ARandom.h"
@@ -2828,6 +2829,7 @@ TBOOL ATapperMiniGameState::StartFilling()
 	vPos.x = vBarDirection.x * m_afParams[ FLOATPARAM_FILL_HUD_OFFSET ] + vPos.x;
 	vPos.z = vBarDirection.z * m_afParams[ FLOATPARAM_FILL_HUD_OFFSET ] + vPos.z;
 	vPos.y = vPos.y + m_afParams[ FLOATPARAM_FILL_HUD_HEIGHT ];
+	AWorldSpaceGUI::SetAnchor( m_oMilkFill, vPos, 0.02f, TTRUE );
 	ARenderer::GetSingleton()->WorldToGUI( vPos );
 
 	m_oMilkFill.SetTransform( vPos.x, vPos.y + m_afParams[ FLOATPARAM_FILL_HUD_HEIGHT ] );

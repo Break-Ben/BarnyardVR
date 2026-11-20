@@ -17,6 +17,8 @@ public:
 		TUINT32 colour;
 	};
 
+	static TBOOL GetViewFrame( const Toshi::TVector4& a_rcAnchor, Toshi::TVector4& a_rRight, Toshi::TVector4& a_rUp );
+
 	AWorldSpaceUI() = default;
 	~AWorldSpaceUI();
 	void Render( const Toshi::TVector4& a_rcAnchor, const Sprite* a_pSprites, TINT a_iCount, Toshi::T2GUITextureSection* a_pTexture, TFLOAT a_fWorldScale );

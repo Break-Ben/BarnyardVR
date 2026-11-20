@@ -509,6 +509,8 @@ void AChickenCoopDefender::OnInsertion()
 // $Barnyard: FUNCTION 0051b090
 void AChickenCoopDefender::OnRemoval()
 {
+	m_oReticles.SetActive( TFALSE );
+	m_oReticles.SetWorldSpace( TFALSE );
 	ARenderer::GetSingleton()->SetNear( m_fOldNearClip );
 	m_fOldNearClip = 1.0f;
 

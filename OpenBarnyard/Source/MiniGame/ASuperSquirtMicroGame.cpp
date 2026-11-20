@@ -436,6 +436,7 @@ void ASuperSquirtMicroGame::UpdateReticle( TFLOAT a_fDeltaTime )
 	{
 		AAimedSquirtProjectileLauncher* pAimedLauncher = TSTATICCAST( AAimedSquirtProjectileLauncher, pLauncher );
 		ATargetReticle&                 rReticle       = pAimedLauncher->GetReticle();
+		rReticle.SetWorldSpace( TTRUE );
 
 		pAimedLauncher->LockOn( TNULL );
 		pAimedLauncher->UpdateLockedCursor();

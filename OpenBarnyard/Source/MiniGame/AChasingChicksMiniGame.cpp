@@ -432,6 +432,8 @@ void AChasingChicksMiniGame::OnInsertion()
 // $Barnyard: FUNCTION 0050ffb0
 void AChasingChicksMiniGame::OnRemoval()
 {
+	m_oReticles.SetActive( TFALSE );
+	m_oReticles.SetWorldSpace( TFALSE );
 	ARenderer::GetSingleton()->SetNear( m_fOldNearClip );
 	m_fOldNearClip = 1.0f;
 

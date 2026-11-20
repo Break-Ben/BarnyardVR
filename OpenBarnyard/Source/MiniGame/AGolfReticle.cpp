@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AGolfReticle.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "GUI/AGUI2.h"
 #include "Cameras/ACameraManager.h"
 #include "Render/ARenderer.h"
@@ -66,6 +67,7 @@ void AGolfReticle::Create()
 	m_oRing.AddChildTail( m_oBall );
 
 	ATargetReticle::Create( TNULL );
+	SetWorldSpace( TTRUE );
 	SetMode( MODE_GOLF );
 
 	m_bVisible = TFALSE;
@@ -130,6 +132,19 @@ TBOOL AGolfReticle::Update( const TVector4& a_rcWorldPos, TFLOAT a_fDeltaTime )
 {
 	if ( !m_bVisible )
 		return TFALSE;
+
+	SetWorldPosition( a_rcWorldPos );
+	AWorldSpaceGUI::SetAnchor( m_oRingPoint, a_rcWorldPos );
+	if ( AWorldSpaceGUI::IsActive() )
+	{
+		// No desktop-frustum clamp: the marker stays at the ball/flag even
+		// when the headset turns away from the game's original camera.
+		m_oRingPoint.Show();
+		m_oBall.SetTransform( 0.0f, 0.0f, 0.0f );
+		SetActive( m_bLocked, TTRUE, 20.0f );
+		ATargetReticle::Update( a_fDeltaTime );
+		return TFALSE;
+	}
 
 	TVector2 vScreenPos;
 

@@ -1066,6 +1066,7 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 	TVector2 vReticlePosition;
 	pReticle->GetPosition( vReticlePosition );
 	pReticle->SetPosition( vGUI.x, vGUI.y );
+	pReticle->SetWorldPosition( vReticle );
 	pReticle->Update( 0.0f );
 
 	TFLOAT fRayLength = 1000.0f;
