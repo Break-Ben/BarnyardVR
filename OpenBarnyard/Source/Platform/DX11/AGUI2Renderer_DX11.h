@@ -52,6 +52,9 @@ public:
 	virtual void ResetZCoordinate() OVERRIDE;
 
 	void UpdateTransform();
+	// Draw a GUI subtree in an eye-space frame. Masks get a private depth buffer;
+	// no GUI draw may clear or write the eye scene's depth attachment.
+	void RenderWorldSpace( const Toshi::TMatrix44& a_rcFrame, void ( *a_fnDraw )( void* ), void* a_pData, TBOOL a_bMasked = TFALSE );
 
 	// The transform of the element being drawn as the world transform of the render interface, for a mod
 	// that draws with its own shaders
@@ -76,6 +79,8 @@ public:
 	inline static TFLOAT sm_fZCoordinate = 0.1f;
 
 private:
+	inline static const Toshi::TMatrix44* s_pWorldFrame = TNULL;
+	inline static const Toshi::TMatrix44* s_pWorldProjection = TNULL;
 	Toshi::T2GUITransform* m_pTransforms;
 	TINT                   m_iTransformCount;
 	TUINT32                m_uiColour;

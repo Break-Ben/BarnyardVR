@@ -96,7 +96,10 @@ public:
 	T2GUIElement();
 	// $Barnyard: FUNCTION 006c2b70
 	// $Barnyard: FUNCTION 006c2c80
-	virtual ~T2GUIElement() {}
+	virtual ~T2GUIElement()
+	{
+		if ( s_cbDestroyed ) s_cbDestroyed( this );
+	}
 
 	virtual void   Tick( TFLOAT a_fDeltaTime );
 	virtual void   PreRender();
@@ -174,6 +177,8 @@ public:
 	{
 		return ( m_eFlags & FLAGS_VISIBLE ) && ( m_uiVisibilityMask & s_uiVisibilityMask ) != 0;
 	}
+
+	TBOOL ShouldRender() const { return IsVisible() && ( !s_cbRenderFilter || s_cbRenderFilter( this ) ); }
 
 	TBOOL IsFocused() const
 	{
@@ -306,8 +311,12 @@ public:
 	}
 
 	TUINT32 GetColour() const { return m_uiColour; }
+	T2GUIElement* GetParent() const { return m_pParent; }
 
 public:
+	// Optional renderer-side filtering/cleanup, without changing element layouts.
+	inline static TBOOL ( *s_cbRenderFilter )( const T2GUIElement* ) = TNULL;
+	inline static void ( *s_cbDestroyed )( const T2GUIElement* ) = TNULL;
 	inline static TUINT32 s_uiVisibilityMask = 0xFFFFFFFF;
 
 protected:

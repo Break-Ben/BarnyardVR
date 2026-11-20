@@ -857,6 +857,8 @@ void AVeggiePatchDefenderGame::OnInsertion()
 // $Barnyard: FUNCTION 004ca510
 void AVeggiePatchDefenderGame::OnRemoval()
 {
+	m_oReticles.SetActive( TFALSE );
+	m_oReticles.SetWorldSpace( TFALSE );
 	APositionalSoundSet::GetSingleton()->Unload();
 	APlayerManager::GetSingleton()->SetCurrentPlayerSet( 0 );
 	ARenderer::GetSingleton()->SetFar( m_fOldFarClip );

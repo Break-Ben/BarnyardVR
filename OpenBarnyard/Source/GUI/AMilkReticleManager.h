@@ -75,6 +75,10 @@ public:
 	// Hides every reticle unless a_bActive is set
 	void SetActive( TBOOL a_bActive );
 
+	// World-target rendering is enabled by Create; disable it during teardown
+	// or explicitly opt a caller back into the legacy GUI-only path.
+	void SetWorldSpace( TBOOL a_bEnabled );
+
 	TINT GetNumTargets() const { return m_iNumTargets; }
 
 	// NOTE: Cow Tipping updates the manager itself (00421760 from 004a7a40)

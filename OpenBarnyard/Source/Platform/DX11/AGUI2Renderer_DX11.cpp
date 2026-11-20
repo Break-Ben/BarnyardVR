@@ -4,6 +4,9 @@
 #include "Assets/AMaterialLibraryManager.h"
 #include "GUI/AGUI2.h"
 #include "GUI/AGUI2Material.h"
+#include "Render/AWorldSpaceGUITransform.h"
+#include <wrl/client.h>
+#include <Platform/DX11/TRenderContext_DX11.h>
 
 #include "Platform/DX11/TTextureResourceHAL_DX11.h"
 #include "Platform/DX11/TRenderInterface_DX11.h"
@@ -16,6 +19,20 @@
 
 TOSHI_NAMESPACE_USING
 
+namespace
+{
+auto& WorldGUIMaskTexture()
+{
+	static Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+	return texture;
+}
+auto& WorldGUIMaskDepth()
+{
+	static Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+	return depth;
+}
+}
+
 AGUI2RendererDX8::AGUI2RendererDX8()
 {
 	m_pTransforms       = new T2GUITransform[ MAX_NUM_TRANSFORMS ];
@@ -25,6 +42,8 @@ AGUI2RendererDX8::AGUI2RendererDX8()
 
 AGUI2RendererDX8::~AGUI2RendererDX8()
 {
+	WorldGUIMaskDepth().Reset();
+	WorldGUIMaskTexture().Reset();
 	delete[] m_pTransforms;
 }
 
@@ -650,6 +669,10 @@ void AGUI2RendererDX8::UpdateTransform()
 	worldMatrix.m_f43 = 0.0f;
 	worldMatrix.m_f44 = 1.0f;
 
+	if ( s_pWorldFrame )
+	{
+		worldMatrix = BuildWorldGUIClipTransform( *s_pWorldFrame, worldMatrix, *s_pWorldProjection );
+	}
 	TRenderD3DInterface::Interface()->SetTransform( TRenderD3DInterface::TRANSFORM_WORLD, worldMatrix );
 	m_bIsTransformDirty = TFALSE;
 }
@@ -692,3 +715,94 @@ void AGUI2RendererDX8::RenderIndexedTriList( Toshi::TVector2* a_pVertices, Toshi
 }
 
 #endif // BARNYARD_LATEST
+
+void AGUI2RendererDX8::RenderWorldSpace( const TMatrix44& frame, void ( *draw )( void* ), void* data, TBOOL masked )
+{
+	using Microsoft::WRL::ComPtr;
+	auto render = TRenderD3DInterface::Interface();
+	auto device = render->GetDevice();
+	auto gpu = render->GetDeviceContext();
+	ComPtr<ID3D11RenderTargetView> colour;
+	ComPtr<ID3D11DepthStencilView> depth;
+	gpu->OMGetRenderTargets( 1, colour.GetAddressOf(), depth.GetAddressOf() );
+	if ( !colour || !depth || !draw ) return;
+
+	auto& maskTexture = WorldGUIMaskTexture();
+	auto& maskDepth = WorldGUIMaskDepth();
+	if ( masked )
+	{
+		ComPtr<ID3D11Resource> resource;
+		depth->GetResource( resource.GetAddressOf() );
+		ComPtr<ID3D11Texture2D> depthTexture;
+		if ( FAILED( resource.As( &depthTexture ) ) ) return;
+		D3D11_TEXTURE2D_DESC desc;
+		depthTexture->GetDesc( &desc );
+		D3D11_DEPTH_STENCIL_VIEW_DESC viewDesc;
+		depth->GetDesc( &viewDesc );
+		desc.Format = viewDesc.Format;
+		desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+		desc.MiscFlags = desc.CPUAccessFlags = 0;
+		desc.Usage = D3D11_USAGE_DEFAULT;
+
+		// Reused across panels and eyes; resize only when the eye target changes.
+		D3D11_TEXTURE2D_DESC oldDesc = {};
+		if ( maskTexture ) maskTexture->GetDesc( &oldDesc );
+		if ( !maskDepth || oldDesc.Width != desc.Width || oldDesc.Height != desc.Height ||
+		     oldDesc.Format != desc.Format || oldDesc.SampleDesc.Count != desc.SampleDesc.Count ||
+		     oldDesc.SampleDesc.Quality != desc.SampleDesc.Quality )
+		{
+			maskDepth.Reset();
+			maskTexture.Reset();
+			if ( FAILED( device->CreateTexture2D( &desc, TNULL, maskTexture.GetAddressOf() ) ) ||
+			     FAILED( device->CreateDepthStencilView( maskTexture.Get(), TNULL, maskDepth.GetAddressOf() ) ) ) return;
+		}
+	}
+
+	render->FlushShaders();
+	const TMatrix44 oldWorld = render->GetTransform( TRenderD3DInterface::TRANSFORM_WORLD );
+	const TMatrix44 oldView = render->GetTransform( TRenderD3DInterface::TRANSFORM_VIEW );
+	const TMatrix44 oldProjection = render->GetTransform( TRenderD3DInterface::TRANSFORM_PROJECTION );
+	const T2GUITransform oldTransform = m_pTransforms[ m_iTransformCount ];
+	const TFLOAT oldZ = sm_fZCoordinate;
+	const TBOOL oldMaskFlag = sm_bUnknownFlag;
+	const auto oldMaterial = m_pMaterial;
+	const auto oldColour = m_uiColour;
+	TRenderD3DInterface::STATEBLOCK oldState;
+	render->CaptureStateBlock( oldState );
+	const auto oldPipeline = render->GetDesiredState();
+	ID3D11RenderTargetView* target = colour.Get();
+	render->SetRenderTargets( target, masked ? maskDepth.Get() : TNULL );
+	render->ApplyDesiredState();
+	if ( masked ) gpu->ClearDepthStencilView( maskDepth.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0 );
+	BeginScene();
+	render->SetFogEnable( TFALSE );
+	render->SetZEnable( masked );
+	T2GUITransform identity;
+	identity.m_aMatrixRows[ 0 ] = { 1.0f, 0.0f };
+	identity.m_aMatrixRows[ 1 ] = { 0.0f, 1.0f };
+	identity.m_vecTranslation = { 0.0f, 0.0f };
+	SetTransform( identity );
+	s_pWorldFrame = &frame;
+	s_pWorldProjection = &static_cast<TRenderContextD3D*>( render->GetCurrentContext() )->GetProjectionMatrix();
+	// UpdateTransform supplies the complete clip transform, including stable
+	// GUI-only depth. Do not apply eye projection a second time in the shader.
+	render->SetTransform( TRenderD3DInterface::TRANSFORM_PROJECTION, TMatrix44::IDENTITY );
+	draw( data );
+	EndScene();
+	s_pWorldFrame = TNULL;
+	s_pWorldProjection = TNULL;
+	SetTransform( oldTransform );
+	sm_fZCoordinate = oldZ;
+	sm_bUnknownFlag = oldMaskFlag;
+	m_pMaterial = oldMaterial;
+	m_uiColour = oldColour;
+	render->SetTransform( TRenderD3DInterface::TRANSFORM_WORLD, oldWorld );
+	render->SetTransform( TRenderD3DInterface::TRANSFORM_VIEW, oldView );
+	render->SetTransform( TRenderD3DInterface::TRANSFORM_PROJECTION, oldProjection );
+	render->ApplyStateBlock( oldState );
+	render->SetTexture( 1, oldPipeline.apPSShaderResources[ 1 ] );
+	render->SetRenderTargets( oldPipeline.pRenderTargetView, oldPipeline.pDepthStencilView );
+	render->SetShaders( oldPipeline.pVertexShader, oldPipeline.pPixelShader, oldPipeline.pInputLayout );
+	render->UpdateRenderStates();
+	render->ApplyDesiredState();
+}

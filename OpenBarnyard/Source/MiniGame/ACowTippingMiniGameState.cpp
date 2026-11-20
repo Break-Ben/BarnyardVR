@@ -500,6 +500,10 @@ void ACowTippingMiniGameState::OnInsertion()
 // $Barnyard: FUNCTION 004b8700
 void ACowTippingMiniGameState::OnRemoval()
 {
+	m_oMilkReticleManager.SetActive( TFALSE );
+	m_oMilkReticleManager.SetWorldSpace( TFALSE );
+	m_oTargetReticle.SetActive( TFALSE, TFALSE, 0.0f );
+	m_oTargetReticle.SetWorldSpace( TFALSE );
 	if ( !m_bStoryEnding )
 		Cleanup();
 
@@ -585,6 +589,7 @@ void ACowTippingMiniGameState::CreateHUD()
 	m_oAmmoCounter.Create( TREINTERPRETCAST( T2GUIElement*, &m_oHudRoot ) );
 
 	m_oTargetReticle.Create( &m_oHudRoot );
+	m_oTargetReticle.SetWorldSpace( TTRUE );
 	m_oTargetReticle.SetActive( TFALSE, TTRUE, 50.0f );
 
 	m_oFloatHudElement.Create( &m_oHudRoot, "rekord26" );

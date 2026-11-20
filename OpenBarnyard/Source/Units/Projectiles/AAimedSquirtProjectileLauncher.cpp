@@ -137,6 +137,7 @@ AAimedSquirtProjectileLauncher::~AAimedSquirtProjectileLauncher()
 // $Barnyard: FUNCTION 006659a0
 void AAimedSquirtProjectileLauncher::Activate()
 {
+	m_oReticle.SetWorldSpace( TTRUE );
 	m_oTarget         = TNULL;
 	m_bLockedOnTarget = TFALSE;
 	m_oReticle.SetActive( TFALSE, TFALSE, 0.0f );
@@ -173,6 +174,7 @@ void AAimedSquirtProjectileLauncher::Activate()
 // $Barnyard: FUNCTION 006640f0
 void AAimedSquirtProjectileLauncher::Deactivate()
 {
+	m_oReticle.SetWorldSpace( TFALSE );
 	m_oTarget          = TNULL;
 	m_oUnitUnderCursor = TNULL;
 	m_oReticle.SetActive( TFALSE, TFALSE, 0.0f );
@@ -513,6 +515,7 @@ TBOOL AAimedSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 				m_oUnitUnderCursor = pHitUnit->GetSelfProxy();
 		}
 
+		m_oReticle.SetWorldPosition( m_vAimPoint );
 		m_oReticle.Update( a_fDeltaTime );
 	}
 
@@ -918,6 +921,7 @@ void AAimedSquirtProjectileLauncher::UpdateLockedCursor()
 	m_vAimCursor.x = vScreenPos.x;
 	m_vAimCursor.y = vScreenPos.y;
 	m_oReticle.SetPosition( m_vAimCursor );
+	m_oReticle.SetWorldPosition( m_vAimPoint );
 }
 
 // $Barnyard: FUNCTION 006654f0

@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "AGUI2FloatHudElement.h"
+#include "Render/AWorldSpaceGUI.h"
+#include "VR/AVRManager.h"
 #include "GUI/AGUI2.h"
 #include "Tasks/ARootTask.h"
 #include "Render/ARenderer.h"
@@ -137,11 +139,13 @@ void AGUI2FloatHudElement::Create( Toshi::T2GUIElement* a_pParent, const TCHAR* 
 	}
 
 	m_bCreated = TTRUE;
+	AWorldSpaceGUI::Register( *this, []( void* data ) { static_cast<AGUI2FloatHudElement*>( data )->RenderWorld(); } );
 }
 
 // $Barnyard: FUNCTION 0063a210
 void AGUI2FloatHudElement::Destroy()
 {
+	AWorldSpaceGUI::Remove( this );
 	m_bCreated = TFALSE;
 	RemoveSelf();
 	Reset();
@@ -189,6 +193,7 @@ TBOOL AGUI2FloatHudElement::AddTimedFloat( const TWCHAR* a_wszText, TUINT32 a_ui
 // $Barnyard: FUNCTION 0063ab50
 void AGUI2FloatHudElement::Render()
 {
+	if ( AWorldSpaceGUI::IsActive() ) return;
 	T2GUIElement::Render();
 
 	if ( IsVisible() )
@@ -260,16 +265,11 @@ void AGUI2FloatHudElement::UpdateTimedFloats()
 			TFLOAT fDistanceSq = vToFloat.MagnitudeSq();
 
 			// In range and in front of the camera
-			if ( fDistanceSq > fFarSq || vCameraForward.DotProduct3( vToFloat ) <= 0.0f )
+			if ( fDistanceSq > fFarSq || ( !AWorldSpaceGUI::IsActive() && vCameraForward.DotProduct3( vToFloat ) <= 0.0f ) )
 				continue;
 
-#ifdef BARNYARD_COMMUNITY_PATCH
-			// NOTE: the original compares the number of floats inserted this frame with the maximum, which
-			// gets past it after the first replacement so the next inserts overflow the array
+			// Cap the actual array count, including after replacing a far float.
 			if ( m_oVisibleTimed.iCount >= MAX_TIMED_FLOATS )
-#else
-			if ( m_iNumVisibleTimed == MAX_TIMED_FLOATS )
-#endif
 			{
 				// Full, replace the furthest float if this one is nearer
 				if ( m_oVisibleTimed.apItems[ MAX_TIMED_FLOATS - 1 ]->fDistanceSq <= fDistanceSq )
@@ -278,13 +278,13 @@ void AGUI2FloatHudElement::UpdateTimedFloats()
 				m_oVisibleTimed.apItems[ --m_oVisibleTimed.iCount ] = TNULL;
 			}
 
-			TVector2 vScreenPos;
-			ARenderer::GetSingleton()->ProjectToGUI( pCamera, pFloat->vecPosition, vScreenPos );
+			TVector2 vScreenPos = TVector2::VEC_ZERO;
+			if ( !AWorldSpaceGUI::IsActive() ) ARenderer::GetSingleton()->ProjectToGUI( pCamera, pFloat->vecPosition, vScreenPos );
 
 			TFLOAT fWidth, fHeight;
 			AGUI2::GetRootElement()->GetDimensions( fWidth, fHeight );
 
-			if ( 0.0f <= vScreenPos.x && vScreenPos.x <= fWidth && 0.0f <= vScreenPos.y && vScreenPos.y <= fHeight )
+			if ( AWorldSpaceGUI::IsActive() || ( 0.0f <= vScreenPos.x && vScreenPos.x <= fWidth && 0.0f <= vScreenPos.y && vScreenPos.y <= fHeight ) )
 			{
 				pFloat->fDistanceSq = fDistanceSq;
 				pFloat->fScreenX    = vScreenPos.x;
@@ -295,7 +295,7 @@ void AGUI2FloatHudElement::UpdateTimedFloats()
 
 				pFloat->uiColour = ( TUINT32( fAlpha * ( 1.0f - pFloat->fDistanceSq / fFarSq ) * 255.0f ) << 24 ) | ( pFloat->uiColour & 0xffffff );
 				m_oVisibleTimed.Insert( pFloat );
-				m_iNumVisibleTimed++;
+				m_iNumVisibleTimed = m_oVisibleTimed.iCount;
 			}
 		}
 		else
@@ -336,18 +336,13 @@ void AGUI2FloatHudElement::UpdateUnitFloats()
 		TFLOAT fDistanceSq = vToUnit.MagnitudeSq();
 
 		// In range and in front of the camera
-		if ( fDistanceSq > fFarSq || vCameraForward.DotProduct3( vToUnit ) <= 0.0f )
+		if ( fDistanceSq > fFarSq || ( !AWorldSpaceGUI::IsActive() && vCameraForward.DotProduct3( vToUnit ) <= 0.0f ) )
 			continue;
 
 		if ( pUnit->IsA( &TGetClass( AVisibleUnit ) ) && !TSTATICCAST( AVisibleUnit, pUnit )->IsVisible() )
 			continue;
 
-#ifdef BARNYARD_COMMUNITY_PATCH
-		// NOTE: same overflow as in UpdateTimedFloats
 		if ( m_oVisibleUnit.iCount >= MAX_UNIT_FLOATS )
-#else
-		if ( m_iNumVisibleUnit == MAX_UNIT_FLOATS )
-#endif
 		{
 			// Full, replace the furthest float if this one is nearer
 			if ( m_oVisibleUnit.apItems[ MAX_UNIT_FLOATS - 1 ]->fDistanceSq <= fDistanceSq )
@@ -377,13 +372,13 @@ void AGUI2FloatHudElement::UpdateUnitFloats()
 		vPosition.y        = TMath::LERP( pFloat->fSmoothedY, vPosition.y, fProgress );
 		pFloat->fSmoothedY = vPosition.y;
 
-		TVector2 vScreenPos;
-		ARenderer::GetSingleton()->ProjectToGUI( pCamera, vPosition, vScreenPos );
+		TVector2 vScreenPos = TVector2::VEC_ZERO;
+		if ( !AWorldSpaceGUI::IsActive() ) ARenderer::GetSingleton()->ProjectToGUI( pCamera, vPosition, vScreenPos );
 
 		TFLOAT fWidth, fHeight;
 		AGUI2::GetRootElement()->GetDimensions( fWidth, fHeight );
 
-		if ( 0.0f <= vScreenPos.x && vScreenPos.x <= fWidth && 0.0f <= vScreenPos.y && vScreenPos.y <= fHeight )
+		if ( AWorldSpaceGUI::IsActive() || ( 0.0f <= vScreenPos.x && vScreenPos.x <= fWidth && 0.0f <= vScreenPos.y && vScreenPos.y <= fHeight ) )
 		{
 			pFloat->fDistanceSq = fDistanceSq;
 			pFloat->fScreenX    = vScreenPos.x;
@@ -403,7 +398,43 @@ void AGUI2FloatHudElement::UpdateUnitFloats()
 
 			pFloat->uiColour = ( TUINT32( fAlpha * 255.0f ) << 24 ) | ( pFloat->uiColour & 0xffffff );
 			m_oVisibleUnit.Insert( pFloat );
-			m_iNumVisibleUnit++;
+			m_iNumVisibleUnit = m_oVisibleUnit.iCount;
 		}
 	}
+}
+
+void AGUI2FloatHudElement::RenderWorld()
+{
+	if ( !m_bCreated ) return;
+	// GUI Render normally owns the rise/fade/smoothing updates. In VR there are
+	// two world draws; only the first advances time, the second reuses the lists.
+	if ( AVRManager::GetSingleton().GetCurrentEye() == 0 )
+	{
+		UpdateTimedFloats();
+		if ( m_bShowUnitFloats ) UpdateUnitFloats();
+	}
+	for ( TINT i = m_oVisibleTimed.iCount - 1; i >= 0; --i )
+	{
+		auto item = m_oVisibleTimed.apItems[ i ];
+		DrawWorldFloat( item, item->vecPosition );
+	}
+	if ( m_bShowUnitFloats )
+		for ( TINT i = m_oVisibleUnit.iCount - 1; i >= 0; --i )
+		{
+			auto item = m_oVisibleUnit.apItems[ i ];
+			TVector4 position = *item->pUnit->GetSteer()->GetPosition();
+			position.y = item->fSmoothedY;
+			DrawWorldFloat( item, position );
+		}
+}
+
+void AGUI2FloatHudElement::DrawWorldFloat( const Float* item, const TVector4& position )
+{
+	if ( !item->wszText ) return;
+	struct TextDraw { AGUI2FloatHudElement* hud; Float item; } draw = { this, *item };
+	draw.item.fScreenX = draw.item.fScreenY = 0.0f;
+	AWorldSpaceGUI::Draw( position, 0.02f, []( void* data ) {
+		auto text = static_cast<TextDraw*>( data );
+		text->hud->DrawFloat( &text->item );
+	}, &draw );
 }

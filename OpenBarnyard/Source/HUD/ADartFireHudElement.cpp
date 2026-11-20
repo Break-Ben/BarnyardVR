@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ADartFireHudElement.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "GUI/AGUI2.h"
 #include "Cameras/ACameraManager.h"
 #include "Render/ARenderer.h"
@@ -37,6 +38,8 @@ ADartFireHudElement::ADartFireHudElement()
 // $Barnyard: FUNCTION 004518a0
 ADartFireHudElement::~ADartFireHudElement()
 {
+	AWorldSpaceGUI::Remove( &m_oCanvas );
+	AWorldSpaceGUI::Remove( &m_oTargetLock );
 	m_oBoard.RemoveSelf();
 }
 
@@ -50,7 +53,7 @@ void ADartFireHudElement::Canvas::Render()
 
 	for ( TINT i = 0; i < TARRAYSIZE( apRects ); i++ )
 	{
-		if ( apRects[ i ]->IsVisible() )
+		if ( apRects[ i ]->ShouldRender() )
 		{
 			apRects[ i ]->PreRender();
 			apRects[ i ]->Render();
@@ -147,6 +150,9 @@ TBOOL ADartFireHudElement::OnAttach()
 // $Barnyard: FUNCTION 004519b0
 void ADartFireHudElement::OnDetach()
 {
+	AWorldSpaceGUI::Remove( &m_oCanvas );
+	AWorldSpaceGUI::Remove( &m_oTargetLock );
+	m_oCanvas.RemoveSelf();
 	m_oTargetLock.RemoveSelf();
 	m_oBarY.RemoveSelf();
 	m_oBarX.RemoveSelf();
@@ -157,6 +163,7 @@ void ADartFireHudElement::OnDetach()
 // $Barnyard: FUNCTION 00451a10
 void ADartFireHudElement::Show()
 {
+	m_oCanvas.Show();
 	m_oBoard.Show();
 	m_bCurrentlyVisible = TTRUE;
 }
@@ -164,6 +171,7 @@ void ADartFireHudElement::Show()
 // $Barnyard: FUNCTION 00451a30
 void ADartFireHudElement::Hide()
 {
+	m_oCanvas.Hide();
 	m_oBoard.Hide();
 	m_bCurrentlyVisible = TFALSE;
 }
@@ -255,6 +263,8 @@ void ADartFireHudElement::SetBarX( TFLOAT a_fAimX )
 // $Barnyard: FUNCTION 004521c0
 void ADartFireHudElement::SetTargetLockPosition( const TVector4& a_rcPosition )
 {
+	AWorldSpaceGUI::SetAnchor( m_oTargetLock, a_rcPosition );
+	if ( AWorldSpaceGUI::IsActive() ) return;
 	TVector2 vScreen;
 	ARenderer::GetSingleton()->ProjectToGUI( ACameraManager::GetSingleton()->GetCurrentCamera(), a_rcPosition, vScreen );
 
@@ -284,6 +294,39 @@ void ADartFireHudElement::ShowScore( TFLOAT a_fAimX, TFLOAT a_fAimY, TINT a_iSco
 // $Barnyard: FUNCTION 00452360
 void ADartFireHudElement::SetBoardCorners( const TVector4& a_rcTop, const TVector4& a_rcRight, const TVector4& a_rcLeft, const TVector4& a_rcBottom )
 {
+	if ( AWorldSpaceGUI::IsActive() )
+	{
+		// The bars/bullseye/score belong to the board, not a camera-facing
+		// billboard. Build their frame from the actual four board edges.
+		constexpr TFLOAT size = 256.0f;
+		TVector4 centre( ( a_rcTop.x + a_rcRight.x + a_rcLeft.x + a_rcBottom.x ) * 0.25f,
+		    ( a_rcTop.y + a_rcRight.y + a_rcLeft.y + a_rcBottom.y ) * 0.25f,
+		    ( a_rcTop.z + a_rcRight.z + a_rcLeft.z + a_rcBottom.z ) * 0.25f, 1.0f );
+		// ADartMiniGame passes -m_fAimX to the HUD, whereas the throw uses
+		// +m_fAimX along (right-left). Reverse the GUI X axis so both
+		// calculations land at the same world point; Y already matches.
+		TVector3 right( a_rcLeft.x - a_rcRight.x, a_rcLeft.y - a_rcRight.y, a_rcLeft.z - a_rcRight.z );
+		TVector3 down( a_rcBottom.x - a_rcTop.x, a_rcBottom.y - a_rcTop.y, a_rcBottom.z - a_rcTop.z );
+		TVector3 normal;
+		normal.CrossProduct( right, down );
+		if ( normal.MagnitudeSq() < 1.0e-6f ) return;
+		TMatrix44 frame = TMatrix44::IDENTITY;
+		frame.SetBasisVector4( BASISVECTOR_RIGHT, TVector4( right.x / size, right.y / size, right.z / size, 0 ) );
+		frame.SetBasisVector4( BASISVECTOR_UP, TVector4( down.x / size, down.y / size, down.z / size, 0 ) );
+		// Layer ordering belongs to the private GUI depth buffer, not the board normal.
+		frame.SetBasisVector4( BASISVECTOR_FORWARD, TVector4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+		frame.SetTranslation( centre );
+		AWorldSpaceGUI::SetFrame( m_oCanvas, frame );
+		m_oBoard.SetDimensions( size, size );
+		m_oBoard.SetTransform( 0.0f, 0.0f );
+		T2GUITextureSection* bar = T2GUITextureSectionManager::GetTextureSection( "Darts_Bar" );
+		const TFLOAT barHeight = TMath::Abs( TFLOAT( bar->GetPoint2Y() - bar->GetPoint1Y() ) );
+		m_fBarLength = size * 1.3f;
+		m_oBarY.SetDimensions( m_fBarLength, barHeight );
+		m_oBarX.SetDimensions( m_fBarLength, barHeight );
+		return;
+	}
+
 	const TVector4* apCorners[ 4 ] = { &a_rcTop, &a_rcRight, &a_rcLeft, &a_rcBottom };
 	TVector2        aScreen[ 4 ];
 

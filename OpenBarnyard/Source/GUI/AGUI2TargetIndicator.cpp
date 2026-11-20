@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AGUI2TargetIndicator.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "AGUI2.h"
 #include "Locale/ALocale.h"
 #include "Locale/ALocaleManager.h"
@@ -29,6 +30,7 @@ AGUI2TargetIndicator::AGUI2TargetIndicator()
 // $Barnyard: FUNCTION 00648150
 AGUI2TargetIndicator::~AGUI2TargetIndicator()
 {
+	AWorldSpaceGUI::Remove( &m_oRoot );
 	m_oText.RemoveSelf();
 	m_oPointer.RemoveSelf();
 	m_oPointerContainer.RemoveSelf();
@@ -101,6 +103,16 @@ void AGUI2TargetIndicator::Update( TFLOAT a_fDeltaTime )
 {
 	if ( !m_bVisible )
 		return;
+
+	AWorldSpaceGUI::SetAnchor( m_oRoot, m_vPosition, 0.02f, TFALSE, TTRUE );
+	if ( AWorldSpaceGUI::IsActive() )
+	{
+		// A world label must not snap to the desktop's screen edge or rotate
+		// towards it as the headset turns. Keep the pointer in its default pose.
+		SetPointerSide( SIDE_DEFAULT );
+		m_oPointer.SetTextureSection( ms_pRedPoint );
+		return;
+	}
 
 	TVector2 vScreenPos;
 	ARenderer::GetSingleton()->GetScreenPosition( m_vPosition, vScreenPos );

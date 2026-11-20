@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AGolfReticle.h"
+#include "Render/AWorldSpaceGUI.h"
 #include "GUI/AGUI2.h"
 #include "Cameras/ACameraManager.h"
 #include "Render/ARenderer.h"
@@ -66,6 +67,7 @@ void AGolfReticle::Create()
 	m_oRing.AddChildTail( m_oBall );
 
 	ATargetReticle::Create( TNULL );
+	SetWorldSpace( TTRUE );
 	SetMode( MODE_GOLF );
 
 	m_bVisible = TFALSE;
@@ -130,6 +132,17 @@ TBOOL AGolfReticle::Update( const TVector4& a_rcWorldPos, TFLOAT a_fDeltaTime )
 {
 	if ( !m_bVisible )
 		return TFALSE;
+
+	SetWorldPosition( a_rcWorldPos );
+	if ( AWorldSpaceGUI::IsActive() )
+	{
+		// The arrow/icon subtree is exclusively an off-screen HUD indicator,
+		// not a world marker. Omit it in VR; keep only the actual locked ring.
+		m_oRingPoint.Hide();
+		SetActive( m_bLocked, TTRUE, 20.0f );
+		ATargetReticle::Update( a_fDeltaTime );
+		return TFALSE;
+	}
 
 	TVector2 vScreenPos;
 

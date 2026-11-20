@@ -1166,6 +1166,8 @@ void AHoneyCollectingGame::OnInsertion()
 // $Barnyard: FUNCTION 0048dc40
 void AHoneyCollectingGame::OnRemoval()
 {
+	m_oReticles.SetActive( TFALSE );
+	m_oReticles.SetWorldSpace( TFALSE );
 	if ( m_pSunglasses )
 	{
 		if ( m_pPlayer )

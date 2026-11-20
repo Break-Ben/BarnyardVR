@@ -82,7 +82,7 @@ void T2GUIElement::Render()
 
 	for ( T2GUIElement* it = ChildRBegin(); it != TNULL && it != &m_Children; it = GetPrevChild( it ) )
 	{
-		if ( it->IsVisible() )
+		if ( it->ShouldRender() )
 		{
 			it->PreRender();
 			it->Render();
