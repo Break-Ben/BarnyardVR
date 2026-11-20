@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "ASimState.h"
+#include "VR/AVRManager.h"
+#include "Units/Projectiles/AAimedSquirtProjectileLauncher.h"
 #include "Helpers/ALadderBeansGame.h"
 #include "MiniGame/ACoinPickupMicroGame.h"
 #include "Sound/AMultiplexStream.h"
@@ -100,6 +102,20 @@ TPSTRING8_DECLARE( barn );
 TPSTRING8_DECLARE( park2 );
 TPSTRING8_DECLARE( player_startgame );
 
+// The sim has its own milk-target manager, separate from Precision Squirt.
+// Keep its root-level launcher reticle on the same rendering path as its targets.
+static void SetSimSquirtWorldSpace( TBOOL a_bEnabled )
+{
+	if ( !APlayerManager::IsSingletonCreated() ) return;
+	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayerUnit( 0 );
+	if ( !pPlayer || !pPlayer->IsA( &TGetClass( AUnitPlayer ) ) ) return;
+	AProjectileLauncher* pLauncher = TSTATICCAST( AUnitPlayer, pPlayer )->GetActiveLauncher();
+	if ( !pLauncher || !pLauncher->IsA( &TGetClass( AAimedSquirtProjectileLauncher ) ) ) return;
+	ATargetReticle& rReticle = TSTATICCAST( AAimedSquirtProjectileLauncher, pLauncher )->GetReticle();
+	if ( !a_bEnabled ) rReticle.SetActive( TFALSE, TFALSE, 0.0f );
+	rReticle.SetWorldSpace( a_bEnabled );
+}
+
 // $Barnyard: FUNCTION 0043d750
 ASimState::ASimState()
     : m_bPendingAutoSave( TFALSE )
@@ -193,8 +209,13 @@ TBOOL ASimState::ProcessCommand( AInputCommand a_eInputCommand, const TInputInte
 // $Barnyard: FUNCTION 0043d430
 void ASimState::OnRender( TFLOAT a_fDeltaTime )
 {
-	if ( m_bIsActive && !AGameLoader::IsBarnExploreMiniGame() )
+	// Advance shared targeting/animation only once, using the current frame's
+	// updated animal bones. Both eyes subsequently render the same world anchors.
+	if ( m_bIsActive && !AGameLoader::IsBarnExploreMiniGame() && AVRManager::GetSingleton().GetCurrentEye() != 1 )
+	{
+		SetSimSquirtWorldSpace( TTRUE );
 		m_oMilkReticles.UpdateSim( a_fDeltaTime );
+	}
 
 	// NOTE: the original doesn't check whether the singleton exists
 	if ( AVehicleSkidManager::IsSingletonCreated() )
@@ -727,6 +748,7 @@ void ASimState::OnInsertion()
 		AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayerUnit( 0 );
 
 		m_oMilkReticles.Create( pPlayer, 50.0f, TNULL );
+		m_oMilkReticles.SetWorldSpace( TTRUE );
 	}
 
 	if ( AGameStateController::GetSingleton()->GetCurrentState()->GetClass() == &TGetClass( ASimState ) )
@@ -788,6 +810,9 @@ void ASimState::OnInsertion()
 // $Barnyard: FUNCTION 0043d040
 void ASimState::OnRemoval()
 {
+	m_oMilkReticles.SetActive( TFALSE );
+	m_oMilkReticles.SetWorldSpace( TFALSE );
+	SetSimSquirtWorldSpace( TFALSE );
 	AInputHandler* pInputHandler = AInputHandler::GetSingleton();
 	pInputHandler->StopAllRumbles();
 
@@ -1057,6 +1082,7 @@ void ASimState::OnActivate()
 // $Barnyard: FUNCTION 0043d3c0
 void ASimState::OnDeactivate()
 {
+	SetSimSquirtWorldSpace( TFALSE );
 	m_bIsActive = TFALSE;
 
 	AHintManager::GetSingleton()->OnDeactivate();
