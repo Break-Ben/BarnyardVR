@@ -13,6 +13,23 @@
 
 TOSHI_NAMESPACE_USING
 
+// Atlas UVs normally lie on texel boundaries. With linear filtering the
+// outermost samples can blend neighbouring atlas content into the glass/mask.
+// Use texel centres for this world-space widget; never mutate the shared atlas
+// sections/materials, and always start from canonical UVs (no repeated inset).
+static void UpdateGlassTextureUVs( T2GUIRectangle& a_rRectangle, const TCHAR* a_szSection )
+{
+	const auto pSection = T2GUITextureSectionManager::GetTextureSection( a_szSection );
+	if ( !pSection ) return;
+	const auto& uv1 = pSection->GetUVPoint1();
+	const auto& uv2 = pSection->GetUVPoint2();
+	const TFLOAT inset = AWorldSpaceGUI::IsActive() ? 0.5f : 0.0f;
+	const TFLOAT du = ( uv2.x - uv1.x ) * inset / TMath::Max( 1.0f, pSection->GetWidth() );
+	const TFLOAT dv = ( uv2.y - uv1.y ) * inset / TMath::Max( 1.0f, pSection->GetHeight() );
+	a_rRectangle.SetUVs( TVector2( uv1.x + du, uv1.y + dv ), TVector2( uv2.x - du, uv1.y + dv ),
+	    TVector2( uv2.x - du, uv2.y - dv ), TVector2( uv1.x + du, uv2.y - dv ) );
+}
+
 // $Barnyard: FUNCTION 00456450
 AMilkFillHudElement::AMilkFillHudElement()
 {
@@ -35,6 +52,11 @@ void AMilkFillHudElement::Render()
 {
 	if ( !IsVisible() )
 		return;
+
+	UpdateGlassTextureUVs( m_oMask, "Glass_Mask" );
+	UpdateGlassTextureUVs( m_oMilk, "Glass_Milk" );
+	UpdateGlassTextureUVs( m_oBackPlate, "Glass_Back_Plate" );
+	UpdateGlassTextureUVs( m_oGlint, "Glass_Glint" );
 
 	m_oBackground.PreRender();
 	m_oBackground.Render();
@@ -118,10 +140,7 @@ void AMilkFillHudElement::Destroy()
 // $Barnyard: FUNCTION 00456340
 void AMilkFillHudElement::SetFill( TFLOAT a_fValue, TFLOAT a_fMax )
 {
-	// Keep the fill quad just inside the mask's outer edges. Equal-width quads
-	// can expose a thin seam at the perspective-rasterized mask boundary in VR.
-	// Bottom-centre attachment makes this a symmetric one-design-unit inset.
-	const TFLOAT fInset = AWorldSpaceGUI::IsActive() ? 1.0f : 0.0f;
-	m_oMilk.SetWidth( TMath::Max( 0.0f, m_oMask.GetWidth() - 2.0f * fInset ) );
+	// Keep the original geometry; atlas-edge bleeding is handled by UVs in Render.
+	m_oMilk.SetWidth( m_oMask.GetWidth() );
 	m_oMilk.SetHeight( m_oBackPlate.GetHeight() * ( a_fValue / a_fMax ) * 0.9f );
 }
