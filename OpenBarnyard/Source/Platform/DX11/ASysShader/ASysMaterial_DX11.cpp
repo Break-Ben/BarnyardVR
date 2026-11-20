@@ -120,6 +120,12 @@ void ASysMaterialHAL::PreRender()
 
 	switch ( m_eBlendMode )
 	{
+		case BLENDMODE_WORLD_UI:
+			pRender->SetSrcBlend( D3D11_BLEND_SRC_ALPHA );
+			pRender->SetDestBlend( D3D11_BLEND_INV_SRC_ALPHA );
+			pRender->SetZWriteEnable( TFALSE );
+			pRender->SetZEnable( TFALSE );
+			break;
 		case BLENDMODE_DEFAULT:
 			pRender->SetSrcBlend( D3D11_BLEND_SRC_ALPHA );
 			pRender->SetDestBlend( D3D11_BLEND_INV_SRC_ALPHA );

@@ -1,6 +1,11 @@
 #include "pch.h"
 #include "ATargetReticle.h"
 #include "GUI/AGUI2.h"
+#include "Render/AWorldSpaceUI.h"
+#include "VR/AVRManager.h"
+
+#include <map>
+#include <memory>
 
 #include <GUI/T2GUITextureSectionManager.h>
 
@@ -11,6 +16,79 @@
 #include <Core/TMemoryDebugOn.h>
 
 TOSHI_NAMESPACE_USING
+
+// Only explicitly migrated reticles are registered. No class-layout changes for
+// inherited minigames/mods that embed ATargetReticle at fixed offsets.
+namespace
+{
+struct WorldReticle
+{
+	TVector4 position = TVector4::VEC_ZERO;
+	TBOOL valid = TFALSE;
+	AWorldSpaceUI renderer;
+};
+std::map<ATargetReticle*, std::unique_ptr<WorldReticle>>& WorldReticles()
+{
+	static std::map<ATargetReticle*, std::unique_ptr<WorldReticle>> entries;
+	return entries;
+}
+}
+
+void ATargetReticle::SetWorldSpace( TBOOL a_bEnabled )
+{
+	if ( a_bEnabled )
+	{
+		if ( !WorldReticles().contains( this ) )
+			WorldReticles()[ this ] = std::make_unique<WorldReticle>();
+	}
+	else
+		WorldReticles().erase( this );
+	SetActive( m_bActive, TFALSE, 0.0f );
+}
+
+void ATargetReticle::SetWorldPosition( const TVector4& a_rcPosition )
+{
+	auto it = WorldReticles().find( this );
+	if ( it == WorldReticles().end() ) return;
+	it->second->position = a_rcPosition;
+	it->second->valid = TTRUE;
+}
+
+TBOOL ATargetReticle::IsWorldSpaceActive() const
+{
+	return AVRManager::GetSingleton().IsActive() && WorldReticles().contains( const_cast<ATargetReticle*>( this ) );
+}
+
+void ATargetReticle::RefreshWorldSpaceVisibility()
+{
+	for ( auto& [reticle, entry] : WorldReticles() )
+		reticle->SetActive( reticle->m_bActive, TFALSE, 0.0f );
+}
+
+void ATargetReticle::RenderWorldSpace()
+{
+	AVRManager& vr = AVRManager::GetSingleton();
+	if ( vr.GetCurrentEye() >= vr.GetViewCount() ) return;
+	for ( auto& [r, entry] : WorldReticles() )
+	{
+		if ( !r->m_bCreated || !r->m_bActive || !entry->valid ) continue;
+		TBOOL bVisible = TTRUE;
+		for ( auto pParent = r->m_aRectangles[ 0 ].GetParent(); pParent; pParent = pParent->GetParent() )
+			bVisible = bVisible && pParent->IsVisible();
+		if ( !bVisible ) continue;
+		AWorldSpaceUI::Sprite sprites[ NUM_RECTANGLES ];
+		for ( TINT i = 0; i < r->m_iNumVisible; ++i )
+		{
+			TFLOAT angle = TMath::TWO_PI / TFLOAT( r->m_iNumVisible ) * TFLOAT( i ) + r->m_fBaseAngle + r->m_fAngle;
+			TFLOAT sn, cs;
+			TMath::SinCos( angle, sn, cs );
+			sprites[ i ] = { -sn * r->m_fRadius, -cs * r->m_fRadius, r->m_fWidth, r->m_fHeight, -angle, r->m_uiColour };
+		}
+		// Fixed world sizing: a settled 48-design-unit ring spans about one world
+		// unit. Unlike pixel sizing, this does not grow with target distance/FOV.
+		entry->renderer.Render( entry->position, sprites, r->m_iNumVisible, ms_apTextures[ r->m_iTexture ], 0.02f );
+	}
+}
 
 // NOTE: inlined TMathInline::MoveTowards, moves a_rfValue towards a_fTarget by a_fStep without going past it
 static void MoveTowards( TFLOAT& a_rfValue, TFLOAT a_fTarget, TFLOAT a_fStep )
@@ -60,6 +138,7 @@ ATargetReticle::ATargetReticle()
 // $Barnyard: FUNCTION 00648e10
 ATargetReticle::~ATargetReticle()
 {
+	WorldReticles().erase( this );
 	for ( TINT i = NUM_RECTANGLES - 1; i >= 0; i-- )
 	{
 		m_aRectangles[ i ].RemoveSelf();
@@ -108,7 +187,7 @@ void ATargetReticle::SetActive( TBOOL a_bActive, TBOOL a_bSetLockTime, TFLOAT a_
 
 	for ( TINT i = NUM_RECTANGLES - 1; i >= 0; i-- )
 	{
-		if ( i < m_iNumVisible && m_bActive == TTRUE )
+		if ( i < m_iNumVisible && m_bActive == TTRUE && !IsWorldSpaceActive() )
 			m_aRectangles[ i ].Show();
 		else
 			m_aRectangles[ i ].Hide();

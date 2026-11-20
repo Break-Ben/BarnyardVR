@@ -306,6 +306,7 @@ public:
 	}
 
 	TUINT32 GetColour() const { return m_uiColour; }
+	T2GUIElement* GetParent() const { return m_pParent; }
 
 public:
 	inline static TUINT32 s_uiVisibilityMask = 0xFFFFFFFF;

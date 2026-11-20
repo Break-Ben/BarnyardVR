@@ -77,6 +77,12 @@ void AMilkReticleManager::Create( AUnit* a_pCentreUnit, TFLOAT a_fSearchRadius, 
 	}
 }
 
+void AMilkReticleManager::SetWorldSpace( TBOOL a_bEnabled )
+{
+	for ( TINT i = 0; i < MAX_NUM_TARGETS; ++i )
+		m_aTargets[ i ].oReticle.SetWorldSpace( a_bEnabled );
+}
+
 // $Barnyard: FUNCTION 00420580
 void AMilkReticleManager::SetActive( TBOOL a_bActive )
 {
@@ -596,7 +602,7 @@ void AMilkReticleManager::UpdateTargetPosition( TINT a_iTarget )
 	TVector2 vScreenPos;
 	TBOOL    bOnScreen = TTRUE;
 
-	if ( !m_bIgnoreScreen )
+	if ( !m_bIgnoreScreen && !rTarget.oReticle.IsWorldSpaceActive() )
 		bOnScreen = ARenderer::GetSingleton()->GetScreenPosition( rTarget.vPosition, vScreenPos );
 
 	TVector4 vGUIPos = rTarget.vPosition;
@@ -612,6 +618,7 @@ void AMilkReticleManager::UpdateTargetPosition( TINT a_iTarget )
 	}
 
 	rTarget.oReticle.SetPosition( vScreenPos );
+	rTarget.oReticle.SetWorldPosition( rTarget.vPosition );
 
 	if ( bValid )
 	{

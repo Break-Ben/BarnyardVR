@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "VR/AVRManager.h"
 #include <Render/TCameraObject.h>
 #include "APrecisionSquirt.h"
 #include "AMiniGameManager.h"
@@ -542,8 +543,14 @@ void APrecisionSquirt::UpdateTargets( TFLOAT a_fDeltaTime )
 // $Barnyard: FUNCTION 00503660
 void APrecisionSquirt::OnRender( TFLOAT a_fDeltaTime )
 {
-	if ( m_ePhase == PHASE_PLAYING )
+	// Shared target selection/reticle animation must advance once, not per eye.
+	if ( m_bIsActivated && m_ePhase == PHASE_PLAYING && AVRManager::GetSingleton().GetCurrentEye() != 1 )
+	{
+		AProjectileLauncher* pLauncher = m_pPlayer->GetActiveLauncher();
+		if ( pLauncher && pLauncher->IsA( &TGetClass( AAimedSquirtProjectileLauncher ) ) )
+			TSTATICCAST( AAimedSquirtProjectileLauncher, pLauncher )->GetReticle().SetWorldSpace( TTRUE );
 		m_oReticles.UpdateSim( a_fDeltaTime );
+	}
 
 	if ( AMilkManager::GetSingleton() )
 		AMilkManager::GetSingleton()->Render();
@@ -1158,6 +1165,20 @@ AMiniGameState::S1* APrecisionSquirt::GetResults()
 // $Barnyard: FUNCTION 00505040
 void APrecisionSquirt::OnRemoval()
 {
+	m_oReticles.SetActive( TFALSE );
+	m_oReticles.SetWorldSpace( TFALSE );
+	// Units can be queued for destruction; do not leave their root-level aiming
+	// reticle registered during the interval before the launcher is destroyed.
+	if ( m_pPlayer )
+	{
+		AProjectileLauncher* pLauncher = m_pPlayer->GetActiveLauncher();
+		if ( pLauncher && pLauncher->IsA( &TGetClass( AAimedSquirtProjectileLauncher ) ) )
+		{
+			ATargetReticle& rReticle = TSTATICCAST( AAimedSquirtProjectileLauncher, pLauncher )->GetReticle();
+			rReticle.SetActive( TFALSE, TFALSE, 0.0f );
+			rReticle.SetWorldSpace( TFALSE );
+		}
+	}
 	m_oWindmills.OnDestroy();
 	ARenderer::GetSingleton()->SetNear( m_fOldNear );
 	m_fOldNear = 1.0f;
@@ -1869,6 +1890,7 @@ void APrecisionSquirt::OnInsertion()
 	m_HUDParams.SetFlags( AHudElement::MASK_MINIGAME | AHudElement::MASK_UNK4 | AHudElement::MASK_INTERACTION | AHudElement::MASK_UNK8 | AHudElement::MASK_UNK9 | AHudElement::MASK_MINIMAP | AHudElement::MASK_UNK13 | AHudElement::MASK_UNK14 | AHudElement::MASK_UNK26 );
 
 	m_oReticles.Create( m_pPlayer, 50.0f, &m_GUIElement );
+	m_oReticles.SetWorldSpace( TTRUE );
 	ASimpleProjectileManager::GetSingleton()->CreatePool( 25, ASimpleProjectileManager::TYPE_MILK_PRECISION );
 	AMilkManager::Load( "Data/MilkParticles/SimMilk.trb" );
 

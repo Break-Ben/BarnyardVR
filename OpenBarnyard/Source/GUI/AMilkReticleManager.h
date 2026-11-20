@@ -75,6 +75,9 @@ public:
 	// Hides every reticle unless a_bActive is set
 	void SetActive( TBOOL a_bActive );
 
+	// Opt in only callers whose indicators represent world targets.
+	void SetWorldSpace( TBOOL a_bEnabled );
+
 	TINT GetNumTargets() const { return m_iNumTargets; }
 
 	// NOTE: Cow Tipping updates the manager itself (00421760 from 004a7a40)

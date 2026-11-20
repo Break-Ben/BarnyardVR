@@ -34,6 +34,14 @@ public:
 	ATargetReticle();
 	~ATargetReticle();
 
+	// Opt-in migration: retain a real world anchor in VR, with legacy GUI fallback.
+	// Storage is external to preserve inherited binary layouts.
+	void SetWorldSpace( TBOOL a_bEnabled );
+	void SetWorldPosition( const Toshi::TVector4& a_rcPosition );
+	TBOOL IsWorldSpaceActive() const;
+	static void RenderWorldSpace();
+	static void RefreshWorldSpaceVisibility();
+
 	// Loads the texture sections and adds the rectangles to a_pParent (or the AGUI2 root element) at its centre.
 	void Create( Toshi::T2GUIElement* a_pParent );
 

@@ -24,6 +24,7 @@ public:
 		BLENDMODE_UNTEXTURED_SKY,
 		BLENDMODE_TEXTURED_SKY,
 		BLENDMODE_10,
+		BLENDMODE_WORLD_UI, // alpha blended, no depth test/write; stereo world indicators
 		BLENDMODE_NUMOF,
 	};
 

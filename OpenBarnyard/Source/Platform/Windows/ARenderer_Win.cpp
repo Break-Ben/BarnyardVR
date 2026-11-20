@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "GUI/ATargetReticle.h"
 #include "AppBoot.h"
 #include "Assets/AMaterialLibraryManager.h"
 #include "Assets/AKeyFrameLibraryManager.h"
@@ -339,6 +340,7 @@ TRenderAdapter::Mode::Device* ARenderer::FindSuitableDevice( TRenderInterface::D
 // $Barnyard: FUNCTION 0060b6f0
 void ARenderer::RenderGUI()
 {
+	ATargetReticle::RefreshWorldSpaceVisibility();
 	auto pRender   = TSTATICCAST( TRenderInterfaceHAL, TRenderInterface::GetSingleton() );
 	auto pViewport = g_pGUISystem->GetRenderObject( 0 )->GetViewport();
 
@@ -727,6 +729,8 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 		pViewport->GetRenderContext()->SetCameraObject( pCameraObject );
 
 		AGameStateController::GetSingleton()->RenderStatesOverlay( a_fDeltaTime );
+		if ( m_bRenderGUI )
+			ATargetReticle::RenderWorldSpace();
 
 		if ( AHintManager::IsSingletonCreated() )
 			AHintManager::GetSingleton()->RenderOverlay( a_fDeltaTime );
