@@ -20,8 +20,10 @@ enum BASISVECTOR{BASISVECTOR_RIGHT,BASISVECTOR_UP,BASISVECTOR_FORWARD};
 struct TVector4{float x,y,z,w;};
 struct TMatrix44{
     int id=0;
+    static const TMatrix44 IDENTITY;
     void SetBasisVector4(BASISVECTOR,const TVector4&){}
 };
+inline const TMatrix44 TMatrix44::IDENTITY{0};
 struct TVector2{float x,y;};
 struct T2GUITransform{TVector2 m_aMatrixRows[2],m_vecTranslation;};
 struct D3D11_TEXTURE2D_DESC{
@@ -108,6 +110,7 @@ struct AGUI2RendererDX8{
     static inline float sm_fZCoordinate=.1f;
     static inline bool sm_bUnknownFlag=true;
     static inline const TMatrix44* s_pWorldFrame=nullptr;
+    static inline const TMatrix44* s_pWorldProjection=nullptr;
     T2GUITransform transforms[32]={};
     T2GUITransform* m_pTransforms=transforms;
     int m_iTransformCount=0;
@@ -125,7 +128,8 @@ void draw(void* data){
     auto d=static_cast<Draw*>(data);++d->count;
     auto r=TRenderD3DInterface::Interface();
     assert(AGUI2RendererDX8::s_pWorldFrame);
-    assert(r->transforms[2].id==42); // actual per-eye projection, not GUI ortho
+    assert(AGUI2RendererDX8::s_pWorldProjection->id==42); // eye projection captured
+    assert(r->transforms[2].id==0); // clip transform is not projected twice
     assert(r->gpu.depth==r->pipeline.pDepthStencilView);
     assert(d->masked ? (r->gpu.depth && r->gpu.depth!=r->gpu.sceneDepth) : !r->gpu.depth);
     assert(d->gui->transforms[0].m_aMatrixRows[1].y==1); // no screen Y flip/scaling

@@ -134,13 +134,12 @@ TBOOL AGolfReticle::Update( const TVector4& a_rcWorldPos, TFLOAT a_fDeltaTime )
 		return TFALSE;
 
 	SetWorldPosition( a_rcWorldPos );
-	AWorldSpaceGUI::SetAnchor( m_oRingPoint, a_rcWorldPos );
 	if ( AWorldSpaceGUI::IsActive() )
 	{
-		// No desktop-frustum clamp: the marker stays at the ball/flag even
-		// when the headset turns away from the game's original camera.
-		m_oRingPoint.Show();
-		m_oBall.SetTransform( 0.0f, 0.0f, 0.0f );
+		// The arrow/icon subtree is exclusively an off-screen HUD indicator,
+		// not a world marker. Omit it in VR; keep only the actual locked ring.
+		AWorldSpaceGUI::Remove( &m_oRingPoint );
+		m_oRingPoint.Hide();
 		SetActive( m_bLocked, TTRUE, 20.0f );
 		ATargetReticle::Update( a_fDeltaTime );
 		return TFALSE;

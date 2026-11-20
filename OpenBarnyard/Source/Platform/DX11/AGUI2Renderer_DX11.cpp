@@ -4,6 +4,7 @@
 #include "Assets/AMaterialLibraryManager.h"
 #include "GUI/AGUI2.h"
 #include "GUI/AGUI2Material.h"
+#include "Render/AWorldSpaceGUITransform.h"
 #include <wrl/client.h>
 #include <Platform/DX11/TRenderContext_DX11.h>
 
@@ -670,8 +671,7 @@ void AGUI2RendererDX8::UpdateTransform()
 
 	if ( s_pWorldFrame )
 	{
-		TMatrix44 local = worldMatrix;
-		worldMatrix.Multiply( *s_pWorldFrame, local );
+		worldMatrix = BuildWorldGUIClipTransform( *s_pWorldFrame, worldMatrix, *s_pWorldProjection );
 	}
 	TRenderD3DInterface::Interface()->SetTransform( TRenderD3DInterface::TRANSFORM_WORLD, worldMatrix );
 	m_bIsTransformDirty = TFALSE;
@@ -782,16 +782,15 @@ void AGUI2RendererDX8::RenderWorldSpace( const TMatrix44& frame, void ( *draw )(
 	identity.m_aMatrixRows[ 1 ] = { 0.0f, 1.0f };
 	identity.m_vecTranslation = { 0.0f, 0.0f };
 	SetTransform( identity );
-	TMatrix44 guiFrame = frame;
-	// Keep the legacy mask Z ordering independent of which side of a world
-	// surface faces the eye. These offsets affect only our scratch depth.
-	guiFrame.SetBasisVector4( BASISVECTOR_FORWARD, TVector4( 0.0f, 0.0f, 0.001f, 0.0f ) );
-	s_pWorldFrame = &guiFrame;
-	render->SetTransform( TRenderD3DInterface::TRANSFORM_PROJECTION,
-	    static_cast<TRenderContextD3D*>( render->GetCurrentContext() )->GetProjectionMatrix() );
+	s_pWorldFrame = &frame;
+	s_pWorldProjection = &static_cast<TRenderContextD3D*>( render->GetCurrentContext() )->GetProjectionMatrix();
+	// UpdateTransform supplies the complete clip transform, including stable
+	// GUI-only depth. Do not apply eye projection a second time in the shader.
+	render->SetTransform( TRenderD3DInterface::TRANSFORM_PROJECTION, TMatrix44::IDENTITY );
 	draw( data );
 	EndScene();
 	s_pWorldFrame = TNULL;
+	s_pWorldProjection = TNULL;
 	SetTransform( oldTransform );
 	sm_fZCoordinate = oldZ;
 	sm_bUnknownFlag = oldMaskFlag;

@@ -80,6 +80,7 @@ public:
 
 private:
 	inline static const Toshi::TMatrix44* s_pWorldFrame = TNULL;
+	inline static const Toshi::TMatrix44* s_pWorldProjection = TNULL;
 	Toshi::T2GUITransform* m_pTransforms;
 	TINT                   m_iTransformCount;
 	TUINT32                m_uiColour;

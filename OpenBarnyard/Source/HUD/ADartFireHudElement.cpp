@@ -302,7 +302,10 @@ void ADartFireHudElement::SetBoardCorners( const TVector4& a_rcTop, const TVecto
 		TVector4 centre( ( a_rcTop.x + a_rcRight.x + a_rcLeft.x + a_rcBottom.x ) * 0.25f,
 		    ( a_rcTop.y + a_rcRight.y + a_rcLeft.y + a_rcBottom.y ) * 0.25f,
 		    ( a_rcTop.z + a_rcRight.z + a_rcLeft.z + a_rcBottom.z ) * 0.25f, 1.0f );
-		TVector3 right( a_rcRight.x - a_rcLeft.x, a_rcRight.y - a_rcLeft.y, a_rcRight.z - a_rcLeft.z );
+		// ADartMiniGame passes -m_fAimX to the HUD, whereas the throw uses
+		// +m_fAimX along (right-left). Reverse the GUI X axis so both
+		// calculations land at the same world point; Y already matches.
+		TVector3 right( a_rcLeft.x - a_rcRight.x, a_rcLeft.y - a_rcRight.y, a_rcLeft.z - a_rcRight.z );
 		TVector3 down( a_rcBottom.x - a_rcTop.x, a_rcBottom.y - a_rcTop.y, a_rcBottom.z - a_rcTop.z );
 		TVector3 normal;
 		normal.CrossProduct( right, down );

@@ -41,13 +41,14 @@ assert "m_oTargetReticle.SetWorldSpace( TTRUE );" in read("MiniGame/ACowTippingM
 assert "pReticle->SetWorldPosition( vReticle );" in read("MiniGame/ACowTippingMiniGameState_Player.cpp")
 
 for path, element in [
-    ("MiniGame/AGolfReticle.cpp", "m_oRingPoint"),
     ("MiniGame/ATapperMiniGameState.cpp", "m_oMilkFill"),
     ("GUI/AGUI2TargetIndicator.cpp", "m_oRoot"),
     ("HUD/ADartFireHudElement.cpp", "m_oTargetLock"),
     ("HUD/AMiniGamePlayerFloat.cpp", "*this"),
 ]:
     assert f"AWorldSpaceGUI::SetAnchor( {element}," in read(path), path
+assert "AWorldSpaceGUI::Remove( &m_oRingPoint );" in read("MiniGame/AGolfReticle.cpp")
+assert "AWorldSpaceGUI::SetAnchor( m_oRingPoint," not in read("MiniGame/AGolfReticle.cpp")
 assert "AWorldSpaceGUI::SetFrame( m_oCanvas, frame );" in read("HUD/ADartFireHudElement.cpp")
 floats = read("GUI/AGUI2FloatHudElement.cpp")
 assert "AWorldSpaceGUI::Register( *this," in floats
