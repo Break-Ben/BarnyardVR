@@ -138,7 +138,6 @@ TBOOL AGolfReticle::Update( const TVector4& a_rcWorldPos, TFLOAT a_fDeltaTime )
 	{
 		// The arrow/icon subtree is exclusively an off-screen HUD indicator,
 		// not a world marker. Omit it in VR; keep only the actual locked ring.
-		AWorldSpaceGUI::Remove( &m_oRingPoint );
 		m_oRingPoint.Hide();
 		SetActive( m_bLocked, TTRUE, 20.0f );
 		ATargetReticle::Update( a_fDeltaTime );

@@ -310,11 +310,11 @@ void ADartFireHudElement::SetBoardCorners( const TVector4& a_rcTop, const TVecto
 		TVector3 normal;
 		normal.CrossProduct( right, down );
 		if ( normal.MagnitudeSq() < 1.0e-6f ) return;
-		normal.Normalize();
 		TMatrix44 frame = TMatrix44::IDENTITY;
 		frame.SetBasisVector4( BASISVECTOR_RIGHT, TVector4( right.x / size, right.y / size, right.z / size, 0 ) );
 		frame.SetBasisVector4( BASISVECTOR_UP, TVector4( down.x / size, down.y / size, down.z / size, 0 ) );
-		frame.SetBasisVector4( BASISVECTOR_FORWARD, TVector4( normal.x * 0.0002f, normal.y * 0.0002f, normal.z * 0.0002f, 0 ) );
+		// Layer ordering belongs to the private GUI depth buffer, not the board normal.
+		frame.SetBasisVector4( BASISVECTOR_FORWARD, TVector4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 		frame.SetTranslation( centre );
 		AWorldSpaceGUI::SetFrame( m_oCanvas, frame );
 		m_oBoard.SetDimensions( size, size );

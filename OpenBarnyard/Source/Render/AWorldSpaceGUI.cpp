@@ -74,11 +74,9 @@ TBOOL BillboardFrame( const TVector4& position, TFLOAT scale, TMatrix44& frame )
 	frame = TMatrix44::IDENTITY;
 	frame.SetBasisVector4( BASISVECTOR_RIGHT, TVector4( right.x * scale, right.y * scale, right.z * scale, 0 ) );
 	frame.SetBasisVector4( BASISVECTOR_UP, TVector4( -up.x * scale, -up.y * scale, -up.z * scale, 0 ) );
-	// GUI masks use small Z offsets; retain their ordering in a private depth
-	// buffer, without writing into the world's depth buffer.
-	TVector3 forward;
-	forward.CrossProduct( up.AsVector3(), right.AsVector3() );
-	frame.SetBasisVector4( BASISVECTOR_FORWARD, TVector4( forward.x * scale * 0.01f, forward.y * scale * 0.01f, forward.z * scale * 0.01f, 0 ) );
+	// GUI geometry is planar. BuildWorldGUIClipTransform supplies mask-depth
+	// ordering separately, without physical offsets or world-depth writes.
+	frame.SetBasisVector4( BASISVECTOR_FORWARD, TVector4( 0.0f, 0.0f, 0.0f, 0.0f ) );
 	frame.SetTranslation( anchor );
 	return TTRUE;
 }

@@ -12,3 +12,5 @@
 ## Validation
 - There are currently no GitHub Actions workflows, so do not assume automated CI coverage.
 - Validate changes with `git diff --check`; run a Windows build when a Windows toolchain is available, and note when it cannot be run.
+- Use ad hoc test scripts only for temporary local validation. Do not commit them; remove them before finishing or opening/updating a pull request.
+- Feature-specific scripts and mock-backed checks do not establish regression coverage for the wider, largely untested codebase. Report their limited scope explicitly; do not treat passing them as a substitute for a Windows build, code review, or in-game/headset validation.

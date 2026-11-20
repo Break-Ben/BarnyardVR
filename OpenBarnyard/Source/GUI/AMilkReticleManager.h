@@ -75,7 +75,8 @@ public:
 	// Hides every reticle unless a_bActive is set
 	void SetActive( TBOOL a_bActive );
 
-	// Opt in only callers whose indicators represent world targets.
+	// World-target rendering is enabled by Create; disable it during teardown
+	// or explicitly opt a caller back into the legacy GUI-only path.
 	void SetWorldSpace( TBOOL a_bEnabled );
 
 	TINT GetNumTargets() const { return m_iNumTargets; }

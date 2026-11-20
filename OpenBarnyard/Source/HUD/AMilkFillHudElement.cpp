@@ -140,7 +140,5 @@ void AMilkFillHudElement::Destroy()
 // $Barnyard: FUNCTION 00456340
 void AMilkFillHudElement::SetFill( TFLOAT a_fValue, TFLOAT a_fMax )
 {
-	// Keep the original geometry; atlas-edge bleeding is handled by UVs in Render.
-	m_oMilk.SetWidth( m_oMask.GetWidth() );
 	m_oMilk.SetHeight( m_oBackPlate.GetHeight() * ( a_fValue / a_fMax ) * 0.9f );
 }
