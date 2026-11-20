@@ -10,6 +10,7 @@ MOCK = r'''
 #pragma once
 #include <cassert>
 #include <cmath>
+#include <initializer_list>
 using TFLOAT=float;
 using TINT=int;
 using TUINT32=unsigned;
@@ -22,14 +23,31 @@ using TBYTE=unsigned char;
 #define TOSHI_NAMESPACE_USING using namespace Toshi;
 namespace Toshi {
 struct TVector2 { float x=0,y=0; void Set(float a,float b){x=a;y=b;} };
-struct TVector3 { float x=0,y=0,z=0; void Set(float a,float b,float c){x=a;y=b;z=c;} };
+struct TVector3 {
+    float x=0,y=0,z=0;
+    TVector3()=default;
+    TVector3(float a,float b,float c):x(a),y(b),z(c){}
+    void Set(float a,float b,float c){x=a;y=b;z=c;}
+    float MagnitudeSq() const{return x*x+y*y+z*z;}
+    void Normalize(){float n=std::sqrt(MagnitudeSq());x/=n;y/=n;z/=n;}
+    static float DotProduct(const TVector3& a,const TVector3& b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+    void CrossProduct(const TVector3& a,const TVector3& b){Set(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);}
+};
 struct TVector4 { float x=0,y=0,z=0,w=1; };
 struct TMatrix44 {
-    float tx=0,ty=0,tz=0,yaw=0;
+    float tx=0,ty=0,tz=0,yaw=0,roll=0;
+    TVector4 translation{};
+    const TVector4& GetTranslation() const{return translation;}
     static const TMatrix44 IDENTITY;
+    static void RotateVector(TVector4& out,const TMatrix44& m,const TVector4& v){
+        float x=std::cos(m.yaw)*v.x-std::sin(m.yaw)*v.z;
+        out={std::cos(m.roll)*x-std::sin(m.roll)*v.y,
+             std::sin(m.roll)*x+std::cos(m.roll)*v.y,
+             std::sin(m.yaw)*v.x+std::cos(m.yaw)*v.z,0};
+    }
     static void TransformVector(TVector4& out,const TMatrix44& m,const TVector4& v) {
-        out={std::cos(m.yaw)*v.x-std::sin(m.yaw)*v.z+m.tx,
-             v.y+m.ty, std::sin(m.yaw)*v.x+std::cos(m.yaw)*v.z+m.tz,1};
+        RotateVector(out,m,v);
+        out.x+=m.tx;out.y+=m.ty;out.z+=m.tz;out.w=1;
     }
 };
 inline const TMatrix44 TMatrix44::IDENTITY{};
@@ -46,6 +64,14 @@ struct Context {
     TMatrix44 view,model;
     struct Proj {float m_fNearClip=.06f;} proj;
     auto& GetWorldViewMatrix(){return view;}
+    const TMatrix44& GetViewWorldMatrix(){
+        static TMatrix44 inverse;
+        float x=std::cos(view.roll)*view.tx+std::sin(view.roll)*view.ty;
+        float y=-std::sin(view.roll)*view.tx+std::cos(view.roll)*view.ty;
+        inverse.translation={-std::cos(view.yaw)*x-std::sin(view.yaw)*view.tz,-y,
+                             std::sin(view.yaw)*x-std::cos(view.yaw)*view.tz,1};
+        return inverse;
+    }
     auto GetModelViewMatrix(){return model;}
     auto GetProjectionParams(){return proj;}
     void SetModelViewMatrix(const TMatrix44& m){model=m;}
@@ -123,7 +149,7 @@ int main(){
             auto* v=ASysMesh::last;
             centres[eye]=(v[0].vPosition.x+v[3].vPosition.x)*.5f;
             assert(close(centres[eye],ctx.view.tx));
-            assert(close(v[3].vPosition.x-v[0].vPosition.x,.4f));
+            assert(std::abs(v[3].vPosition.x-v[0].vPosition.x-.4f)<.0001f);
             assert(close(v[3].vPosition.y-v[0].vPosition.y,.2f));
             assert(close(v[0].vUV.x,.1f) && close(v[3].vUV.y,.8f));
             assert(v[0].uiColor==sprite.colour && ctx.model.tx==123);
@@ -142,10 +168,28 @@ int main(){
         auto* v=ASysMesh::last;
         assert(close((v[0].vPosition.x+v[3].vPosition.x)*.5f,view.x));
         assert(close((v[0].vPosition.y+v[3].vPosition.y)*.5f,view.y));
-        assert(close(v[0].vPosition.z,view.z));
+        assert(close((v[0].vPosition.z+v[3].vPosition.z)*.5f,view.z));
         // Distance changes depth, not world dimensions.
+        ctx.view={};
         ui.Render({0,0,20,1},&sprite,1,&texture,.02f);
         assert(close(ASysMesh::last[3].vPosition.x-ASysMesh::last[0].vPosition.x,.4f));
+        // A tilted head must rotate the entire world frame in eye space, not
+        // leave the ring aligned to the screen. Check all corners with an
+        // off-centre, rotated sprite, including yaw and roll.
+        sprite={12,-8,20,10,.4f,0xaabbccdd};
+        for(float yaw : {0.f,.4f}){
+            ctx.view={};
+            ui.Render({2,1,8,1},&sprite,1,&texture,.02f);
+            TVector4 base[4];
+            for(int k=0;k<4;++k){auto p=ASysMesh::last[k].vPosition;base[k]={p.x,p.y,p.z,1};}
+            ctx.view={0,0,0,yaw,.7f};
+            ui.Render({2,1,8,1},&sprite,1,&texture,.02f);
+            for(int k=0;k<4;++k){
+                TVector4 expected;TMatrix44::TransformVector(expected,ctx.view,base[k]);
+                auto p=ASysMesh::last[k].vPosition;
+                assert(close(p.x,expected.x)&&close(p.y,expected.y)&&close(p.z,expected.z));
+            }
+        }
     }
     assert(ASysMesh::alive==0 && ASysMaterial::alive==0);
 }
@@ -171,4 +215,4 @@ with tempfile.TemporaryDirectory() as directory:
                     "-fsyntax-only", "-I" + str(tmp),
                     "-I" + str(ROOT / "OpenBarnyard/Source"),
                     str(ROOT / "OpenBarnyard/Source/Render/AWorldSpaceUI.cpp")], check=True)
-print("PASS: stereo anchors, head motion, near rejection, atlas UVs, fixed world size, resource reuse/cleanup")
+print("PASS: stereo anchors, head motion, near rejection, atlas UVs, fixed world size, world-locked yaw/roll orientation, resource reuse/cleanup")

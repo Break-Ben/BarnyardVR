@@ -6,7 +6,8 @@ class ASysMesh;
 class ASysMaterial;
 
 // A small world-anchored sprite batch. Positions/sizes are design units, not eye
-// pixels. Each eye transforms the anchor independently; the UI quad layer is not used.
+// pixels. Each eye transforms a world-up-aligned tangent frame at the anchor;
+// headset rotation does not orient the sprites. The UI quad layer is not used.
 class AWorldSpaceUI
 {
 public:
