@@ -118,5 +118,10 @@ void AMilkFillHudElement::Destroy()
 // $Barnyard: FUNCTION 00456340
 void AMilkFillHudElement::SetFill( TFLOAT a_fValue, TFLOAT a_fMax )
 {
+	// Keep the fill quad just inside the mask's outer edges. Equal-width quads
+	// can expose a thin seam at the perspective-rasterized mask boundary in VR.
+	// Bottom-centre attachment makes this a symmetric one-design-unit inset.
+	const TFLOAT fInset = AWorldSpaceGUI::IsActive() ? 1.0f : 0.0f;
+	m_oMilk.SetWidth( TMath::Max( 0.0f, m_oMask.GetWidth() - 2.0f * fInset ) );
 	m_oMilk.SetHeight( m_oBackPlate.GetHeight() * ( a_fValue / a_fMax ) * 0.9f );
 }
