@@ -22,6 +22,7 @@
 #include "Player/APlayerManager.h"
 #include "Player/APlayerProfileManager.h"
 #include "Render/ARenderer.h"
+#include "Render/AWorldOverlayRenderScope.h"
 #include "Render/AShadowManager.h"
 #include "Render/ASysShader/ASysShader.h"
 #include "Render/ASysShader/ASysMaterial.h"
@@ -1000,19 +1001,7 @@ static void FillPowerQuad( ASysMesh* a_pMesh, const TMatrix44& a_rcTransform, TF
 // $Barnyard: FUNCTION 00472080
 void AGolfMinigameState::OnRenderOverlay( TFLOAT a_fDeltaTime )
 {
-	TRenderInterfaceHAL* pRender = TRenderInterfaceHAL::Interface();
-
-	TRenderContext* pOldContext = pRender->GetCurrentContext();
-
-	m_oViewport.Begin();
-	pRender->SetCurrentRenderContext( m_oViewport.GetRenderContext() );
-
-	TRenderContext* pContext   = m_oViewport.GetRenderContext();
-	TCameraObject*  pOldCamera = pContext->GetCameraObject();
-	pContext->SetCameraObject( ARenderer::GetSingleton()->GetCameraObject() );
-	ARenderer::GetSingleton()->GetCameraObject()->Render();
-
-	pRender->GetTransforms().Push( m_oViewport.GetRenderContext()->GetWorldViewMatrix() );
+	AWorldOverlayRenderScope oOverlayScope( m_oViewport );
 
 	// NOTE: the colour is kept between the players (the pointer of a player after the first one
 	// has the colour of the last chunk of the previous player)
@@ -1079,11 +1068,4 @@ void AGolfMinigameState::OnRenderOverlay( TFLOAT a_fDeltaTime )
 			FillPowerQuad( rPlayer.apPowerChunkMeshes[ k ], mChunkTransform, 1.0f, uiColour );
 		}
 	}
-
-	pContext->SetCameraObject( pOldCamera );
-	pRender->GetTransforms().Pop();
-	pRender->SetCurrentRenderContext( pOldContext );
-	m_oViewport.End();
-
-	pRender->FlushShaders();
 }

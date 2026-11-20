@@ -21,6 +21,7 @@
 #include "Player/APlayerManager.h"
 #include "Player/APlayerProfileManager.h"
 #include "Render/ARenderer.h"
+#include "Render/AWorldOverlayRenderScope.h"
 #include "Render/ASkyDome.h"
 #include "Render/ASunFlareEffect.h"
 #include "Render/ASkinShader/ASkinMaterial.h"
@@ -267,31 +268,11 @@ void ABarnYardPoolMiniGameState::OnRenderOverlay( TFLOAT a_fDeltaTime )
 	if ( !m_aCue[ 0 ] || !m_aCue[ 0 ]->GetUnit() || !m_pCue || m_pCue->IsVisible() != TTRUE )
 		return;
 
-	TRenderInterfaceHAL* pRender = TRenderInterfaceHAL::Interface();
-	pRender->FlushShaders();
-
-	TRenderContext* pOldContext = pRender->GetCurrentContext();
-	auto&           rTransforms = pRender->GetTransforms();
-
-	m_oCueViewport.Begin();
-	pRender->SetCurrentRenderContext( m_oCueViewport.GetRenderContext() );
-
-	TRenderContext* pContext   = m_oCueViewport.GetRenderContext();
-	TCameraObject*  pOldCamera = pContext->GetCameraObject();
-	pContext->SetCameraObject( ARenderer::GetSingleton()->GetCameraObject() );
-	ARenderer::GetSingleton()->GetCameraObject()->Render();
-
-	rTransforms.Push( m_oCueViewport.GetRenderContext()->GetWorldViewMatrix() );
+	AWorldOverlayRenderScope oOverlayScope( m_oCueViewport );
 
 	m_pCue->GetModelInstance()->GetSceneObject()->EnableSkeletonUpdate();
 	m_pCue->GetModelInstance()->GetSceneObject()->RenderIfVisible();
 	m_pCue->GetModelInstance()->GetSceneObject()->DisableSkeletonUpdate();
-
-	m_oCueViewport.GetRenderContext()->SetCameraObject( pOldCamera );
-	rTransforms.Pop();
-
-	pRender->SetCurrentRenderContext( pOldContext );
-	m_oCueViewport.End();
 }
 
 // $Barnyard: FUNCTION 004d5060
