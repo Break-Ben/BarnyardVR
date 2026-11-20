@@ -15,6 +15,7 @@ using TINT=int;
 using TUINT32=unsigned;
 using TBOOL=bool;
 using TIndexType=unsigned short;
+using TBYTE=unsigned char;
 #define TNULL nullptr
 #define TTRUE true
 #define TFALSE false
@@ -74,7 +75,8 @@ struct ASysMesh {
     enum {FLAGS_VERTICES_DYNAMIC_APPEND=4,FLAGS_INDICES_DYNAMIC_APPEND=32};
     struct Vertex {Toshi::TVector3 vPosition;unsigned uiColor;Toshi::TVector2 vUV;};
     struct LockBuffer {
-        struct {void* apStreams[1];} VertexLock;
+        // Match TVertexPoolResourceInterface: streams are byte pointers, not void*.
+        struct {TBYTE* apStreams[1];} VertexLock;
         struct {TIndexType* pBuffer;} IndexLock;
     };
     static inline int alive=0,draws=0;
@@ -83,7 +85,7 @@ struct ASysMesh {
     ASysMesh(){++alive;} ~ASysMesh(){--alive;}
     bool CreatePools(unsigned flags,int v,int i){assert(flags==36 && v==24 && i==36);return true;}
     void SetMaterial(ASysMaterial*){}
-    bool Lock(LockBuffer& l){l.VertexLock.apStreams[0]=vertices;l.IndexLock.pBuffer=indices;return true;}
+    bool Lock(LockBuffer& l){l.VertexLock.apStreams[0]=reinterpret_cast<TBYTE*>(vertices);l.IndexLock.pBuffer=indices;return true;}
     void Unlock(int v,int i){assert(v==4 && i==6);for(int k=0;k<i;++k)assert(indices[k]<v);}
     void Validate(){}
     void Render(){

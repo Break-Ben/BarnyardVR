@@ -63,7 +63,7 @@ void AWorldSpaceUI::Render( const TVector4& a_rcAnchor, const Sprite* a_pSprites
 
 	ASysMesh::LockBuffer lock;
 	if ( !m_pMesh->Lock( lock ) ) return;
-	auto pVertices = static_cast<ASysMesh::Vertex*>( lock.VertexLock.apStreams[ 0 ] );
+	auto pVertices = reinterpret_cast<ASysMesh::Vertex*>( lock.VertexLock.apStreams[ 0 ] );
 	auto pIndices = lock.IndexLock.pBuffer;
 	const TVector4& uv1 = a_pTexture->GetUVPoint1();
 	const TVector4& uv2 = a_pTexture->GetUVPoint2();
