@@ -10,6 +10,26 @@ Use physical OpenXR controllers, a regular gamepad, or keyboard/mouse. Hand trac
 
 In VR, look with the headset to aim milk squirts in the Barnyard and minigames. Both hip-fire and aimed squirting use headset forward, with the existing firing buttons unchanged. Mouse/right-stick aim controls turn the player and view in place. Lock-on takes priority over headset direction: the character faces the target and squirts use the existing target-directed aim until unlocked. The indicator marks the aiming point rather than the stream’s eventual landing point; gravity and inherited player momentum still affect the stream. Non-VR aiming is unchanged.
 
+## VR settings
+
+Open **Options → VR Settings** using the normal menu controls. This native menu is also available in flat-screen mode so settings can be prepared without a headset.
+
+The initial page contains **dummy options only**, with no gameplay or rendering effect:
+
+- **Dummy Toggle:** Off by default; left/right or confirm toggles it.
+- **Dummy Level:** 1–5, default 3; left/right adjusts it, confirm cycles it.
+- **Restore VR Defaults:** asks for confirmation (No is the first choice).
+- **Save and Back:** writes changes and returns. The normal Back/Cancel control also saves.
+
+Settings load on first access from `BarnyardVR.cfg` in the save directory chosen by `SaveLoadSKU` (normally `Save` next to the executable). This is separate from `OpenBarnyard.cfg` and `savedata.by`. Missing entries use defaults; unknown keys and malformed/out-of-range values are ignored. Changes are written only on leaving the page, using a temporary file before replacing the previous config. Save errors are reported in-game and retain the edited values for retry.
+
+```ini
+DummyEnabled=0
+DummyLevel=3
+```
+
+For future port options, add typed values and validated setters to `VR/AVRSettings`, have the relevant subsystem consume those values, and expose them through `AVROptionsState`. Do not store port settings in the original binary save layout. The dummy options have no command-line overrides; existing VR arguments (including `-vrscale`) are unchanged. When connecting real startup-sensitive settings, load them before their subsystem initializes, label restart requirements in the menu, and apply any command-line overrides after loading without writing those overrides back to the file.
+
 ## Notes
 
 > [!IMPORTANT]

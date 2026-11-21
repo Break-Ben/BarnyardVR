@@ -17,6 +17,7 @@ public:
 		// NOTE: not in the latest version either, the Wii asks for the difficulty when a new game starts
 		OPTIONSBUTTON_DIFFICULTY,
 #endif
+		OPTIONSBUTTON_VR,
 		OPTIONSBUTTON_NUMOF
 	};
 
@@ -27,6 +28,7 @@ public:
 		3482, // ACameraOptionsState::CAMERA_SPEED_TEXT (the button shows ACameraOptionsState::GetCameraText)
 		3476, // ADifficultyOptionState::TITLE_TEXT (the button shows ADifficultyOptionState::GetText)
 #endif
+		0, // VR Settings uses port-owned text, not an original locale id.
 	};
 
 public:
