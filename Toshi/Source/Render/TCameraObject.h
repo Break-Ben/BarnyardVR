@@ -23,6 +23,7 @@ public:
 	~TCameraObject();
 
 	void Render();
+	TRenderContext::PROJECTIONPARAMS GetProjectionParams( TFLOAT a_fWidth, TFLOAT a_fHeight ) const;
 
 	// $Barnyard: FUNCTION 006cd080
 	TFLOAT SetNear( TFLOAT fNear )

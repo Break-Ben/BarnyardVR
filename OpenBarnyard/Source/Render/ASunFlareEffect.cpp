@@ -10,6 +10,7 @@
 #include "Physics/ACollisionManager.h"
 #if defined( TRENDERINTERFACE_DX11 )
 #  include "VR/AVRManager.h"
+#  include "Render/ARenderer.h"
 #endif
 
 #include <Render/TRenderInterface.h>
@@ -108,16 +109,7 @@ static TBOOL GetVRWorldLockedViewFrame( TVector3& a_rOutDirection, TVector3& a_r
 	return a_rOutDirection.z > 0.0f;
 }
 
-static TVector3 GetVRWorldLockedPatchRay( const TVector3& a_rcDirection, const TVector3& a_rcRight, const TVector3& a_rcUp, TFLOAT a_fRightOffset, TFLOAT a_fUpOffset )
-{
-	TVector3 vecRay(
-	    a_rcDirection.x + a_rcRight.x * a_fRightOffset + a_rcUp.x * a_fUpOffset,
-	    a_rcDirection.y + a_rcRight.y * a_fRightOffset + a_rcUp.y * a_fUpOffset,
-	    a_rcDirection.z + a_rcRight.z * a_fRightOffset + a_rcUp.z * a_fUpOffset
-	);
-	vecRay.Normalize();
-	return vecRay;
-}
+
 #endif
 
 // $Barnyard: FUNCTION 0060edd0
@@ -289,7 +281,7 @@ void ASunFlareEffect::Render()
 	if ( bVRView )
 	{
 		// Flush the world pass, then render the flare and celestial patches on the
-		// same perspective sky shell using the active eye's projection.
+		// active eye's perspective projection. The flare retains its legacy depths.
 		pRender->FlushOrderTables();
 		pContext->SetModelViewMatrix( oIdentity );
 
@@ -726,80 +718,6 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 	TUINT32  uiColour = ( TUINT32( a_fAlpha * 255.0f ) << 24 ) | 0xe4d049;
 	TFLOAT   fU       = -1.5f;
 
-#if defined( TRENDERINTERFACE_DX11 )
-	if ( bVRView )
-	{
-		TRenderInterface::DISPLAYPARAMS* pDisplayParams = pRender->GetCurrentDisplayParams();
-		const TFLOAT fSunSize = TMath::LERP(
-		    TINT( pDisplayParams->uiHeight ) * m_fMoonSize,
-		    TINT( pDisplayParams->uiWidth ) * m_fSunSize,
-		    0.2f
-		);
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-
-		TVector3 vecViewDirection;
-		TVector3 vecViewRight;
-		TVector3 vecViewUp;
-		if ( rcProjection.m_Proj.x <= 0.0f || rcProjection.m_Proj.y <= 0.0f ||
-		     !GetVRWorldLockedViewFrame( vecViewDirection, vecViewRight, vecViewUp, pContext, m_vecSunDir ) )
-		{
-			m_pFlareMesh->Unlock( 0, 0 );
-			m_pFlareMesh->Validate();
-			return;
-		}
-
-		// Match the legacy flare's center-screen size, but express each radial
-		// ray in the same world-locked tangent frame as the sun on a radius-199
-		// sky shell. This keeps the ray pattern fixed to the celestial direction
-		// as the view changes, rather than rebuilding it in screen pixels.
-		const TFLOAT fInvProjX = 1.0f / rcProjection.m_Proj.x;
-		const TFLOAT fInvProjY = 1.0f / rcProjection.m_Proj.y;
-		const TFLOAT fInnerRadius = fSunSize * 0.9f;
-		const TFLOAT fOuterRadius = fSunSize * 1.35f;
-		TVector3*    pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-		TINT         iNumVerts = 0;
-
-		for ( TINT i = 11; i != 0; i-- )
-		{
-			const TFLOAT fInnerX = pRayDir2D->x * fInnerRadius * fInvProjX;
-			const TFLOAT fInnerY = pRayDir2D->y * fInnerRadius * fInvProjY;
-			const TFLOAT fOuterX = pRayDir2D->x * fOuterRadius * fInvProjX;
-			const TFLOAT fOuterY = pRayDir2D->y * fOuterRadius * fInvProjY;
-			const TVector3 vecInnerRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fInnerX, fInnerY );
-			const TVector3 vecOuterRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fOuterX, fOuterY );
-
-			pVertices[ iNumVerts ].vPosition.Set(
-			    vecInnerRay.x * kVRCelestialDepth,
-			    vecInnerRay.y * kVRCelestialDepth,
-			    vecInnerRay.z * kVRCelestialDepth
-			);
-			pVertices[ iNumVerts ].vUV.Set( fU, 0.2f );
-			pVertices[ iNumVerts ].uiColor = uiColour;
-			iNumVerts++;
-
-			pVertices[ iNumVerts ].vPosition.Set(
-			    vecOuterRay.x * kVRCelestialDepth,
-			    vecOuterRay.y * kVRCelestialDepth,
-			    vecOuterRay.z * kVRCelestialDepth
-			);
-			pVertices[ iNumVerts ].vUV.Set( fU, 0.95f );
-			pVertices[ iNumVerts ].uiColor = uiColour;
-			iNumVerts++;
-
-			pRayDir2D->RotateZ( fAngleStep );
-			fU += 0.3f;
-		}
-
-		TINT iNumIndices = 0;
-		for ( TINT i = 0; i < iNumVerts; i++ )
-			pIndices[ iNumIndices++ ] = i;
-
-		m_pFlareMesh->Unlock( iNumVerts, iNumIndices );
-		m_pFlareMesh->Validate();
-		return;
-	}
-#endif
-
 	// The sun in view space
 	TVector4 vecSunView;
 	TMatrix44::RotateVector( vecSunView, pContext->GetModelViewMatrix(), m_vecSunDir );
@@ -823,12 +741,10 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 #if defined( TRENDERINTERFACE_DX11 )
 	if ( bVRView )
 	{
-		// In VR the two eyes have different asymmetric frusta. Invert the active
-		// eye's projection so the flare's outer rays land on the same projected
-		// sun position as its screen-space quad.
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-		vecSunView.x = ( a_rcScreenPos.x - rcProjection.m_Centre.x ) * vecSunView.z / rcProjection.m_Proj.x;
-		vecSunView.y = ( a_rcScreenPos.y - rcProjection.m_Centre.y ) * vecSunView.z / rcProjection.m_Proj.y;
+		// Build the original center-screen flare first. Its final placement in
+		// the celestial frame below supplies the sun direction for each eye.
+		vecSunView.x = 0.0f;
+		vecSunView.y = 0.0f;
 	}
 	else
 #endif
@@ -849,13 +765,7 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 
 	// The flat-screen effect shortens its rays toward the edges. Keep their
 	// length fixed in VR so head rotation only moves the effect, not its scale.
-#if defined( TRENDERINTERFACE_DX11 )
-	TFLOAT fLength = bVRView
-	    ? 0.9f
-	    : 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
-#else
 	TFLOAT fLength = 0.9f - ( 1.0f - ( 1.0f - TMath::Abs( vecSunView.y / ( pContext->GetHeight() * 0.125f ) ) ) * ( 1.0f - TMath::Abs( vecSunView.x / ( pContext->GetWidth() * 0.125f ) ) ) );
-#endif
 	TMath::Clip( fLength, 0.0f, 1.0f );
 	fLength = TMath::EaseInOut( fLength );
 
@@ -896,6 +806,46 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 
 	for ( TINT i = 0; i < iNumVerts; i++ )
 		pIndices[ iNumIndices++ ] = i;
+
+#if defined( TRENDERINTERFACE_DX11 )
+	if ( bVRView )
+	{
+		TVector3 vecViewDirection;
+		TVector3 vecViewRight;
+		TVector3 vecViewUp;
+		const auto& eye = pContext->GetProjectionParams();
+		if ( eye.m_Proj.x <= 0.0f || eye.m_Proj.y <= 0.0f ||
+		     !GetVRWorldLockedViewFrame( vecViewDirection, vecViewRight, vecViewUp, pContext, m_vecSunDir ) )
+		{
+			m_pFlareMesh->Unlock( 0, 0 );
+			m_pFlareMesh->Validate();
+			return;
+		}
+
+		// OpenBarnyard sizes the sun in display pixels but projects the flare
+		// through the game camera. Preserve that relationship under the eye FOV,
+		// using the camera's actual FOV/aspect calculation, not a fitted ray scale.
+		const auto* pDisplay = pRender->GetCurrentDisplayParams();
+		const auto reference = ARenderer::GetSingleton()->GetCameraObject()->GetProjectionParams( TFLOAT( pDisplay->uiWidth ), TFLOAT( pDisplay->uiHeight ) );
+		const TFLOAT fScaleX = reference.m_Proj.x / eye.m_Proj.x;
+		const TFLOAT fScaleY = reference.m_Proj.y / eye.m_Proj.y;
+
+		for ( TINT i = 0; i < iNumVerts; i++ )
+		{
+			const TVector3 vecOriginal = pVertices[ i ].vPosition;
+			const TFLOAT fX = vecOriginal.x * fScaleX;
+			const TFLOAT fY = vecOriginal.y * fScaleY;
+			// Keep the original depths, clip W, UVs and triangle layout. Normalizing
+			// onto a sky shell alters perspective interpolation and the visible rays.
+			// Legacy view-space +Y is down, opposite the world-up tangent.
+			pVertices[ i ].vPosition.Set(
+			    vecViewDirection.x * vecOriginal.z + vecViewRight.x * fX - vecViewUp.x * fY,
+			    vecViewDirection.y * vecOriginal.z + vecViewRight.y * fX - vecViewUp.y * fY,
+			    vecViewDirection.z * vecOriginal.z + vecViewRight.z * fX - vecViewUp.z * fY
+			);
+		}
+	}
+#endif
 
 	m_pFlareMesh->Unlock( iNumVerts, iNumIndices );
 	m_pFlareMesh->Validate();

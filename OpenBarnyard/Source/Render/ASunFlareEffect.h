@@ -8,8 +8,8 @@
 
 //-----------------------------------------------------------------------------
 // Draws the sun, radial lens flare, and moon. DX11/OpenXR celestial sprites
-// and flare rays are tessellated spherical patches aligned to a world-locked
-// sky frame; the flat-screen path retains its legacy rendering.
+// are tessellated spherical patches; flare rays retain their legacy perspective
+// strip in the same world-locked frame. The flat-screen path is unchanged.
 // Created by ARenderer::OnCreate and drawn by ARenderer::RenderMainScene.
 // AGameTimeFX::Apply sets the directions and intensities, in the main game the
 // sun direction follows the time of the day instead.
