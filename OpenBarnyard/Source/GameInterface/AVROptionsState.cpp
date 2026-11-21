@@ -2,6 +2,10 @@
 #include "AVROptionsState.h"
 #include "VR/AVRSettings.h"
 #include "GUI/T2GUIFontManager.h"
+#include "HUD/AHudManager.h"
+#include "HUD/AMenuNavHudElement.h"
+#include "Sound/ASoundManager.h"
+#include "SoundBank/ui.h"
 
 #include <cwchar>
 #include <Core/TMemoryDebugOn.h>
@@ -23,13 +27,14 @@ void AVROptionsState::RefreshLabels()
 	else
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
 	std::swprintf( m_awszLabels[ ROW_DEFAULTS ], 96, L"Restore Defaults" );
-	std::swprintf( m_awszLabels[ ROW_BACK ], 96, L"Save and Back" );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 		m_aButtons[ i ].GetTextBox().SetText( m_awszLabels[ i ] );
 }
 
 void AVROptionsState::OnInsertion()
 {
+	m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
+	m_bConfirmed              = TFALSE;
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
@@ -54,11 +59,18 @@ void AVROptionsState::OnInsertion()
 void AVROptionsState::OnRemoval()
 {
 	m_oResetListener.Disconnect();
-	// Also cover forced removal; normal Back uses OnMenuClose and reports errors.
-	if ( !AVRSettings::GetSingleton().Save() )
-		TWARN( "VR settings remain unsaved after menu removal\n" );
+	// Restore on forced removal too. A successful save advances this snapshot.
+	AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
+	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
+}
+
+void AVROptionsState::OnActivate()
+{
+	BaseClass::OnActivate();
+	// Same localised, device-aware Confirm/Cancel hints as the audio settings.
+	AHudManager::GetSingleton()->FindElement<AMenuNavHudElement>()->SetTexts( 1050, 1051, -1 );
 }
 
 void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
@@ -79,6 +91,13 @@ void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 
 TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInterface::InputEvent* a_pEvent, TBOOL& a_rStopEvents )
 {
+	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs && a_eCommand == AInputCommand_Cancel )
+	{
+		ASoundManager::GetSingleton()->PlayCue( soundbank::UI_MENUBACK );
+		m_bConfirmed = TFALSE;
+		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
+		return TTRUE;
+	}
 	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs &&
 	     ( a_eCommand == AInputCommand_Left || a_eCommand == AInputCommand_Right ) )
 	{
@@ -96,8 +115,8 @@ void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
 	if ( row == ROW_SNAP_TURN )
 	{
-		// Confirm cycles the value too, so mouse-only navigation works.
-		Adjust( row, 1 );
+		m_bConfirmed = TTRUE;
+		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
 	}
 	else if ( row == ROW_DEFAULTS )
 	{
@@ -105,8 +124,6 @@ void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 		m_oResetListener.Connect( pPopup->GetResponseEmitter(), this, OnResetResponse, 0 );
 		AGameStateController::GetSingleton()->PushState( pPopup );
 	}
-	else if ( row == ROW_BACK )
-		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
 }
 
 TBOOL __stdcall AVROptionsState::OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent )
@@ -123,12 +140,20 @@ TBOOL __stdcall AVROptionsState::OnResetResponse( AVROptionsState* a_pState, AMe
 
 void AVROptionsState::OnMenuClose()
 {
-	if ( AVRSettings::GetSingleton().Save() )
+	if ( !m_bConfirmed )
 	{
+		AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
 		AGameState::Remove();
 		return;
 	}
-	// Keep edited values and the page available so the user can retry saving.
+	if ( AVRSettings::GetSingleton().Save() )
+	{
+		m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
+		AGameState::Remove();
+		return;
+	}
+	// Keep edits for retry, but Cancel must still restore the entry snapshot.
+	m_bConfirmed = TFALSE;
 	OnActivate();
 	auto* pPopup = new AMessagePopupState( L"VR Settings", L"Could not save VR settings. Check the save folder is writable, then try again.", TPString8(), TTRUE, AInputCommand_OK, AInputCommand_Empty, AInputCommand_Empty, AInputCommand_Empty, TFALSE, 60.0f, 0 );
 	AGameStateController::GetSingleton()->PushState( pPopup );
