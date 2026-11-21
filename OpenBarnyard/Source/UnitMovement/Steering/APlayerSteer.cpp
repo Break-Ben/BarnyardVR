@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "Helpers/ABikeManager.h"
 #include "APlayerSteer.h"
-#include "AAlienSteer.h"
 #include "Units/AUnitFacialComponent.h"
 #include "AThrowItemSteer.h"
 #include "Units/AAnimatedUnit.h"
@@ -454,54 +453,8 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 		m_pKinematics->SetSpeed( 0.0f );
 	}
 
-	// First-person movement: step physics along the desired velocity for instant strafing/backpedaling, then align
-	// the unit's facing with the camera so interactions, throws, held items and shadows follow the player's view.
-	TBOOL    bFirstPersonFacing = TFALSE;
-	TVector4 vFirstPersonForward( 0.0f, 0.0f, 1.0f, 1.0f );
-	AUnit&   rParentUnit = GetParentUnit();
-
-	auto AlignFirstPersonFacing = [&]() {
-		// Both 2D and 3D SetFacing also overwrite desired facing. Keep the
-		// movement request separate from the model's camera-aligned facing.
-		const TVector4 vMovementFacing = *m_pKinematics->GetDesiredFacing();
-		m_pKinematics->SetFacing( vFirstPersonForward );
-		m_pKinematics->SetDesiredFacing( vMovementFacing );
-	};
-
-	if ( AFirstPersonCamera::IsUnitInFirstPerson( &rParentUnit ) &&
-	     !IsInteracting() &&
-	     !m_bSpeechDialogMode &&
-	     !m_pGoal &&
-	     CanStartAction() &&
-	     ( m_eActionState == STATE_WALKING || m_eActionState == STATE_JUMPING || m_eActionState == STATE_FALLING ) &&
-	     ( !IsA( &TGetClass( AAlienSteer ) ) || !TSTATICCAST( AAlienSteer, this )->IsStrafingOrRolling() ) )
-	{
-		ASimplePlayerControlComponent* pControl = TSTATICCAST( ASimplePlayerControlComponent, rParentUnit.FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
-
-		if ( pControl && pControl->IsMovementEnabled() && pControl->IsCameraInputEnabled() )
-		{
-			ACameraManager::GetSingleton()->GetCurrentCamera()->GetFlatDirection( vFirstPersonForward );
-
-			if ( vFirstPersonForward.MagnitudeSqXZ() > 0.0001f )
-			{
-				vFirstPersonForward.NormaliseXZ();
-				bFirstPersonFacing = TTRUE;
-				AlignFirstPersonFacing();
-			}
-		}
-	}
-
 	TVector4 vPrevPosition = *GetPosition();
 	UpdateCarrying();
-
-	if ( bFirstPersonFacing )
-	{
-		// Desired speed is zero during deceleration, not just when stationary.
-		// Step along the movement direction even after release; turning from the
-		// camera-facing direction here would redirect momentum and build turn speed.
-		const TVector4 vMovementFacing = *m_pKinematics->GetDesiredFacing();
-		m_pKinematics->SetFacing( vMovementFacing );
-	}
 
 	if ( ( this->*ms_aStateUpdates[ m_eActionState ] )( fDeltaTime ) )
 	{
@@ -515,19 +468,10 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 		m_pKinematics->ApplyGravity( fDeltaTime );
 		UpdateCollision( fDeltaTime, &vNewPosition, TTRUE, TTRUE, TFALSE );
 
-		if ( bFirstPersonFacing && m_eActionState != STATE_CLIMBING )
-		{
-			AlignFirstPersonFacing();
-		}
-
 		UpdateCarrying();
 		UpdatePath( fDeltaTime );
 		UpdateWater( fDeltaTime );
 		UpdateSinking();
-	}
-	else if ( bFirstPersonFacing && m_eActionState != STATE_CLIMBING )
-	{
-		AlignFirstPersonFacing();
 	}
 
 	return TTRUE;
