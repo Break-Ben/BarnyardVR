@@ -87,7 +87,7 @@ TBOOL AFrontEndAttractState::ProcessCommand( AInputCommand a_eInputCommand, cons
 // $Barnyard: FUNCTION 00407410
 TBOOL AFrontEndAttractState::OnUpdate( TFLOAT a_fDeltaTime )
 {
-	const TBOOL controllerPrompt = AVRManager::GetSingleton().IsActive() || AInputHandler::GetSingleton()->IsControllerUsed();
+	const TBOOL controllerPrompt = AInputHandler::GetSingleton()->IsControllerUsed();
 	if ( m_bControllerPrompt != controllerPrompt )
 	{
 		m_bControllerPrompt = controllerPrompt;
@@ -134,7 +134,7 @@ void AFrontEndAttractState::OnInsertion()
 
 	m_oText.Create( pFont, 300.0f );
 	m_oText.SetScale( 1.5f );
-	m_bControllerPrompt = AVRManager::GetSingleton().IsActive() || AInputHandler::GetSingleton()->IsControllerUsed();
+	m_bControllerPrompt = AInputHandler::GetSingleton()->IsControllerUsed();
 	m_oText.SetTextAndFitWidth( m_bControllerPrompt ? L"Press A or B" : g_pLocaleManager->GetString( 290 ) );
 	m_oText.SetTransform( 0.0f, 2.0f );
 

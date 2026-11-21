@@ -12,7 +12,6 @@
 #include "GUI/AGUISlideshow.h"
 #include "Render/ARenderer.h"
 #include "Input/AInputHandler.h"
-#include "VR/AVRManager.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Input/TInputDeviceKeyboard.h>
@@ -95,7 +94,7 @@ void AMiniGameInstructionState::TryDismiss()
 // The loading/instruction prompt is distinct from the front-end title prompt.
 void AMiniGameInstructionState::UpdateContinuePrompt()
 {
-	const TWCHAR* text = ( AVRManager::GetSingleton().IsActive() || AInputHandler::GetSingleton()->IsControllerUsed() ) ?
+	const TWCHAR* text = ( AInputHandler::GetSingleton()->IsControllerUsed() ) ?
 	    L"Press A or B" : g_pLocaleManager->GetString( 0x20c );
 	m_oTextBox.SetTextAndFitWidth( text );
 }

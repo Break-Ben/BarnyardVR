@@ -28,8 +28,6 @@
 #include "Units/AInventoryComponent.h"
 #include "Units/AInventoryGroupComponent.h"
 #include "Units/APlayerControlComponent.h"
-#include "Input/AInputHandler.h"
-#include "VR/AVRSettings.h"
 #include <string>
 
 #include <GUI/T2GUIFontManager.h>
@@ -649,7 +647,7 @@ void AInventoryState2::OnInsertion()
 	ALocale::FormatInputTags( m_wszUsePrompt, TARRAYSIZE( m_wszUsePrompt ), usePrompt.c_str() );
 
 	TWCHAR wszClosePrompt[ 64 ];
-	TStringManager::String16Format( wszClosePrompt, TARRAYSIZE( wszClosePrompt ), L"%s  %s", ( AVRSettings::GetSingleton().IsModernControls() && AInputHandler::GetSingleton()->IsControllerUsed() ) ? L"%c_VRInventory[Inventory] / B" : L"%c_VRInventory[Inventory]", ALocaleManager::Interface()->GetString( 1212 ) );
+	TStringManager::String16Format( wszClosePrompt, TARRAYSIZE( wszClosePrompt ), L"%s  %s", L"%c_VRInventory[Inventory]", ALocaleManager::Interface()->GetString( 1212 ) );
 	ALocale::FormatInputTags( m_wszClosePrompt, TARRAYSIZE( m_wszClosePrompt ), wszClosePrompt );
 
 	T2GUIElement* pRoot = AGUI2::GetRootElement();

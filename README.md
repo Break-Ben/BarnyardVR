@@ -55,9 +55,9 @@ These are **priorities, not additive binds**: when a minigame uses the same sour
 
 **Activity-specific Modern controls:** inventory uses **A to select/use** and **Y or B to close**, with its own effective map so on-foot B interaction is unaffected. Golf uses **A to swing**, **left trigger to zoom out**, and **right trigger to zoom in**. Darts uses **A to throw**; pool, cooking, tapper, whack-a-raccoon, gopher shop and honey collecting also prefer A for their primary action. These activity preferences take priority over the generic combat layout above.
 
-**Loading/instruction screen (both layouts):** A or B continues once the activity is ready; Start/Pause and the original keyboard/mouse controls still work. The controller/VR prompt says “Press A or B”. This is separate from the front-end title screen.
+**Loading/instruction screen (both layouts):** A or B continues once the activity is ready; Start/Pause and the original keyboard/mouse controls still work. The prompt says “Press A or B” only while controller input is active; keyboard/mouse use the original localized prompt, including in VR. This is separate from the front-end title screen.
 
-**Title screen (both layouts):** press Quest A or B to enter the main menu. In VR or when using a controller, the title prompt shows “Press A or B”; keyboard/mouse retain the original localized prompt and input behavior.
+**Title screen (both layouts):** press Quest A or B to enter the main menu. While controller input is active, the title prompt shows “Press A or B”; keyboard/mouse retain the original localized prompt and input behavior, including in VR.
 
 **OpenXR pause (both layouts):** the application menu button acts as Start/Pause. If the controller has no application-accessible menu (for example Index), click both thumbsticks together. System/dashboard buttons are not used. Standalone OpenXR stick clicks have a short 0.2-second chord-detection delay; quick clicks are still delivered. Existing virtual-gamepad prompt artwork is reused, not replaced with headset-specific artwork. Gamepads retain their normal Start/Pause button.
 
