@@ -320,6 +320,7 @@ struct AVRManager::Impl
 	XrAction hLeftTriggerAction = XR_NULL_HANDLE;
 	XrAction hRightTriggerAction = XR_NULL_HANDLE;
 	AVRManager::ControllerInputState oControllerInputState;
+	std::vector<XrPath> aInputSourceScratch = std::vector<XrPath>( 8 );
 	TBOOL bInputActionsReady = TFALSE;
 	TBOOL bInputActionsAttached = TFALSE;
 	TBOOL bSessionFocused = TFALSE;
@@ -643,6 +644,35 @@ static XrVector2f ReadVector2Action( AVRManager::Impl& a_rImpl, XrAction a_hActi
 	};
 }
 
+// SteamVR can emulate Touch controllers from optical hands while continuing
+// to report the Touch interaction profile. In that mode a trigger is actually
+// index_pinch and the other buttons/grip can also be gestures. Do not turn
+// keyboard/gamepad hand movements into gameplay or prompt-mode changes.
+static TBOOL HasPinchTriggerSource( AVRManager::Impl& a_rImpl, XrAction a_hTrigger )
+{
+	XrBoundSourcesForActionEnumerateInfo oInfo = { XR_TYPE_BOUND_SOURCES_FOR_ACTION_ENUMERATE_INFO };
+	oInfo.action = a_hTrigger;
+	auto& aSources = a_rImpl.aInputSourceScratch;
+	uint32_t uiCount = 0;
+	XrResult eResult = xrEnumerateBoundSourcesForAction( a_rImpl.hSession, &oInfo, uint32_t( aSources.size() ), &uiCount, aSources.data() );
+	if ( eResult == XR_ERROR_SIZE_INSUFFICIENT )
+	{
+		aSources.resize( uiCount );
+		eResult = xrEnumerateBoundSourcesForAction( a_rImpl.hSession, &oInfo, uint32_t( aSources.size() ), &uiCount, aSources.data() );
+	}
+	// A metadata failure must not disable otherwise working physical controllers.
+	if ( XR_FAILED( eResult ) ) return TFALSE;
+	for ( uint32_t i = 0; i < uiCount; ++i )
+	{
+		char szSource[ XR_MAX_PATH_LENGTH ] = {};
+		uint32_t uiLength = 0;
+		if ( XR_SUCCEEDED( xrPathToString( a_rImpl.hInstance, aSources[ i ], sizeof( szSource ), &uiLength, szSource ) ) &&
+		     std::strstr( szSource, "_pinch/" ) )
+			return TTRUE;
+	}
+	return TFALSE;
+}
+
 static void SyncControllerInput( AVRManager::Impl& a_rImpl )
 {
 	ClearControllerInputState( a_rImpl );
@@ -690,6 +720,26 @@ static void SyncControllerInput( AVRManager::Impl& a_rImpl )
 	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_1, ReadFloatAction( a_rImpl, a_rImpl.hRightSqueezeAction, a_rImpl.hRightHandPath ) >= kGripButtonThreshold );
 	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_2, ReadFloatAction( a_rImpl, a_rImpl.hLeftTriggerAction, a_rImpl.hLeftHandPath ) >= kTriggerButtonThreshold );
 	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_2, ReadFloatAction( a_rImpl, a_rImpl.hRightTriggerAction, a_rImpl.hRightHandPath ) >= kTriggerButtonThreshold );
+	// Re-query after each sync: switching between optical hands and physical
+	// Touch controllers need not change the reported interaction profile. Clear
+	// the whole emulated hand, not just pinch, since grip/face buttons are also
+	// synthesized. The adapter emits normal releases when these bits disappear.
+	const TUINT32 uiLeftHandButtons = AVRManager::CONTROLLER_BUTTON_SELECT | AVRManager::CONTROLLER_BUTTON_STICK_LEFT |
+	    AVRManager::CONTROLLER_BUTTON_CONTEXT_1 | AVRManager::CONTROLLER_BUTTON_CONTEXT_4 |
+	    AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_1 | AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_2;
+	const TUINT32 uiRightHandButtons = AVRManager::CONTROLLER_BUTTON_START | AVRManager::CONTROLLER_BUTTON_STICK_RIGHT |
+	    AVRManager::CONTROLLER_BUTTON_CONTEXT_2 | AVRManager::CONTROLLER_BUTTON_CONTEXT_3 |
+	    AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_1 | AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_2;
+	if ( HasPinchTriggerSource( a_rImpl, a_rImpl.hLeftTriggerAction ) )
+	{
+		a_rImpl.oControllerInputState.uiButtonMask &= ~uiLeftHandButtons;
+		a_rImpl.oControllerInputState.fLeftStickX = a_rImpl.oControllerInputState.fLeftStickY = 0.0f;
+	}
+	if ( HasPinchTriggerSource( a_rImpl, a_rImpl.hRightTriggerAction ) )
+	{
+		a_rImpl.oControllerInputState.uiButtonMask &= ~uiRightHandButtons;
+		a_rImpl.oControllerInputState.fRightStickX = a_rImpl.oControllerInputState.fRightStickY = 0.0f;
+	}
 }
 
 static void DestroyMirrorPipeline( AVRManager::Impl& a_rImpl )
