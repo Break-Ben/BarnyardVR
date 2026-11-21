@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AInputMapManager.h"
+#include "AControllerBindings.h"
 #include "AInputHandler.h"
 #include "Memory/AMemory.h"
 #include "Locale/ALocaleManager.h"
@@ -208,7 +209,8 @@ void AInputMapManager::GetEventCommands( const Toshi::TInputInterface::InputEven
 
 	if ( m_pActiveInputMap )
 	{
-		auto pCommandMap      = &m_pActiveInputMap->GetCommandMap();
+		auto pCommandMap = AControllerBindings::ForEvent( *m_pActiveInputMap, a_pEvent );
+		if ( !pCommandMap ) return;
 		auto pCommandIndexRes = pCommandMap->FindLast( a_pEvent->GetDoodad() );
 
 		while ( pCommandMap->IsValid( pCommandIndexRes ) )

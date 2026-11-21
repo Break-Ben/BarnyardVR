@@ -49,9 +49,19 @@ void AVRSettings::SetSnapTurnDegrees( TINT a_iDegrees )
 	}
 }
 
+void AVRSettings::SetModernControls( TBOOL a_bModern )
+{
+	if ( m_bModernControls != a_bModern )
+	{
+		m_bModernControls = a_bModern;
+		m_bDirty          = TTRUE;
+	}
+}
+
 void AVRSettings::RestoreDefaults()
 {
 	SetSnapTurnDegrees( 0 );
+	SetModernControls( TTRUE );
 }
 
 void AVRSettings::Load()
@@ -80,7 +90,9 @@ void AVRSettings::Load()
 		const long number = strtol( value.c_str(), &end, 10 );
 		if ( errno == ERANGE || end == value.c_str() || *end != '\0' ) continue;
 
-		if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
+		if ( key == "ModernControls" && ( number == 0 || number == 1 ) )
+			SetModernControls( number != 0 );
+		else if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
 			SetSnapTurnDegrees( TINT( number ) );
 	}
 	fclose( pFile );
@@ -104,7 +116,7 @@ TBOOL AVRSettings::Save()
 	FILE*             pFile       = fopen( temporary.c_str(), "w" );
 	if ( !pFile ) return TFALSE;
 	fprintf( pFile, "# BarnyardVR settings. SnapTurnDegrees: 0 (disabled), 15, 30, 45, 60, 90.\n" );
-	fprintf( pFile, "SnapTurnDegrees=%d\n", m_iSnapTurnDegrees );
+	fprintf( pFile, "SnapTurnDegrees=%d\nModernControls=%d\n", m_iSnapTurnDegrees, m_bModernControls ? 1 : 0 );
 	TBOOL written = fflush( pFile ) == 0 && ferror( pFile ) == 0;
 	if ( fclose( pFile ) != 0 ) written = TFALSE;
 

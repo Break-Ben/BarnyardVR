@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "AInputMap.h"
 #include "AInputMapManager.h"
+#include "AControllerBindings.h"
+#include "VR/AVRSettings.h"
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -10,9 +12,26 @@
 
 TDEFINE_CLASS_NORUNTIME( AInputMap );
 
+AInputMap::~AInputMap()
+{
+	AControllerBindings::Invalidate( this );
+}
+
+AControllerBindings::Map& AInputMap::GetCommandMap()
+{
+	return GetCommandMap( AVRSettings::GetSingleton().IsModernControls() );
+}
+
+AControllerBindings::Map& AInputMap::GetCommandMap( TBOOL a_bModern )
+{
+	return AControllerBindings::Resolve( *this, m_oDoodadToCommandMap, a_bModern );
+}
+
+
 // $Barnyard: FUNCTION 00596c60
 void AInputMap::LoadFromProperties( const PBProperties& a_rProperties )
 {
+	AControllerBindings::Invalidate( this );
 	m_oDoodadToCommandMap.Clear();
 
 	auto pInputManager = AInputMapManager::GetSingleton();
@@ -42,7 +61,8 @@ Toshi::TInputDevice::Doodad AInputMap::GetCommandDoodad( AInputCommand a_eComman
 
 	auto pInputManager = AInputMapManager::GetSingleton();
 
-	for ( auto it = m_oDoodadToCommandMap.Begin(); it != m_oDoodadToCommandMap.End(); it++ )
+	auto& effective = GetCommandMap();
+	for ( auto it = effective.Begin(); it != effective.End(); it++ )
 	{
 		CommandBinding uiBinding = it->GetSecond();
 
@@ -50,7 +70,7 @@ Toshi::TInputDevice::Doodad AInputMap::GetCommandDoodad( AInputCommand a_eComman
 			continue;
 
 		Toshi::TInputDevice::Doodad iBindingDoodad = it->GetFirst();
-		
+
 #ifdef BARNYARD_COMMUNITY_PATCH
 		if ( !pInputManager->HasBindForDoodad( iBindingDoodad ) )
 			continue;

@@ -75,6 +75,7 @@ TBOOL TInputOpenXRDeviceController::Acquire()
 
 TBOOL TInputOpenXRDeviceController::Unacquire()
 {
+	m_oPauseButtons.Reset();
 	SetAcquired( TFALSE );
 	m_bPolled = TFALSE;
 	return TTRUE;
@@ -82,6 +83,7 @@ TBOOL TInputOpenXRDeviceController::Unacquire()
 
 void TInputOpenXRDeviceController::Release()
 {
+	m_oPauseButtons.Reset();
 	m_bPolled = TFALSE;
 }
 
@@ -91,9 +93,12 @@ void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )
 
 	AVRManager::ControllerInputState oState;
 	if ( !AVRManager::GetSingleton().GetControllerInputState( oState ) )
+	{
 		oState = {};
+		m_oPauseButtons.Reset();
+	}
 
-	m_uiButtonMask = oState.uiButtonMask;
+	m_uiButtonMask = m_oPauseButtons.Update( oState.uiButtonMask, a_fDeltaTime );
 
 	// OpenXR reports stick Y as positive-up; the game's standard controller axis
 	// convention is positive-down, and gameplay negates that axis for forward motion.

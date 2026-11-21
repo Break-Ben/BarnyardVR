@@ -19,6 +19,7 @@ public:
 private:
 	enum ROW
 	{
+		ROW_CONTROLS,
 		ROW_SNAP_TURN,
 		ROW_DEFAULTS,
 		ROW_COUNT
@@ -27,8 +28,9 @@ private:
 	void                   Adjust( TINT a_iRow, TINT a_iDirection );
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
+	TBOOL m_bOriginalModernControls  = TTRUE;
 	TINT  m_iOriginalSnapTurnDegrees = 0;
-	TBOOL m_bConfirmed              = TFALSE;
+	TBOOL m_bConfirmed               = TFALSE;
 
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];
 	TWCHAR                                                                                   m_awszLabels[ ROW_COUNT ][ 96 ];

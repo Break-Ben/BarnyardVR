@@ -14,9 +14,10 @@ In VR, look with the headset to aim milk squirts in the Barnyard and minigames. 
 
 Open **Options → VR Settings** using the normal menu controls. This native menu is also available in flat-screen mode so settings can be prepared without a headset.
 
+- **Control Layout:** Modern (default) or Classic. Left/right switches layouts for gamepads and OpenXR controllers in gameplay and minigames. Keyboard/mouse bindings are unchanged. Classic keeps the original controller bindings.
 - **Snap Turning:** Disabled (default), 15°, 30°, 45°, 60° or 90°. Left/right cycles the choices. Changes take effect in VR and are saved when confirmed.
 - **Restore Defaults:** asks for confirmation (No is the first choice).
-- **Confirm / Cancel:** use the same device-aware prompts as the other options pages (Enter confirms, Escape cancels on keyboard). Confirm on the setting saves and returns; Cancel discards all edits, including Restore Defaults, and restores the value from when the page opened.
+- **Confirm / Cancel:** use the same device-aware prompts as the other options pages (Enter confirms, Escape cancels on keyboard). Confirm on the setting saves and returns; Cancel discards all edits, including Restore Defaults, and restores both values from when the page opened.
 
 When enabled, joystick camera yaw turns by the selected angle once per deflection. Return the stick towards centre before another snap (including reversing direction). The activation threshold is 70% and the release threshold is 30%, preventing jitter and held-stick repeats. Applies to normal camera turning, aimed squirting, and vehicle freelook; pitch stays unchanged. Mouse look, keyboard look keys, physical headset movement and non-VR camera controls are not snapped. This does not change vehicle steering or movement-stick mappings.
 
@@ -25,7 +26,31 @@ Settings load on first access from `BarnyardVR.cfg` in the save directory chosen
 ```ini
 # 0 disables snapping; supported angles: 15, 30, 45, 60, 90
 SnapTurnDegrees=0
+# 1 = Modern (default), 0 = Classic
+ModernControls=1
 ```
+
+### Controller layouts
+
+Modern resolves each game's native controller map rather than changing the original controls asset. Input dispatch and button-name/glyph lookup use the same effective map. Sticks, directional navigation and menu confirm/cancel retain their native behavior. Gameplay action preferences are:
+
+| Action | Modern preference (Xbox names) |
+| --- | --- |
+| Jump | A (bottom face button) |
+| Bike accelerate / brake | RT / LT |
+| Car-chase accelerate / brake / handbrake | RT / LT / A |
+| Shoot / lock-on | RT / LT |
+| Interact, use, reload | X |
+| Dodge, leave | B |
+| Alternate fire | RB |
+| Sprint / boost | Left stick click |
+| Inventory, switch, bell / horn | Y |
+| Bike tricks 1–4 | LB, RB, X, Y |
+| Previous / next selection | LB / RB |
+
+These are **priorities, not additive binds**: when a minigame uses the same source button for multiple state-dependent actions, the group stays together. Higher-priority actions (jump, pedals, shooting, interaction) win; displaced actions move with their original button group, so no original action is removed and no new button-sharing is introduced. Follow the game's effective button prompts for the particular activity. Generic face-button/QTE and direction-only maps retain their native layout. The resolver covers normal play, bike/races, car chase, golf, pool, darts, cooking, tapper, cow tipping, gate crash, honey collecting, gopher shop, statues, whack-a-raccoon, and the herding/defender/squirt/microgame contexts through their shared maps. Triggers remain digital; this does not add analog throttle.
+
+**OpenXR pause (both layouts):** the application menu button acts as Start/Pause. If the controller has no application-accessible menu (for example Index), click both thumbsticks together. System/dashboard buttons are not used. Standalone OpenXR stick clicks have a short 0.2-second chord-detection delay; quick clicks are still delivered. Existing virtual-gamepad prompt artwork is reused, not replaced with headset-specific artwork. Gamepads retain their normal Start/Pause button.
 
 For future port options, add typed values and validated setters to `VR/AVRSettings`, have the relevant subsystem consume those values, and expose them through `AVROptionsState`. Do not store port settings in the original binary save layout. Snap turning has no command-line override; existing VR arguments (including `-vrscale`) are unchanged. When connecting startup-sensitive settings, load them before their subsystem initializes, label restart requirements in the menu, and apply any command-line overrides after loading without writing those overrides back to the file.
 
