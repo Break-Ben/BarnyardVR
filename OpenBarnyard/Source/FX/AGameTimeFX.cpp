@@ -97,10 +97,8 @@ void AGameTimeFX::Apply()
 
 	AInstanceLightingHelper::GetSingleton()->SetShadeCoeff( field24_0x12c );
 
-	// Update viewport
-	TVector4 vecViewportColor;
-	vecViewportColor.Lerp4( m_vecShadowColor, m_vecAmbientColor, m_fShadowAmbientProgress );
-	pRenderer->GetMainViewport()->SetBackgroundColor( TUINT8( vecViewportColor.x * 63.0f ), TUINT8( vecViewportColor.y * 89.0f ), TUINT8( vecViewportColor.z * 33.0f ), 0U );
+	// Areas outside the scene geometry/sky should remain black, independent of lighting.
+	pRenderer->GetMainViewport()->SetBackgroundColor( 0, 0, 0, 0 );
 
 	ASunFlareEffect* pSunFlare = ASunFlareEffect::GetSingleton();
 	pSunFlare->SetSunIntensity( field26_0x134 );

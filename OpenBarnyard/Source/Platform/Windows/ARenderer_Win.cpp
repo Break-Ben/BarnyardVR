@@ -1094,7 +1094,7 @@ void ARenderer::CreateMainViewport()
 	m_pViewport->SetMaxZ( 1.0f );
 	m_pViewport->AllowBackgroundClear( TTRUE );
 	m_pViewport->AllowDepthClear( TTRUE );
-	m_pViewport->SetBackgroundColor( 128, 128, 128, 0 );
+	m_pViewport->SetBackgroundColor( 0, 0, 0, 0 );
 	m_pViewport->Enable( TTRUE );
 	m_pViewport->EnableDefaultBeginRender( TTRUE );
 	m_pViewport->SetMemoryAllocatorBlock( AMemory::GetMemBlock( AMemory::POOL_Viewport ) );
