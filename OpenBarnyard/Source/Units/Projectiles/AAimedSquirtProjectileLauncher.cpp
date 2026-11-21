@@ -203,14 +203,6 @@ TBOOL AAimedSquirtProjectileLauncher::ProcessInput( AInputCommand a_eCommand, co
 	if ( m_bNPCControlled )
 		return TFALSE;
 
-	if ( IsVRHeadAiming() &&
-	     ( a_eCommand == AInputCommand_RotateCamera ||
-	       a_eCommand == AInputCommand_RotateCameraCW || a_eCommand == AInputCommand_RotateCameraCCW ||
-	       a_eCommand == AInputCommand_ElevateCameraCW || a_eCommand == AInputCommand_ElevateCameraCCW ||
-	       ( a_eCommand >= AInputCommand_LookUpWithUp && a_eCommand <= AInputCommand_LookRightWithUp ) ||
-	       ( a_eCommand == AInputCommand_Move && m_bCursorInput && m_bMoveAimsCursor ) ) )
-		return TTRUE; // Head pose, not cursor/stick/mouse offsets, controls VR aim.
-
 	if ( m_bAimCameraActive && AFirstPersonCamera::IsOnFootPlayerTarget( GetOwnerUnit() ) )
 	{
 		if ( a_eCommand >= AInputCommand_LookUpWithUp && a_eCommand <= AInputCommand_LookRightWithUp )
@@ -392,13 +384,6 @@ TBOOL AAimedSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 {
 	TMatrix44 head;
 	TBOOL bHeadAim = TFALSE;
-	if ( !m_bNPCControlled && IsVRHeadAiming() )
-	{
-		m_bLockedOnTarget = TFALSE;
-		m_oTarget = TNULL;
-		m_vAimCursor.Set( m_fScreenWidth * 0.5f, m_fScreenHeight * 0.5f );
-	}
-
 	if ( !m_bNPCControlled )
 	{
 		// Keep the reticle anchored dead-centre in first-person free aim
@@ -441,7 +426,7 @@ TBOOL AAimedSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 
 		UpdateCursorEdges();
 		UpdateAimCamera( a_fDeltaTime );
-		bHeadAim = GetVRHeadPose( head );
+		bHeadAim = !m_bLockedOnTarget && GetVRHeadPose( head );
 
 		if ( m_bLockedOnTarget )
 		{
@@ -565,8 +550,8 @@ TBOOL AAimedSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 				m_oUnitUnderCursor = pHitUnit->GetSelfProxy();
 		}
 
-		// In VR preview the head-directed trajectory, including gravity and momentum.
-		m_oReticle.SetWorldPosition( bHeadAim ? m_vTracePoint : m_vAimPoint );
+		// Mark the point being aimed at, not the eventual ballistic landing point.
+		m_oReticle.SetWorldPosition( m_vAimPoint );
 		m_oReticle.Update( a_fDeltaTime );
 	}
 
@@ -611,6 +596,10 @@ Toshi::TVector4 AAimedSquirtProjectileLauncher::GetLaunchPosition()
 Toshi::TVector4 AAimedSquirtProjectileLauncher::GetLaunchDirection()
 {
 	if ( m_bNPCControlled )
+		return m_vAimDirection;
+
+	// Lock-on has priority over gaze, including while the body is still turning.
+	if ( IsVRHeadAiming() && m_bLockedOnTarget )
 		return m_vAimDirection;
 
 	TMatrix44 head;
@@ -905,9 +894,6 @@ void AAimedSquirtProjectileLauncher::LockOn( AUnit* a_pUnit )
 {
 	m_iTargetBone       = -1;
 	m_fTargetHalfHeight = 0.0f;
-
-	if ( !m_bNPCControlled && IsVRHeadAiming() )
-		a_pUnit = TNULL;
 
 	if ( !a_pUnit )
 	{
@@ -1308,7 +1294,30 @@ void AAimedSquirtProjectileLauncher::UpdateAimCamera( TFLOAT a_fDeltaTime )
 			AFirstPersonCamera::EnterAimMode( pOwner, vForward );
 		}
 
+		const TVector4 vPreviousForward = pCamera->GetOrientation();
 		AFirstPersonCamera::UpdateAimCamera( pOwner, pCamera, a_fDeltaTime, m_bLockedOnTarget, m_vAimPoint, m_vAimCursor, m_fScreenWidth, m_fScreenHeight );
+
+		if ( IsVRHeadAiming() && !m_bLockedOnTarget )
+		{
+			// Normal aim inputs rotate the rig in place. Apply that same yaw to the
+			// body, but never turn it merely because the physical headset moved.
+			const TVector4 vForward = pCamera->GetOrientation();
+			if ( vPreviousForward.MagnitudeSqXZ() > 0.0001f && vForward.MagnitudeSqXZ() > 0.0001f )
+			{
+				const TFLOAT fYaw = TMath::ATan2( vForward.x, vForward.z ) - TMath::ATan2( vPreviousForward.x, vPreviousForward.z );
+				if ( TMath::Abs( fYaw ) > 0.0001f )
+				{
+					ASteer* pSteer = pOwner->GetSteer();
+					const TVector4 vDesiredFacing = *pSteer->GetKinematics()->GetDesiredFacing();
+					TVector4 vFacing = *pSteer->GetDirection();
+					vFacing.AsVector3().RotateY( fYaw );
+					pSteer->SetDirection( vFacing );
+					// SetDirection also overwrites desired facing: retain movement intent.
+					if ( pSteer->GetDesiredSpeed() > 0.05f )
+						pSteer->SetDesiredDirection( vDesiredFacing );
+				}
+			}
+		}
 
 		if ( !m_bLockedOnTarget )
 			m_oReticle.SetPosition( m_vAimCursor );

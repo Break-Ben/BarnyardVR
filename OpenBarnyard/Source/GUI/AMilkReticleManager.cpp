@@ -446,9 +446,15 @@ AUnit* AMilkReticleManager::PickTarget( AAimedSquirtProjectileLauncher* a_pLaunc
 {
 	m_iPickIndex++;
 
-	const TMatrix44& rcCameraMatrix  = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
-	TVector4         vCameraForward  = rcCameraMatrix.AsBasisVector4( BASISVECTOR_FORWARD );
-	TVector4         vCameraPosition = rcCameraMatrix.AsBasisVector4( BASISVECTOR_TRANSLATION );
+	TMatrix44 cameraMatrix = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
+	TMatrix44 head;
+	const TBOOL bHeadView = a_pLauncher && APlayerManager::IsSingletonCreated() &&
+	    a_pLauncher->GetOwnerUnit() == APlayerManager::GetSingleton()->GetPlayer( 0 ) &&
+	    AVRManager::GetSingleton().GetHeadWorldMatrix( cameraMatrix, head );
+	if ( bHeadView )
+		cameraMatrix = head;
+	const TVector4 vCameraForward = cameraMatrix.AsBasisVector4( BASISVECTOR_FORWARD );
+	const TVector4 vCameraPosition = cameraMatrix.AsBasisVector4( BASISVECTOR_TRANSLATION );
 
 	m_oCandidates.iNumCandidates = 0;
 
@@ -485,7 +491,9 @@ AUnit* AMilkReticleManager::PickTarget( AAimedSquirtProjectileLauncher* a_pLaunc
 		else
 			continue;
 
-		InsertCandidate( i, vCameraForward.z * vDirection.z + vCameraForward.x * vDirection.x, fDistance, iWeight );
+		const TFLOAT fDot = bHeadView ? TVector4::DotProduct3( vCameraForward, vDirection ) :
+		    vCameraForward.z * vDirection.z + vCameraForward.x * vDirection.x;
+		InsertCandidate( i, fDot, fDistance, iWeight );
 	}
 
 	if ( m_oCandidates.iNumCandidates == 0 )
