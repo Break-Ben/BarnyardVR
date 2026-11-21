@@ -14,6 +14,7 @@
 #include "Input/AInputHandler.h"
 #include "Cameras/ACameraManager.h"
 #include "Tasks/ARootTask.h"
+#include "VR/AVRManager.h"
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -77,7 +78,8 @@ TBOOL AFrontEndAttractState::OnUpdate( TFLOAT a_fDeltaTime )
 
 	m_fIdleTime += a_fDeltaTime;
 
-	if ( m_fIdleTime < ms_fAttractIdleTime || AFadeManager::GetSingleton()->HasAnyFadesInProgress( TTRUE ) )
+	// In VR keep the title screen (and its blinking prompt), not the idle movie.
+	if ( AVRManager::GetSingleton().IsActive() || m_fIdleTime < ms_fAttractIdleTime || AFadeManager::GetSingleton()->HasAnyFadesInProgress( TTRUE ) )
 	{
 		// The plank blinks
 		m_fBlinkTime += a_fDeltaTime;
