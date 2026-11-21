@@ -28,6 +28,7 @@
 #include "Units/AInventoryComponent.h"
 #include "Units/AInventoryGroupComponent.h"
 #include "Units/APlayerControlComponent.h"
+#include <string>
 
 #include <GUI/T2GUIFontManager.h>
 #include <GUI/T2GUITextureSectionManager.h>
@@ -507,7 +508,7 @@ TBOOL AInventoryState2::OnUpdate( TFLOAT a_fDeltaTime )
 // $Barnyard: FUNCTION 00437940
 void AInventoryState2::OnInsertion()
 {
-	SetInputMap( TPS8( NormalBarnyard ) );
+	SetInputMap( TPString8( "VRInventory" ) );
 
 	// The wood of the shelf
 	T2GUITextureSection* pWoodMid   = T2GUITextureSectionManager::GetTextureSection( "Inv_Wood_Mid" );
@@ -639,11 +640,15 @@ void AInventoryState2::OnInsertion()
 	SelectType( AUnitManager::GetSingleton()->GetUnitFactory()->Find( APlayerProfileManager::GetSingleton()->GetMainProfile()->GetInventoryItem() ), TFALSE );
 
 	// The prompts at the bottom of the screen
-	pFont = T2GUIFontManager::FindFont( "Rekord26" );
-	ALocale::FormatInputTags( m_wszUsePrompt, TARRAYSIZE( m_wszUsePrompt ), ALocaleManager::Interface()->GetString( 1047 ) );
+	pFont                  = T2GUIFontManager::FindFont( "Rekord26" );
+	std::wstring usePrompt = ALocaleManager::Interface()->GetString( 1047 );
+	constexpr TWCHAR sourceMap[] = L"NormalBarnyard";
+	const auto       mapPos      = usePrompt.find( sourceMap );
+	if ( mapPos != std::wstring::npos ) usePrompt.replace( mapPos, TARRAYSIZE( sourceMap ) - 1, L"VRInventory" );
+	ALocale::FormatInputTags( m_wszUsePrompt, TARRAYSIZE( m_wszUsePrompt ), usePrompt.c_str() );
 
 	TWCHAR wszClosePrompt[ 64 ];
-	TStringManager::String16Format( wszClosePrompt, TARRAYSIZE( wszClosePrompt ), L"%s  %s", L"%c_NormalBarnyard[Inventory]", ALocaleManager::Interface()->GetString( 1212 ) );
+	TStringManager::String16Format( wszClosePrompt, TARRAYSIZE( wszClosePrompt ), L"%s  %s", L"%c_VRInventory[Inventory]", ALocaleManager::Interface()->GetString( 1212 ) );
 	ALocale::FormatInputTags( m_wszClosePrompt, TARRAYSIZE( m_wszClosePrompt ), wszClosePrompt );
 
 	T2GUIElement* pRoot = AGUI2::GetRootElement();

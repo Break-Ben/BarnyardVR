@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AInputMapManager.h"
+#include "AControllerBindings.h"
 #include "AInputHandler.h"
 #include "Memory/AMemory.h"
 #include "Locale/ALocaleManager.h"
@@ -77,6 +78,17 @@ TBOOL AInputMapManager::ReadControlsData()
 
 		pInputMap->LoadFromProperties( *it->GetValue()->GetProperties() );
 		m_InputMaps.PushBack( pInputMap );
+	}
+
+	// Inventory needs UI controls without changing the on-foot map it inherited.
+	// Register the copy so dispatch and locale input tags resolve the same map.
+	if ( auto* normal = FindMap( TPString8( "NormalBarnyard" ) ) )
+	{
+		auto* inventory = new AInputMap( TPString8( "VRInventory" ) );
+		auto& original  = normal->GetCommandMap( TFALSE );
+		for ( auto it = original.Begin(); it != original.End(); ++it )
+			inventory->GetCommandMap( TFALSE ).Insert( it->GetFirst(), it->GetSecond() );
+		m_InputMaps.PushBack( inventory );
 	}
 
 	return TTRUE;
@@ -208,7 +220,8 @@ void AInputMapManager::GetEventCommands( const Toshi::TInputInterface::InputEven
 
 	if ( m_pActiveInputMap )
 	{
-		auto pCommandMap      = &m_pActiveInputMap->GetCommandMap();
+		auto pCommandMap = AControllerBindings::ForEvent( *m_pActiveInputMap, a_pEvent );
+		if ( !pCommandMap ) return;
 		auto pCommandIndexRes = pCommandMap->FindLast( a_pEvent->GetDoodad() );
 
 		while ( pCommandMap->IsValid( pCommandIndexRes ) )

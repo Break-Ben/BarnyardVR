@@ -113,7 +113,7 @@ public:
 
 	// $Barnyard: FUNCTION 00596bd0
 	// $Barnyard: FUNCTION 00596dc0
-	~AInputMap() {}
+	~AInputMap();
 
 	const Toshi::TPString8& GetName() const { return m_Name; }
 
@@ -122,7 +122,8 @@ public:
 	// Returns the doodad bound to the command or -1. If a_bPreferMouseKeyboard is TFALSE, the binding listed first is returned
 	Toshi::TInputDevice::Doodad GetCommandDoodad( AInputCommand a_eCommand, TBOOL a_bPreferMouseKeyboard );
 
-	Toshi::T2Map<Toshi::TInputDevice::Doodad, CommandBinding>& GetCommandMap() { return m_oDoodadToCommandMap; }
+	Toshi::T2Map<Toshi::TInputDevice::Doodad, CommandBinding>& GetCommandMap();
+	Toshi::T2Map<Toshi::TInputDevice::Doodad, CommandBinding>& GetCommandMap( TBOOL a_bModern );
 
 private:
 	Toshi::TPString8                                          m_Name;                // 0x04

@@ -11,6 +11,7 @@
 #include "Helpers/AGameLoader.h"
 #include "GUI/AGUISlideshow.h"
 #include "Render/ARenderer.h"
+#include "Input/AInputHandler.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Input/TInputDeviceKeyboard.h>
@@ -50,7 +51,10 @@ TBOOL AMiniGameInstructionState::ProcessInput( const TInputInterface::InputEvent
 {
 	if ( a_pInputEvent->GetSource()->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
 	{
-		if ( a_pInputEvent->GetDoodad() == TInputDeviceController::BUTTON_START && a_pInputEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
+		if ( ( a_pInputEvent->GetDoodad() == TInputDeviceController::BUTTON_START ||
+		       a_pInputEvent->GetDoodad() == TInputDeviceController::BUTTON_CONTEXT_3 ||
+		       a_pInputEvent->GetDoodad() == TInputDeviceController::BUTTON_CONTEXT_2 ) &&
+		     a_pInputEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
 		{
 			if ( m_pMiniGame->CanDismissInstructions() )
 				Dismiss();
@@ -87,9 +91,21 @@ void AMiniGameInstructionState::TryDismiss()
 		Dismiss();
 }
 
+// The loading/instruction prompt is distinct from the front-end title prompt.
+void AMiniGameInstructionState::UpdateContinuePrompt()
+{
+	const TWCHAR* text = AInputHandler::GetSingleton()->IsControllerUsed() ?
+	    L"Press A or B" : g_pLocaleManager->GetString( 0x20c );
+	// Both choices are stable strings. Do not dirty/recalculate the text layout
+	// each frame while the same prompt is already displayed.
+	if ( m_oTextBox.GetText() != text )
+		m_oTextBox.SetTextAndFitWidth( text );
+}
+
 // $Barnyard: FUNCTION 0046c780
 TBOOL AMiniGameInstructionState::OnUpdate( TFLOAT a_fDeltaTime )
 {
+	UpdateContinuePrompt();
 	m_fBlinkTimer += a_fDeltaTime;
 	m_fTotalTime += a_fDeltaTime;
 
@@ -124,9 +140,7 @@ void AMiniGameInstructionState::OnInsertion()
 	m_oTextBox.Create( pFont, 300.0f );
 	m_oTextBox.SetScale( 1.5f );
 
-	const TWCHAR* wszText = g_pLocaleManager->GetString( 0x20c );
-	m_oTextBox.SetText( wszText );
-	m_oTextBox.SetWidth( pFont->GetTextWidth( wszText, 1.0f ) * m_oTextBox.GetScale() );
+	UpdateContinuePrompt();
 	m_oTextBox.SetTransform( 0.0f, -8.0f );
 
 	TFLOAT fRootWidth  = 0.0f;

@@ -22,6 +22,7 @@ AVROptionsState::~AVROptionsState()
 void AVROptionsState::RefreshLabels()
 {
 	const auto& settings = AVRSettings::GetSingleton();
+	std::swprintf( m_awszLabels[ ROW_CONTROLS ], 96, L"Control Layout: %ls", settings.IsModernControls() ? L"Modern" : L"Classic" );
 	if ( settings.GetSnapTurnDegrees() == 0 )
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: Disabled" );
 	else
@@ -34,7 +35,8 @@ void AVROptionsState::RefreshLabels()
 void AVROptionsState::OnInsertion()
 {
 	m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
-	m_bConfirmed              = TFALSE;
+	m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
+	m_bConfirmed               = TFALSE;
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
@@ -61,6 +63,7 @@ void AVROptionsState::OnRemoval()
 	m_oResetListener.Disconnect();
 	// Restore on forced removal too. A successful save advances this snapshot.
 	AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
+	AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
@@ -75,6 +78,13 @@ void AVROptionsState::OnActivate()
 
 void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 {
+	if ( a_iRow == ROW_CONTROLS )
+	{
+		auto& settings = AVRSettings::GetSingleton();
+		settings.SetModernControls( !settings.IsModernControls() );
+		RefreshLabels();
+		return;
+	}
 	if ( a_iRow != ROW_SNAP_TURN ) return;
 	auto&          settings = AVRSettings::GetSingleton();
 	constexpr TINT count    = sizeof( AVRSettings::SNAP_ANGLES ) / sizeof( AVRSettings::SNAP_ANGLES[ 0 ] );
@@ -113,7 +123,7 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_SNAP_TURN )
+	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
@@ -143,12 +153,14 @@ void AVROptionsState::OnMenuClose()
 	if ( !m_bConfirmed )
 	{
 		AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
+		AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
 		AGameState::Remove();
 		return;
 	}
 	if ( AVRSettings::GetSingleton().Save() )
 	{
 		m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
+		m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
 		AGameState::Remove();
 		return;
 	}

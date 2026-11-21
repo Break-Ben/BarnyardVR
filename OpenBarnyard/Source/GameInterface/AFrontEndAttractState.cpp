@@ -15,6 +15,7 @@
 #include "Cameras/ACameraManager.h"
 #include "Tasks/ARootTask.h"
 #include "VR/AVRManager.h"
+#include <Input/TInputDeviceController.h>
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -52,9 +53,22 @@ AFrontEndAttractState::~AFrontEndAttractState()
 // $Barnyard: FUNCTION 00406f00
 TBOOL AFrontEndAttractState::ProcessInput( const TInputInterface::InputEvent* a_pInputEvent )
 {
-	return AFadeManager::GetSingleton()->HasAnyFadesInProgress( TTRUE ) != TTRUE &&
-	    !m_oFadeOverListener.IsLinked() &&
-	    BaseClass::ProcessInput( a_pInputEvent );
+	if ( AFadeManager::GetSingleton()->HasAnyFadesInProgress( TTRUE ) || m_oFadeOverListener.IsLinked() )
+		return TFALSE;
+
+	// This screen only handles Start, not the dialog map's OK/Cancel. Accept
+	// Quest A/B directly in BOTH layouts without changing gameplay or keyboard
+	// bindings. Only a fresh press may advance; a held button cannot skip it.
+	if ( a_pInputEvent->GetSource()->IsA( &TGetClass( TInputDeviceController ) ) &&
+	     a_pInputEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN &&
+	     ( a_pInputEvent->GetDoodad() == TInputDeviceController::BUTTON_CONTEXT_3 ||
+	       a_pInputEvent->GetDoodad() == TInputDeviceController::BUTTON_CONTEXT_2 ) )
+	{
+		OpenMainMenu();
+		return TTRUE;
+	}
+
+	return BaseClass::ProcessInput( a_pInputEvent );
 }
 
 // $Barnyard: FUNCTION 00407390
@@ -73,6 +87,13 @@ TBOOL AFrontEndAttractState::ProcessCommand( AInputCommand a_eInputCommand, cons
 // $Barnyard: FUNCTION 00407410
 TBOOL AFrontEndAttractState::OnUpdate( TFLOAT a_fDeltaTime )
 {
+	const TBOOL controllerPrompt = AInputHandler::GetSingleton()->IsControllerUsed();
+	if ( m_bControllerPrompt != controllerPrompt )
+	{
+		m_bControllerPrompt = controllerPrompt;
+		m_oText.SetTextAndFitWidth( controllerPrompt ? L"Press A or B" : g_pLocaleManager->GetString( 290 ) );
+	}
+
 	if ( AInputHandler::GetSingleton()->HadInputLastFrame() )
 		m_fIdleTime = 0.0f;
 
@@ -113,7 +134,8 @@ void AFrontEndAttractState::OnInsertion()
 
 	m_oText.Create( pFont, 300.0f );
 	m_oText.SetScale( 1.5f );
-	m_oText.SetTextAndFitWidth( g_pLocaleManager->GetString( 290 ) );
+	m_bControllerPrompt = AInputHandler::GetSingleton()->IsControllerUsed();
+	m_oText.SetTextAndFitWidth( m_bControllerPrompt ? L"Press A or B" : g_pLocaleManager->GetString( 290 ) );
 	m_oText.SetTransform( 0.0f, 2.0f );
 
 	m_oPlank.SetTextureSection( pPlank );

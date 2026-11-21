@@ -12,6 +12,8 @@ public:
 	inline static constexpr TINT SNAP_ANGLES[] = { 0, 15, 30, 45, 60, 90 };
 	TINT                         GetSnapTurnDegrees() const { return m_iSnapTurnDegrees; }
 	void                         SetSnapTurnDegrees( TINT a_iDegrees );
+	TBOOL                        IsModernControls() const { return m_bModernControls; }
+	void                         SetModernControls( TBOOL a_bModern );
 	void                         RestoreDefaults();
 
 	// Save only when dirty. A failed save leaves the values dirty for retry.
@@ -23,6 +25,7 @@ private:
 	AVRSettings& operator=( const AVRSettings& ) = delete;
 	void         Load();
 
+	TBOOL m_bModernControls  = TTRUE;
 	TINT  m_iSnapTurnDegrees = 0;
 	TBOOL m_bDirty           = TFALSE;
 };

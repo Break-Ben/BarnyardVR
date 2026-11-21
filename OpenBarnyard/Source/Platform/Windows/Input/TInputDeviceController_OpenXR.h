@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Input/TInputDeviceController.h>
+#include "VR/AOpenXRPauseButtons.h"
 
 TOSHI_NAMESPACE_START
 
@@ -32,6 +33,7 @@ public:
 	virtual TINT   GetPortIndex() override { return -1; }
 
 private:
+	AOpenXRPauseButtons m_oPauseButtons;
 	TUINT32 m_uiButtonMask;
 	TUINT32 m_uiOldButtonMask;
 	TFLOAT  m_afSticks[ 4 ];
