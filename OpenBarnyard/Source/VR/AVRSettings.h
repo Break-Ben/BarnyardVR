@@ -1,4 +1,5 @@
 #pragma once
+#include <Toshi/Typedefs.h>
 
 // Port-only settings. Keep these out of AOptions and the original savedata.by layout.
 // Loaded on first use; consumers and menus share this one source of truth.
@@ -7,15 +8,11 @@ class AVRSettings
 public:
 	static AVRSettings& GetSingleton();
 
-	static constexpr TINT DUMMY_LEVEL_MIN     = 1;
-	static constexpr TINT DUMMY_LEVEL_MAX     = 5;
-	static constexpr TINT DUMMY_LEVEL_DEFAULT = 3;
-
-	TBOOL IsDummyEnabled() const { return m_bDummyEnabled; }
-	TINT  GetDummyLevel() const { return m_iDummyLevel; }
-	void  SetDummyEnabled( TBOOL a_bEnabled );
-	void  SetDummyLevel( TINT a_iLevel );
-	void  RestoreDefaults();
+	// Zero disables snapping. Stored as degrees, never as a menu-row index.
+	inline static constexpr TINT SNAP_ANGLES[] = { 0, 15, 30, 45, 60, 90 };
+	TINT                         GetSnapTurnDegrees() const { return m_iSnapTurnDegrees; }
+	void                         SetSnapTurnDegrees( TINT a_iDegrees );
+	void                         RestoreDefaults();
 
 	// Save only when dirty. A failed save leaves the values dirty for retry.
 	TBOOL Save();
@@ -26,7 +23,6 @@ private:
 	AVRSettings& operator=( const AVRSettings& ) = delete;
 	void         Load();
 
-	TBOOL m_bDummyEnabled = TFALSE;
-	TINT  m_iDummyLevel   = DUMMY_LEVEL_DEFAULT;
-	TBOOL m_bDirty        = TFALSE;
+	TINT  m_iSnapTurnDegrees = 0;
+	TBOOL m_bDirty           = TFALSE;
 };

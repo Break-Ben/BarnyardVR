@@ -14,21 +14,20 @@ In VR, look with the headset to aim milk squirts in the Barnyard and minigames. 
 
 Open **Options → VR Settings** using the normal menu controls. This native menu is also available in flat-screen mode so settings can be prepared without a headset.
 
-The initial page contains **dummy options only**, with no gameplay or rendering effect:
-
-- **Dummy Toggle:** Off by default; left/right or confirm toggles it.
-- **Dummy Level:** 1–5, default 3; left/right adjusts it, confirm cycles it.
-- **Restore VR Defaults:** asks for confirmation (No is the first choice).
+- **Snap Turning:** Disabled (default), 15°, 30°, 45°, 60° or 90°. Left/right or confirm cycles the choices. Changes apply immediately in VR.
+- **Restore Defaults:** asks for confirmation (No is the first choice).
 - **Save and Back:** writes changes and returns. The normal Back/Cancel control also saves.
 
-Settings load on first access from `BarnyardVR.cfg` in the save directory chosen by `SaveLoadSKU` (normally `Save` next to the executable). This is separate from `OpenBarnyard.cfg` and `savedata.by`. Missing entries use defaults; unknown keys and malformed/out-of-range values are ignored. Changes are written only on leaving the page, using a temporary file before replacing the previous config. Save errors are reported in-game and retain the edited values for retry.
+When enabled, joystick camera yaw turns by the selected angle once per deflection. Return the stick towards centre before another snap (including reversing direction). The activation threshold is 70% and the release threshold is 30%, preventing jitter and held-stick repeats. Applies to normal camera turning, aimed squirting, and vehicle freelook; pitch stays unchanged. Mouse look, keyboard look keys, physical headset movement and non-VR camera controls are not snapped. This does not change vehicle steering or movement-stick mappings.
+
+Settings load on first access from `BarnyardVR.cfg` in the save directory chosen by `SaveLoadSKU` (normally `Save` next to the executable). This is separate from `OpenBarnyard.cfg` and `savedata.by`. Missing entries use defaults; unknown keys (including the old dummy keys) and malformed/unsupported values are ignored. Changes are written only on leaving the page, using a temporary file before replacing the previous config. Save errors are reported in-game and retain the edited values for retry.
 
 ```ini
-DummyEnabled=0
-DummyLevel=3
+# 0 disables snapping; supported angles: 15, 30, 45, 60, 90
+SnapTurnDegrees=0
 ```
 
-For future port options, add typed values and validated setters to `VR/AVRSettings`, have the relevant subsystem consume those values, and expose them through `AVROptionsState`. Do not store port settings in the original binary save layout. The dummy options have no command-line overrides; existing VR arguments (including `-vrscale`) are unchanged. When connecting real startup-sensitive settings, load them before their subsystem initializes, label restart requirements in the menu, and apply any command-line overrides after loading without writing those overrides back to the file.
+For future port options, add typed values and validated setters to `VR/AVRSettings`, have the relevant subsystem consume those values, and expose them through `AVROptionsState`. Do not store port settings in the original binary save layout. Snap turning has no command-line override; existing VR arguments (including `-vrscale`) are unchanged. When connecting startup-sensitive settings, load them before their subsystem initializes, label restart requirements in the menu, and apply any command-line overrides after loading without writing those overrides back to the file.
 
 ## Notes
 

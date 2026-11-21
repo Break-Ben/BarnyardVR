@@ -37,30 +37,21 @@ AVRSettings::AVRSettings()
 	Load();
 }
 
-void AVRSettings::SetDummyEnabled( TBOOL a_bEnabled )
+void AVRSettings::SetSnapTurnDegrees( TINT a_iDegrees )
 {
-	if ( m_bDummyEnabled != a_bEnabled )
+	for ( TINT degrees : SNAP_ANGLES )
 	{
-		m_bDummyEnabled = a_bEnabled;
-		m_bDirty        = TTRUE;
-	}
-}
-
-void AVRSettings::SetDummyLevel( TINT a_iLevel )
-{
-	if ( a_iLevel < DUMMY_LEVEL_MIN ) a_iLevel = DUMMY_LEVEL_MIN;
-	if ( a_iLevel > DUMMY_LEVEL_MAX ) a_iLevel = DUMMY_LEVEL_MAX;
-	if ( m_iDummyLevel != a_iLevel )
-	{
-		m_iDummyLevel = a_iLevel;
-		m_bDirty      = TTRUE;
+		if ( degrees == a_iDegrees && m_iSnapTurnDegrees != degrees )
+		{
+			m_iSnapTurnDegrees = degrees;
+			m_bDirty           = TTRUE;
+		}
 	}
 }
 
 void AVRSettings::RestoreDefaults()
 {
-	SetDummyEnabled( TFALSE );
-	SetDummyLevel( DUMMY_LEVEL_DEFAULT );
+	SetSnapTurnDegrees( 0 );
 }
 
 void AVRSettings::Load()
@@ -89,10 +80,8 @@ void AVRSettings::Load()
 		const long number = strtol( value.c_str(), &end, 10 );
 		if ( errno == ERANGE || end == value.c_str() || *end != '\0' ) continue;
 
-		if ( key == "DummyEnabled" && ( number == 0 || number == 1 ) )
-			SetDummyEnabled( number != 0 );
-		else if ( key == "DummyLevel" && number >= DUMMY_LEVEL_MIN && number <= DUMMY_LEVEL_MAX )
-			SetDummyLevel( TINT( number ) );
+		if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
+			SetSnapTurnDegrees( TINT( number ) );
 	}
 	fclose( pFile );
 	m_bDirty = TFALSE;
@@ -114,8 +103,8 @@ TBOOL AVRSettings::Save()
 	const std::string temporary   = destination + ".tmp";
 	FILE*             pFile       = fopen( temporary.c_str(), "w" );
 	if ( !pFile ) return TFALSE;
-	fprintf( pFile, "# BarnyardVR settings. Dummy options have no gameplay effect.\n" );
-	fprintf( pFile, "DummyEnabled=%d\nDummyLevel=%d\n", m_bDummyEnabled ? 1 : 0, m_iDummyLevel );
+	fprintf( pFile, "# BarnyardVR settings. SnapTurnDegrees: 0 (disabled), 15, 30, 45, 60, 90.\n" );
+	fprintf( pFile, "SnapTurnDegrees=%d\n", m_iSnapTurnDegrees );
 	TBOOL written = fflush( pFile ) == 0 && ferror( pFile ) == 0;
 	if ( fclose( pFile ) != 0 ) written = TFALSE;
 

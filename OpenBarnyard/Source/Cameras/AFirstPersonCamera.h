@@ -75,6 +75,7 @@ public:
 	//-----------------------------------------------------------------------------
 	static void ResetVehicleLook();
 	static void AddVehicleMouseLook( TFLOAT a_fDeltaX, TFLOAT a_fDeltaY );
+	static void AddVehicleYawStep( TFLOAT a_fDegrees );
 	static void SetVehicleStickLook( TFLOAT a_fX, TFLOAT a_fY );
 	static void AddVehicleKeyLook( TFLOAT a_fYaw, TFLOAT a_fPitch );
 	static void UpdateVehicleLook( TFLOAT a_fDeltaTime, TFLOAT a_fVehicleSpeed );
@@ -86,6 +87,7 @@ public:
 	static void  LeaveAimMode();
 	static TBOOL IsAimModeActive();
 	static void  AddAimMouseInput( TFLOAT a_fDeltaX, TFLOAT a_fDeltaY, TBOOL& a_rbBreakLock );
+	static void  AddAimYawStep( TFLOAT a_fDegrees );
 	static void  AddAimRateInput( TFLOAT a_fX, TFLOAT a_fY, TBOOL& a_rbBreakLock );
 	static void  SetAimLookButtonTurn( TBOOL a_bYaw, TFLOAT a_fTurn );
 	static void  UpdateAimCamera(

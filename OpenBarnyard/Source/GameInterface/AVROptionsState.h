@@ -2,7 +2,7 @@
 #include "ABYardMenuState.h"
 #include "AMessagePopupState.h"
 
-// Native AGUI2 page; the dummy controls deliberately do not affect gameplay.
+// Native AGUI2 page for port-only settings.
 class AVROptionsState : public ABYardMenuState
 {
 public:
@@ -18,8 +18,7 @@ public:
 private:
 	enum ROW
 	{
-		ROW_TOGGLE,
-		ROW_LEVEL,
+		ROW_SNAP_TURN,
 		ROW_DEFAULTS,
 		ROW_BACK,
 		ROW_COUNT

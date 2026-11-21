@@ -18,9 +18,11 @@ AVROptionsState::~AVROptionsState()
 void AVROptionsState::RefreshLabels()
 {
 	const auto& settings = AVRSettings::GetSingleton();
-	std::swprintf( m_awszLabels[ ROW_TOGGLE ], 96, L"Dummy Toggle: %ls", settings.IsDummyEnabled() ? L"On" : L"Off" );
-	std::swprintf( m_awszLabels[ ROW_LEVEL ], 96, L"Dummy Level: %d / %d", settings.GetDummyLevel(), AVRSettings::DUMMY_LEVEL_MAX );
-	std::swprintf( m_awszLabels[ ROW_DEFAULTS ], 96, L"Restore VR Defaults" );
+	if ( settings.GetSnapTurnDegrees() == 0 )
+		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: Disabled" );
+	else
+		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
+	std::swprintf( m_awszLabels[ ROW_DEFAULTS ], 96, L"Restore Defaults" );
 	std::swprintf( m_awszLabels[ ROW_BACK ], 96, L"Save and Back" );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 		m_aButtons[ i ].GetTextBox().SetText( m_awszLabels[ i ] );
@@ -45,7 +47,7 @@ void AVROptionsState::OnInsertion()
 		m_oMenu.AddMenuItem( button );
 	}
 	m_oMenu.SetFocusAt( m_aButtons[ 0 ] );
-	m_oDialogTitle.SetText( L"VR Settings (Dummy Options)" );
+	m_oDialogTitle.SetText( L"VR Settings" );
 	BaseClass::OnInsertion();
 }
 
@@ -61,11 +63,17 @@ void AVROptionsState::OnRemoval()
 
 void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 {
-	auto& settings = AVRSettings::GetSingleton();
-	if ( a_iRow == ROW_TOGGLE )
-		settings.SetDummyEnabled( !settings.IsDummyEnabled() );
-	else if ( a_iRow == ROW_LEVEL )
-		settings.SetDummyLevel( settings.GetDummyLevel() + a_iDirection );
+	if ( a_iRow != ROW_SNAP_TURN ) return;
+	auto&          settings = AVRSettings::GetSingleton();
+	constexpr TINT count    = sizeof( AVRSettings::SNAP_ANGLES ) / sizeof( AVRSettings::SNAP_ANGLES[ 0 ] );
+	for ( TINT i = 0; i < count; ++i )
+	{
+		if ( AVRSettings::SNAP_ANGLES[ i ] == settings.GetSnapTurnDegrees() )
+		{
+			settings.SetSnapTurnDegrees( AVRSettings::SNAP_ANGLES[ ( i + a_iDirection + count ) % count ] );
+			break;
+		}
+	}
 	RefreshLabels();
 }
 
@@ -86,18 +94,14 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_TOGGLE || row == ROW_LEVEL )
+	if ( row == ROW_SNAP_TURN )
 	{
 		// Confirm cycles the value too, so mouse-only navigation works.
-		if ( row == ROW_LEVEL && AVRSettings::GetSingleton().GetDummyLevel() == AVRSettings::DUMMY_LEVEL_MAX )
-			AVRSettings::GetSingleton().SetDummyLevel( AVRSettings::DUMMY_LEVEL_MIN );
-		else
-			Adjust( row, 1 );
-		RefreshLabels();
+		Adjust( row, 1 );
 	}
 	else if ( row == ROW_DEFAULTS )
 	{
-		auto* pPopup = new AMessagePopupState( L"Restore VR Defaults", L"Reset all VR settings to their defaults?", TPString8(), TFALSE, AInputCommand_No, AInputCommand_Yes, AInputCommand_Empty, AInputCommand_Empty, TFALSE, 60.0f, 0 );
+		auto* pPopup = new AMessagePopupState( L"Restore Defaults", L"Reset all VR settings to their defaults?", TPString8(), TFALSE, AInputCommand_No, AInputCommand_Yes, AInputCommand_Empty, AInputCommand_Empty, TFALSE, 60.0f, 0 );
 		m_oResetListener.Connect( pPopup->GetResponseEmitter(), this, OnResetResponse, 0 );
 		AGameStateController::GetSingleton()->PushState( pPopup );
 	}

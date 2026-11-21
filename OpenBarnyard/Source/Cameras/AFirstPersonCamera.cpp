@@ -27,6 +27,8 @@
 #include "Physics/AVehicleManager.h"
 #include "Terrain/ATerrainInterface.h"
 
+#include <cmath>
+
 #ifdef TOSHI_SKU_WINDOWS
 #  include <windows.h>
 #endif
@@ -119,6 +121,7 @@ TVector4          s_vCarEyeOffset       = CAR_TRUCK_DEFAULT_EYE_OFFSET;
 
 // Vehicle freelook state (degrees)
 TFLOAT   s_fVehicleLookYaw      = 0.0f;
+TFLOAT   s_fVehicleSnapYaw      = 0.0f;
 TFLOAT   s_fVehicleLookPitch    = 0.0f;
 TVector2 s_vVehicleStickLook    = TVector2::VEC_ZERO;
 TVector2 s_vVehicleKeyLook      = TVector2::VEC_ZERO;
@@ -575,14 +578,15 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	TVector4 vFlatFwd;
 	NormaliseFlatSafe( rcVehicleFwd, vFlatFwd );
 
-	if ( s_fVehicleLookYaw != 0.0f )
-		vFlatFwd.AsVector3().RotateY( TMath::DegToRad( s_fVehicleLookYaw ) );
+	const TFLOAT fYaw = s_fVehicleLookYaw + s_fVehicleSnapYaw;
+	if ( fYaw != 0.0f )
+		vFlatFwd.AsVector3().RotateY( TMath::DegToRad( fYaw ) );
 
 	TFLOAT fVehiclePitch = PitchDegFromDirection( rcVehicleFwd );
 	TMath::Clip( fVehiclePitch, -55.0f, 55.0f );
 
 	// Dampen vehicle pitch slightly as the rider turns their head sideways
-	TFLOAT fForwardAlignment = TMath::Cos( TMath::DegToRad( s_fVehicleLookYaw ) );
+	TFLOAT fForwardAlignment = TMath::Cos( TMath::DegToRad( fYaw ) );
 	TFLOAT fTotalPitch       = fVehiclePitch * fForwardAlignment + s_fVehicleLookPitch;
 
 	BuildForwardDirection( vFlatFwd, fTotalPitch, a_rOutForward );
@@ -801,7 +805,7 @@ void AFirstPersonCamera::ComputeCarCockpit( AUnitCarChaseCar* a_pCar, TBOOL a_bL
 	TVector4 vFlatFwd;
 	NormaliseFlatSafe( rcBodyFwd, vFlatFwd );
 
-	TFLOAT fYawDeg = s_fVehicleLookYaw + ( a_bLookBack ? 180.0f : 0.0f );
+	TFLOAT fYawDeg = s_fVehicleLookYaw + s_fVehicleSnapYaw + ( a_bLookBack ? 180.0f : 0.0f );
 
 	if ( fYawDeg != 0.0f )
 		vFlatFwd.AsVector3().RotateY( TMath::DegToRad( fYawDeg ) );
@@ -816,6 +820,7 @@ void AFirstPersonCamera::ComputeCarCockpit( AUnitCarChaseCar* a_pCar, TBOOL a_bL
 void AFirstPersonCamera::ResetVehicleLook()
 {
 	s_fVehicleLookYaw      = 0.0f;
+	s_fVehicleSnapYaw      = 0.0f;
 	s_fVehicleLookPitch    = 0.0f;
 	s_vVehicleStickLook    = TVector2::VEC_ZERO;
 	s_vVehicleKeyLook      = TVector2::VEC_ZERO;
@@ -838,6 +843,13 @@ void AFirstPersonCamera::AddVehicleMouseLook( TFLOAT a_fDeltaX, TFLOAT a_fDeltaY
 	TMath::Clip( s_fVehicleLookPitch, VEHICLE_MIN_PITCH_DEG, VEHICLE_MAX_PITCH_DEG );
 
 	s_fVehicleLookIdleTime = 0.0f;
+}
+
+// Keep snapped yaw separate from smooth freelook, so its limits/recentering
+// cannot shrink a snap or glide it back. Mouse/key freelook stays unchanged.
+void AFirstPersonCamera::AddVehicleYawStep( TFLOAT a_fDegrees )
+{
+	s_fVehicleSnapYaw = std::remainder( s_fVehicleSnapYaw + a_fDegrees, 360.0f );
 }
 
 void AFirstPersonCamera::SetVehicleStickLook( TFLOAT a_fX, TFLOAT a_fY )
@@ -936,6 +948,12 @@ void AFirstPersonCamera::AddAimMouseInput( TFLOAT a_fDeltaX, TFLOAT a_fDeltaY, T
 
 	if ( TMath::Abs( a_fDeltaX ) > 10.0f || TMath::Abs( a_fDeltaY ) > 10.0f )
 		a_rbBreakLock = TTRUE;
+}
+
+void AFirstPersonCamera::AddAimYawStep( TFLOAT a_fDegrees )
+{
+	// This accumulator is already applied as an immediate yaw delta, not a rate.
+	s_vAimMouseTurn.x += a_fDegrees;
 }
 
 void AFirstPersonCamera::AddAimRateInput( TFLOAT a_fX, TFLOAT a_fY, TBOOL& a_rbBreakLock )

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AGTAStyleCameraHelper.h"
+#include "VR/AVRSnapTurn.h"
 #include "ABarnStairCamera.h"
 #include "ACameraManager.h"
 #include "AFirstPersonCamera.h"
@@ -864,7 +865,16 @@ TBOOL AGTAStyleCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_pEve
 			}
 			else
 			{
-				m_vRotateInput.x = pEvent->GetMagnitudeFloat( 0 );
+				TFLOAT fSnapDegrees;
+				if ( AVRSnapTurn::FilterStickYaw( pEvent, fSnapDegrees ) )
+				{
+					m_fYaw += fSnapDegrees;
+					m_fYawSpeed = 0.0f; // No residual smooth yaw after a step.
+					m_vRotateInput.x = 0.0f;
+					m_bRotating = m_bRotating || fSnapDegrees != 0.0f;
+				}
+				else
+					m_vRotateInput.x = pEvent->GetMagnitudeFloat( 0 );
 				m_vRotateInput.y = pOptions->IsMouseInverted() ? -pEvent->GetMagnitudeFloat( 1 ) : pEvent->GetMagnitudeFloat( 1 );
 
 #ifdef BARNYARD_LATEST
