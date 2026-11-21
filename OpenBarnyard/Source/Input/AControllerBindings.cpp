@@ -94,6 +94,24 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 	for ( auto it = a_rOriginal.Begin(); it != a_rOriginal.End(); ++it )
 		entries.emplace_back( it->GetFirst(), it->GetSecond() );
 
+	const char* mapName = a_rOwner.GetName().GetString();
+	if ( std::strcmp( mapName, "VRInventory" ) == 0 )
+	{
+		auto effective = std::make_unique<Map>( AMemory::GetAllocator( AMemory::POOL_Misc ) );
+		for ( const auto& entry : entries )
+		{
+			// Preserve navigation, keyboard and mouse exactly. Replace gameplay
+			// action buttons rather than letting Jump/Interact aliases leak in.
+			if ( ButtonIndex( entry.first ) < 0 ) effective->Insert( entry.first, entry.second );
+		}
+		effective->Insert( Pad::BUTTON_CONTEXT_3, TUINT32( AInputCommand_Interact ) | ( 1u << 16 ) );
+		effective->Insert( Pad::BUTTON_CONTEXT_1, TUINT32( AInputCommand_Inventory ) | ( 1u << 16 ) );
+		effective->Insert( Pad::BUTTON_CONTEXT_2, TUINT32( AInputCommand_Inventory ) | ( 2u << 16 ) );
+		auto* result = effective.get();
+		s_maps.emplace( &a_rOwner, std::move( effective ) );
+		return *result;
+	}
+
 	// Leave/SelectPrevious/etc. also appear in ordinary menus. Do not apply
 	// gameplay preferences to those maps just because the command name matches.
 	TBOOL gameplay = TFALSE;
@@ -128,6 +146,19 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 		preferences.push_back( { AInputCommand_BackwardWithUp, Pad::BUTTON_SHOULDER_LEFT_2 } );
 		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } ); // handbrake
 	}
+	// Simple activities use A for their primary action, not the
+	// combat trigger layout. These overrides precede the generic preferences.
+	if ( std::strcmp( mapName, "AGolfMinigameState" ) == 0 )
+	{
+		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } );
+		preferences.push_back( { AInputCommand_ZoomOut, Pad::BUTTON_SHOULDER_LEFT_2 } );
+		preferences.push_back( { AInputCommand_ZoomIn, Pad::BUTTON_SHOULDER_RIGHT_2 } );
+	}
+	else if ( std::strcmp( mapName, "ADartMiniGame" ) == 0 )
+		preferences.push_back( { AInputCommand_Interact, Pad::BUTTON_CONTEXT_3 } );
+	else if ( std::strcmp( mapName, "ABarnYardPoolMiniGame" ) == 0 || std::strcmp( mapName, "ACookingMiniGame" ) == 0 || std::strcmp( mapName, "ATapperMiniGameState" ) == 0 || std::strcmp( mapName, "AWhackARaccMiniGameState" ) == 0 || std::strcmp( mapName, "AGopherShopGame" ) == 0 || std::strcmp( mapName, "AHoneyCollectingGame" ) == 0 )
+		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } );
+
 	if ( gameplay )
 		preferences.insert( preferences.end(), std::begin( PREFERENCES ), std::end( PREFERENCES ) );
 	else

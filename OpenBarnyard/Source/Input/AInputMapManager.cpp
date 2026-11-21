@@ -80,6 +80,17 @@ TBOOL AInputMapManager::ReadControlsData()
 		m_InputMaps.PushBack( pInputMap );
 	}
 
+	// Inventory needs UI controls without changing the on-foot map it inherited.
+	// Register the copy so dispatch and locale input tags resolve the same map.
+	if ( auto* normal = FindMap( TPString8( "NormalBarnyard" ) ) )
+	{
+		auto* inventory = new AInputMap( TPString8( "VRInventory" ) );
+		auto& original  = normal->GetCommandMap( TFALSE );
+		for ( auto it = original.Begin(); it != original.End(); ++it )
+			inventory->GetCommandMap( TFALSE ).Insert( it->GetFirst(), it->GetSecond() );
+		m_InputMaps.PushBack( inventory );
+	}
+
 	return TTRUE;
 }
 

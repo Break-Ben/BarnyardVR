@@ -8,7 +8,7 @@
 // Instruction screen shown before a minigame starts (TClass 00782700, vtable 0071d828).
 // Pushed by AGameLoader::LoadMiniGameImpl (and when a minigame is restarted)
 // with m_pMiniGame set to the minigame state. Shows the loading picture of the
-// minigame and a blinking "press ... to continue" text. Pressing START, ESCAPE,
+// minigame and a blinking "press ... to continue" text. Pressing controller A/B/START, ESCAPE,
 // RETURN, SPACE or clicking removes it and starts the minigame (OnStart).
 //-----------------------------------------------------------------------------
 class AMiniGameInstructionState
@@ -49,6 +49,7 @@ public:
 private:
 	// Dismisses the screen if the minigame allows it.
 	void TryDismiss();
+	void UpdateContinuePrompt();
 
 private:
 	AGameState*           m_pMiniGame;   // 0xa4
