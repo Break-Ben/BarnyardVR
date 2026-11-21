@@ -729,42 +729,32 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 #if defined( TRENDERINTERFACE_DX11 )
 	if ( bVRView )
 	{
-		TRenderInterface::DISPLAYPARAMS* pDisplayParams = pRender->GetCurrentDisplayParams();
-		const TFLOAT fSunSize = TMath::LERP(
-		    TINT( pDisplayParams->uiHeight ) * m_fMoonSize,
-		    TINT( pDisplayParams->uiWidth ) * m_fSunSize,
-		    0.2f
-		);
-		const TRenderContext::PROJECTIONPARAMS& rcProjection = pContext->GetProjectionParams();
-
 		TVector3 vecViewDirection;
 		TVector3 vecViewRight;
 		TVector3 vecViewUp;
-		if ( rcProjection.m_Proj.x <= 0.0f || rcProjection.m_Proj.y <= 0.0f ||
-		     !GetVRWorldLockedViewFrame( vecViewDirection, vecViewRight, vecViewUp, pContext, m_vecSunDir ) )
+		if ( !GetVRWorldLockedViewFrame( vecViewDirection, vecViewRight, vecViewUp, pContext, m_vecSunDir ) )
 		{
 			m_pFlareMesh->Unlock( 0, 0 );
 			m_pFlareMesh->Validate();
 			return;
 		}
 
-		// Match the legacy flare's center-screen size, but express each radial
-		// ray in the same world-locked tangent frame as the sun on a radius-199
-		// sky shell. This keeps the ray pattern fixed to the celestial direction
-		// as the view changes, rather than rebuilding it in screen pixels.
-		const TFLOAT fInvProjX = 1.0f / rcProjection.m_Proj.x;
-		const TFLOAT fInvProjY = 1.0f / rcProjection.m_Proj.y;
-		const TFLOAT fInnerRadius = fSunSize * 0.9f;
-		const TFLOAT fOuterRadius = fSunSize * 1.35f;
+		// Preserve the legacy center-screen angular extents (view-space radius / Z).
+		// Despite their names below, the "inner" vertices at Z=1.6 are the distant
+		// ray tips (V=0.2); the "outer" vertices at Z=170 sit near the sun (V=0.95).
+		// Scaling both rings to the sun sprite size collapses the rays into a halo.
+		const TFLOAT fLength = TMath::EaseInOut( 0.9f );
+		const TFLOAT fInnerRadius = ( fLength * 6.0f + 4.0f ) / 1.6f;
+		const TFLOAT fOuterRadius = 10.0f / 170.0f;
 		TVector3*    pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
 		TINT         iNumVerts = 0;
 
 		for ( TINT i = 11; i != 0; i-- )
 		{
-			const TFLOAT fInnerX = pRayDir2D->x * fInnerRadius * fInvProjX;
-			const TFLOAT fInnerY = pRayDir2D->y * fInnerRadius * fInvProjY;
-			const TFLOAT fOuterX = pRayDir2D->x * fOuterRadius * fInvProjX;
-			const TFLOAT fOuterY = pRayDir2D->y * fOuterRadius * fInvProjY;
+			const TFLOAT fInnerX = pRayDir2D->x * fInnerRadius;
+			const TFLOAT fInnerY = pRayDir2D->y * fInnerRadius;
+			const TFLOAT fOuterX = pRayDir2D->x * fOuterRadius;
+			const TFLOAT fOuterY = pRayDir2D->y * fOuterRadius;
 			const TVector3 vecInnerRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fInnerX, fInnerY );
 			const TVector3 vecOuterRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fOuterX, fOuterY );
 
