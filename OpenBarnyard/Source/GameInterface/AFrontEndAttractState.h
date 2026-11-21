@@ -60,4 +60,5 @@ private:
 	AWindmillHelper*      m_pWindmillHelper;   // 0x1b0
 	Toshi::T2GUIRectangle m_oTitle;            // 0x1b4, "BY_TITLE" (languages other than English)
 	Toshi::T2GUIRectangle m_oTitleShadow;      // 0x22c
+	TBOOL                 m_bControllerPrompt = TFALSE;
 };

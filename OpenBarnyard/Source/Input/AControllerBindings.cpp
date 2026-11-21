@@ -46,16 +46,18 @@ constexpr Preference PREFERENCES[] = {
 	{ AInputCommand_Accelerator, Pad::BUTTON_SHOULDER_RIGHT_2 },
 	{ AInputCommand_Brake, Pad::BUTTON_SHOULDER_LEFT_2 },
 	{ AInputCommand_Shoot, Pad::BUTTON_SHOULDER_RIGHT_2 },
-	{ AInputCommand_ZLock, Pad::BUTTON_SHOULDER_LEFT_2 },
-	{ AInputCommand_Interact, Pad::BUTTON_CONTEXT_4 },
+	// Switch holds the secondary (aimed squirt) launcher until released.
+	// ZLock is target lock, not the action that enters squirt aim.
+	{ AInputCommand_Switch, Pad::BUTTON_SHOULDER_LEFT_2 },
+	{ AInputCommand_Inventory, Pad::BUTTON_CONTEXT_1 },
+	{ AInputCommand_Interact, Pad::BUTTON_CONTEXT_2 },
+	{ AInputCommand_ZLock, Pad::BUTTON_SHOULDER_LEFT_1 },
 	{ AInputCommand_Use, Pad::BUTTON_CONTEXT_4 },
 	{ AInputCommand_Dodge, Pad::BUTTON_CONTEXT_2 },
 	{ AInputCommand_ShootAlt, Pad::BUTTON_SHOULDER_RIGHT_1 },
 	{ AInputCommand_Reload, Pad::BUTTON_CONTEXT_4 },
 	{ AInputCommand_Speed, Pad::BUTTON_STICK_LEFT },
 	{ AInputCommand_SuperSpeed, Pad::BUTTON_STICK_LEFT },
-	{ AInputCommand_Switch, Pad::BUTTON_CONTEXT_1 },
-	{ AInputCommand_Inventory, Pad::BUTTON_CONTEXT_1 },
 	{ AInputCommand_Bell, Pad::BUTTON_CONTEXT_1 },
 	{ AInputCommand_Horn, Pad::BUTTON_CONTEXT_1 },
 	{ AInputCommand_Leave, Pad::BUTTON_CONTEXT_2 },
@@ -110,15 +112,13 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 			default: break;
 		}
 	}
-	if ( !gameplay ) return a_rOriginal;
-
 	std::array<Doodad, COUNT> destinations;
 	std::array<TBOOL, COUNT>  assigned{};
 	std::array<TBOOL, COUNT>  occupied{};
 	for ( TINT i = 0; i < COUNT; ++i ) destinations[ i ] = BUTTONS[ i ];
 
-	// Dialogue, navigation and generic Context1..4/QTE maps already have native
-	// face-button semantics; only meaningful gameplay commands request changes.
+	// UI maps use Quest A to accept and B to go back. Keep these separate
+	// from gameplay, where B is Interact rather than Cancel.
 	std::vector<Preference> preferences;
 	// Car chase calls its pedals Forward/BackwardWithUp, unlike the bike.
 	// Do not reinterpret these directional commands in tapper/whack/QTE maps.
@@ -128,7 +128,16 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 		preferences.push_back( { AInputCommand_BackwardWithUp, Pad::BUTTON_SHOULDER_LEFT_2 } );
 		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } ); // handbrake
 	}
-	preferences.insert( preferences.end(), std::begin( PREFERENCES ), std::end( PREFERENCES ) );
+	if ( gameplay )
+		preferences.insert( preferences.end(), std::begin( PREFERENCES ), std::end( PREFERENCES ) );
+	else
+	{
+		preferences.push_back( { AInputCommand_OK, Pad::BUTTON_CONTEXT_3 } );
+		preferences.push_back( { AInputCommand_Cancel, Pad::BUTTON_CONTEXT_2 } );
+		preferences.push_back( { AInputCommand_Back, Pad::BUTTON_CONTEXT_2 } );
+		preferences.push_back( { AInputCommand_Yes, Pad::BUTTON_CONTEXT_3 } );
+		preferences.push_back( { AInputCommand_No, Pad::BUTTON_CONTEXT_2 } );
+	}
 	for ( const auto& preference : preferences )
 	{
 		const TINT target = ButtonIndex( preference.button );

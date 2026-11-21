@@ -32,23 +32,28 @@ ModernControls=1
 
 ### Controller layouts
 
-Modern resolves each game's native controller map rather than changing the original controls asset. Input dispatch and button-name/glyph lookup use the same effective map. Sticks, directional navigation and menu confirm/cancel retain their native behavior. Gameplay action preferences are:
+Modern resolves each game's native controller map rather than changing the original controls asset. Input dispatch and button-name/glyph lookup use the same effective map. Sticks and directional navigation retain their native behavior. Modern UI uses Quest A to accept and B to go back/cancel. Gameplay action preferences are:
 
-| Action | Modern preference (Xbox names) |
+| Action | Modern preference (Quest button names) |
 | --- | --- |
 | Jump | A (bottom face button) |
-| Bike accelerate / brake | RT / LT |
-| Car-chase accelerate / brake / handbrake | RT / LT / A |
-| Shoot / lock-on | RT / LT |
-| Interact, use, reload | X |
-| Dodge, leave | B |
-| Alternate fire | RB |
+| Bike accelerate / brake | Right trigger / left trigger |
+| Car-chase accelerate / brake / handbrake | Right trigger / left trigger / A |
+| Squirt aim (hold) / shoot | Left trigger / right trigger |
+| Target lock | Left grip |
+| Primary interact | B |
+| Use, reload | X |
+| Dodge, leave | B when not occupied by Interact; otherwise displaced |
+| Alternate fire | Right grip |
 | Sprint / boost | Left stick click |
-| Inventory, switch, bell / horn | Y |
-| Bike tricks 1–4 | LB, RB, X, Y |
-| Previous / next selection | LB / RB |
+| Inventory | Y |
+| Bell / horn | Y when not occupied by Inventory; otherwise displaced |
+| Bike tricks 1–4 | Left grip, right grip, X, Y |
+| Previous / next selection | Left grip / right grip |
 
-These are **priorities, not additive binds**: when a minigame uses the same source button for multiple state-dependent actions, the group stays together. Higher-priority actions (jump, pedals, shooting, interaction) win; displaced actions move with their original button group, so no original action is removed and no new button-sharing is introduced. Follow the game's effective button prompts for the particular activity. Generic face-button/QTE and direction-only maps retain their native layout. The resolver covers normal play, bike/races, car chase, golf, pool, darts, cooking, tapper, cow tipping, gate crash, honey collecting, gopher shop, statues, whack-a-raccoon, and the herding/defender/squirt/microgame contexts through their shared maps. Triggers remain digital; this does not add analog throttle.
+These are **priorities, not additive binds**: when a minigame uses the same source button for multiple state-dependent actions, the group stays together. Higher-priority actions (jump, pedals, shooting, interaction) win; displaced actions move with their original button group, so no original action is removed and no new button-sharing is introduced. Follow the game's effective button prompts for the particular activity. Generic face-button/QTE and direction-only maps retain their native layout. UI maps separately prefer A for OK/Yes and B for Cancel/Back/No. The resolver covers normal play, bike/races, car chase, golf, pool, darts, cooking, tapper, cow tipping, gate crash, honey collecting, gopher shop, statues, whack-a-raccoon, and the herding/defender/squirt/microgame contexts through their shared maps. Triggers remain digital; this does not add analog throttle.
+
+**Title screen (both layouts):** press Quest A or B to enter the main menu. In VR or when using a controller, the title prompt shows “Press A or B”; keyboard/mouse retain the original localized prompt and input behavior.
 
 **OpenXR pause (both layouts):** the application menu button acts as Start/Pause. If the controller has no application-accessible menu (for example Index), click both thumbsticks together. System/dashboard buttons are not used. Standalone OpenXR stick clicks have a short 0.2-second chord-detection delay; quick clicks are still delivered. Existing virtual-gamepad prompt artwork is reused, not replaced with headset-specific artwork. Gamepads retain their normal Start/Pause button.
 
