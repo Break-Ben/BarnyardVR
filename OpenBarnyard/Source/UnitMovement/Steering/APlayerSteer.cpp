@@ -460,6 +460,15 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 	TVector4 vFirstPersonForward( 0.0f, 0.0f, 1.0f, 1.0f );
 	AUnit&   rParentUnit = GetParentUnit();
 
+	auto AlignFirstPersonFacing = [&]() {
+		// Both 2D and 3D SetFacing also overwrite desired facing. Keep the
+		// movement request separate from the model's camera-aligned facing.
+		const TVector4 vMovementFacing = *m_pKinematics->GetDesiredFacing();
+		m_pKinematics->SetFacing( vFirstPersonForward );
+		if ( m_pKinematics->GetDesiredSpeed() > 0.05f )
+			m_pKinematics->SetDesiredFacing( vMovementFacing );
+	};
+
 	if ( AFirstPersonCamera::IsUnitInFirstPerson( &rParentUnit ) &&
 	     !IsInteracting() &&
 	     !m_bSpeechDialogMode &&
@@ -478,7 +487,7 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 			{
 				vFirstPersonForward.NormaliseXZ();
 				bFirstPersonFacing = TTRUE;
-				m_pKinematics->SetFacing( vFirstPersonForward );
+				AlignFirstPersonFacing();
 			}
 		}
 	}
@@ -508,10 +517,7 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 
 		if ( bFirstPersonFacing && m_eActionState != STATE_CLIMBING )
 		{
-			m_pKinematics->SetFacing( vFirstPersonForward );
-
-			if ( m_pKinematics->GetDesiredSpeed() <= 0.05f )
-				m_pKinematics->SetDesiredFacing( vFirstPersonForward );
+			AlignFirstPersonFacing();
 		}
 
 		UpdateCarrying();
@@ -521,7 +527,7 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 	}
 	else if ( bFirstPersonFacing && m_eActionState != STATE_CLIMBING )
 	{
-		m_pKinematics->SetFacing( vFirstPersonForward );
+		AlignFirstPersonFacing();
 	}
 
 	return TTRUE;
