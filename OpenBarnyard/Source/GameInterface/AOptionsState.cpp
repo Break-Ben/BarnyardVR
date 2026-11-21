@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AOptionsState.h"
+#include "AVROptionsState.h"
 #include "Sound/ASoundManager.h"
 #include "SoundBank/ui.h"
 #include "GUI/T2GUIFontManager.h"
@@ -50,6 +51,9 @@ TBOOL AOptionsState::OnUpdate( TFLOAT a_fDeltaTime )
 // NOTE: inlined in OnInsertion
 const TWCHAR* AOptionsState::GetButtonText( TINT a_iButton )
 {
+	if ( a_iButton == OPTIONSBUTTON_VR )
+		return L"VR Settings";
+
 #ifdef BARNYARD_LATEST
 	// NOTE: the Wii skips OPTIONSBUTTON_CONTROLS here (no mouse), the PC keeps it
 	if ( a_iButton == OPTIONSBUTTON_CAMERA )
@@ -137,6 +141,9 @@ void AOptionsState::OnMenuClose()
 		else if ( m_iActivatedButtonID == OPTIONSBUTTON_DIFFICULTY )
 			pState = new ADifficultyOptionState();
 #endif
+
+		if ( m_iActivatedButtonID == OPTIONSBUTTON_VR )
+			pState = new AVROptionsState();
 
 		AGameStateController::GetSingleton()->PushState( pState );
 		return;

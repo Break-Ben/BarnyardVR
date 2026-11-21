@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AFollowCameraHelper.h"
+#include "VR/AVRSnapTurn.h"
 #include "ACameraManager.h"
 #include "Input/AInputMap.h"
 #include "Player/APlayerManager.h"
@@ -128,7 +129,18 @@ TBOOL AFollowCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_pEvent
 			return TTRUE;
 		case AInputCommand_RotateCamera:
 		{
-			m_vStickInput.x = pEvent->GetMagnitudeFloat( 0 ) + m_vStickInput.x;
+			TFLOAT fSnapDegrees;
+			const TBOOL bSnap = AVRSnapTurn::FilterStickYaw( pEvent, fSnapDegrees );
+			if ( bSnap )
+			{
+				// This helper's stick yaw has the opposite sign to its direction.
+				m_vDirection.AsVector3().RotateY( -TMath::DegToRad( fSnapDegrees ) );
+				m_iYawInput = m_iYaw = 0;
+				m_bYawReleased = TFALSE;
+				m_vStickInput.x = 0.0f;
+			}
+			else
+				m_vStickInput.x = pEvent->GetMagnitudeFloat( 0 ) + m_vStickInput.x;
 
 			TFLOAT fY       = pEvent->GetMagnitudeFloat( 1 ) + m_vStickInput.y;
 			m_vStickInput.y = fY;

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ABikePhysicsCameraHelper.h"
+#include "VR/AVRSnapTurn.h"
 #include "Physics/ACollisionObject.h"
 #include "ACameraManager.h"
 #include "AFirstPersonCamera.h"
@@ -281,6 +282,7 @@ TBOOL ABikePhysicsCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 		return TFALSE;
 
 	AUnit* pTargetUnit = m_pTarget->GetUnit();
+	const TFLOAT fSnapDegrees = AVRSnapTurn::ConsumeYaw( this );
 
 	if ( AFirstPersonCamera::IsEnabled() )
 	{
@@ -295,6 +297,7 @@ TBOOL ABikePhysicsCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 		else if ( pSteer )
 			fSpeed = pSteer->GetSpeed();
 
+		AFirstPersonCamera::AddVehicleYawStep( fSnapDegrees );
 		AFirstPersonCamera::UpdateVehicleLook( fRateDelta, fSpeed );
 
 		TVector4 vEyePos;
@@ -601,7 +604,7 @@ TBOOL ABikePhysicsCameraHelper::OnUpdate( TFLOAT a_fDeltaTime )
 		vDirection.Substract( vCameraPos, vLookAt );
 		vDirection.y = 0.0f;
 		vDirection.Normalise();
-		vDirection.AsVector3().RotateY( s_fRotateSpeed * m_fRotateInput * a_fDeltaTime );
+		vDirection.AsVector3().RotateY( s_fRotateSpeed * m_fRotateInput * a_fDeltaTime + TMath::DegToRad( fSnapDegrees ) );
 
 		TVector4 vOffset;
 		vOffset.Multiply( vDirection, m_oDistanceSpring.fValue );
@@ -757,6 +760,7 @@ TBOOL ABikePhysicsCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_p
 
 			return TTRUE;
 		case AInputCommand_RotateCamera:
+		{
 #ifdef TOSHI_SKU_WII
 			// The Wii steers with the stick of the Nunchuk, it doesn't rotate the camera
 			pEvent->GetMagnitudeFloat( 0 );
@@ -778,14 +782,23 @@ TBOOL ABikePhysicsCameraHelper::ProcessInputCommand( void* a_pCommand, void* a_p
 				return TTRUE;
 			}
 
+			TFLOAT fX = pEvent->GetMagnitudeFloat( 0 );
+			TFLOAT fSnapDegrees;
+			if ( AVRSnapTurn::FilterStickYaw( pEvent, fSnapDegrees ) )
+			{
+				AVRSnapTurn::QueueYaw( this, fSnapDegrees );
+				fX = 0.0f;
+			}
+
 			if ( AFirstPersonCamera::IsEnabled() )
 			{
-				AFirstPersonCamera::SetVehicleStickLook( pEvent->GetMagnitudeFloat( 0 ), pEvent->GetMagnitudeFloat( 1 ) );
+				AFirstPersonCamera::SetVehicleStickLook( fX, pEvent->GetMagnitudeFloat( 1 ) );
 				return TTRUE;
 			}
 
-			m_fRotateInput = pEvent->GetMagnitudeFloat( 0 ) + m_fRotateInput;
+			m_fRotateInput = fX + m_fRotateInput;
 			return TTRUE;
+		}
 		case AInputCommand_RotateCameraCCW:
 			pEvent->StartRepeat( 0.0f, 0.0f );
 			m_fRotateInput = m_fRotateInput - 1.0f;
@@ -817,6 +830,7 @@ void ABikePhysicsCameraHelper::OnCreate()
 // $Barnyard: FUNCTION 0045ee30
 void ABikePhysicsCameraHelper::OnDestroy()
 {
+	AVRSnapTurn::ConsumeYaw( this );
 	AGameState* pState = AGameStateController::GetSingleton()->GetCurrentState();
 
 	// Show the bikes of the race again
@@ -839,6 +853,7 @@ void ABikePhysicsCameraHelper::OnDestroy()
 // $BarnyardWiiJP: FUNCTION 80178168
 void ABikePhysicsCameraHelper::OnAttach()
 {
+	AVRSnapTurn::ConsumeYaw( this );
 #ifdef BARNYARD_LATEST
 	// NOTE: not in the original, see ResetSpringInterpolation
 	ResetSpringInterpolation();

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AAimedSquirtProjectileLauncher.h"
+#include "VR/AVRSnapTurn.h"
 #include "Units/AUnit.h"
 #include "Units/AAnimatedUnit.h"
 #include "Units/AInteractionComponent.h"
@@ -271,6 +272,13 @@ TBOOL AAimedSquirtProjectileLauncher::ProcessInput( AInputCommand a_eCommand, co
 			}
 			else
 			{
+				TFLOAT fSnapDegrees;
+				if ( AVRSnapTurn::FilterStickYaw( a_pEvent, fSnapDegrees ) )
+				{
+					AFirstPersonCamera::AddAimYawStep( fSnapDegrees );
+					if ( fSnapDegrees != 0.0f ) bBreakLock = TTRUE;
+					fX = 0.0f;
+				}
 				AFirstPersonCamera::AddAimRateInput( fX, fY, bBreakLock );
 			}
 
@@ -338,6 +346,13 @@ TBOOL AAimedSquirtProjectileLauncher::ProcessInput( AInputCommand a_eCommand, co
 			}
 			else
 			{
+				TFLOAT fSnapDegrees;
+				if ( AVRSnapTurn::FilterStickYaw( a_pEvent, fSnapDegrees ) )
+				{
+					m_vAimCameraMouseTurn.x += TMath::DegToRad( fSnapDegrees );
+					if ( fSnapDegrees != 0.0f ) m_bLockedOnTarget = TFALSE;
+					fX = 0.0f;
+				}
 				m_vAimCameraPCTurn.x += fX;
 				m_vAimCameraPCTurn.y += fY;
 
