@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "Helpers/ABikeManager.h"
 #include "APlayerSteer.h"
-#include "AAlienSteer.h"
 #include "Units/AUnitFacialComponent.h"
 #include "AThrowItemSteer.h"
 #include "Units/AAnimatedUnit.h"
@@ -454,45 +453,8 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 		m_pKinematics->SetSpeed( 0.0f );
 	}
 
-	// First-person movement: step physics along the desired velocity for instant strafing/backpedaling, then align
-	// the unit's facing with the camera so interactions, throws, held items and shadows follow the player's view.
-	TBOOL    bFirstPersonFacing = TFALSE;
-	TVector4 vFirstPersonForward( 0.0f, 0.0f, 1.0f, 1.0f );
-	AUnit&   rParentUnit = GetParentUnit();
-
-	if ( AFirstPersonCamera::IsUnitInFirstPerson( &rParentUnit ) &&
-	     !IsInteracting() &&
-	     !m_bSpeechDialogMode &&
-	     !m_pGoal &&
-	     CanStartAction() &&
-	     ( m_eActionState == STATE_WALKING || m_eActionState == STATE_JUMPING || m_eActionState == STATE_FALLING ) &&
-	     ( !IsA( &TGetClass( AAlienSteer ) ) || !TSTATICCAST( AAlienSteer, this )->IsStrafingOrRolling() ) )
-	{
-		ASimplePlayerControlComponent* pControl = TSTATICCAST( ASimplePlayerControlComponent, rParentUnit.FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
-
-		if ( pControl && pControl->IsMovementEnabled() && pControl->IsCameraInputEnabled() )
-		{
-			ACameraManager::GetSingleton()->GetCurrentCamera()->GetFlatDirection( vFirstPersonForward );
-
-			if ( vFirstPersonForward.MagnitudeSqXZ() > 0.0001f )
-			{
-				vFirstPersonForward.NormaliseXZ();
-				bFirstPersonFacing = TTRUE;
-				m_pKinematics->SetFacing( vFirstPersonForward );
-			}
-		}
-	}
-
 	TVector4 vPrevPosition = *GetPosition();
 	UpdateCarrying();
-
-	if ( bFirstPersonFacing )
-	{
-		if ( m_pKinematics->GetDesiredSpeed() > 0.05f )
-			m_pKinematics->SetFacing( *m_pKinematics->GetDesiredFacing() );
-		else
-			m_pKinematics->SetDesiredFacing( vFirstPersonForward );
-	}
 
 	if ( ( this->*ms_aStateUpdates[ m_eActionState ] )( fDeltaTime ) )
 	{
@@ -506,22 +468,10 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 		m_pKinematics->ApplyGravity( fDeltaTime );
 		UpdateCollision( fDeltaTime, &vNewPosition, TTRUE, TTRUE, TFALSE );
 
-		if ( bFirstPersonFacing && m_eActionState != STATE_CLIMBING )
-		{
-			m_pKinematics->SetFacing( vFirstPersonForward );
-
-			if ( m_pKinematics->GetDesiredSpeed() <= 0.05f )
-				m_pKinematics->SetDesiredFacing( vFirstPersonForward );
-		}
-
 		UpdateCarrying();
 		UpdatePath( fDeltaTime );
 		UpdateWater( fDeltaTime );
 		UpdateSinking();
-	}
-	else if ( bFirstPersonFacing && m_eActionState != STATE_CLIMBING )
-	{
-		m_pKinematics->SetFacing( vFirstPersonForward );
 	}
 
 	return TTRUE;
