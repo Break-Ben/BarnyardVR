@@ -38,6 +38,12 @@ static TBOOL IsVRViewRendering()
 static constexpr TUINT32 kVRCelestialGridSegments = 12;
 static constexpr TUINT16 kVRCelestialMaxVertices   = ( kVRCelestialGridSegments + 1 ) * ( kVRCelestialGridSegments + 1 );
 static constexpr TUINT16 kVRCelestialMaxIndices    = 2 * ( kVRCelestialGridSegments + 1 ) * kVRCelestialGridSegments + 2 * ( kVRCelestialGridSegments - 1 );
+// Radial subdivisions retain the original flare's perspective UV falloff on
+// the constant-depth sky shell, rather than stretching its bright root to the tips.
+static constexpr TUINT32 kVRFlareRadialSegments = 64;
+static constexpr TUINT32 kVRFlareRingVertices   = 11;
+static constexpr TUINT16 kVRFlareMaxVertices    = ( kVRFlareRadialSegments + 1 ) * kVRFlareRingVertices;
+static constexpr TUINT16 kVRFlareMaxIndices     = 2 * kVRFlareRingVertices * kVRFlareRadialSegments + 2 * ( kVRFlareRadialSegments - 1 );
 static constexpr TFLOAT  kVRCelestialDepth         = 199.0f; // Just inside the legacy orthographic far-plane depth (200).
 
 // Build a tangent frame fixed to the celestial direction and world-up, then
@@ -226,7 +232,11 @@ ASunFlareEffect::ASunFlareEffect()
 
 	ASysMaterial* pFlareMaterial = m_pFlareMaterial;
 	m_pFlareMesh                 = ASysShader::GetSingleton()->CreateMesh( TNULL );
+#if defined( TRENDERINTERFACE_DX11 )
+	m_pFlareMesh->CreatePools( 82, kVRFlareMaxVertices, kVRFlareMaxIndices );
+#else
 	m_pFlareMesh->CreatePools( 82, 40, 60 );
+#endif
 	m_pFlareMesh->SetMaterial( pFlareMaterial );
 
 	ASysMaterial* pMoonMaterial = m_pMoonMaterial;
@@ -739,52 +749,48 @@ void ASunFlareEffect::UpdateFlare( const TVector4& a_rcScreenPos, TFLOAT a_fAlph
 			return;
 		}
 
-		// Preserve the legacy center-screen angular extents (view-space radius / Z).
-		// Despite their names below, the "inner" vertices at Z=1.6 are the distant
-		// ray tips (V=0.2); the "outer" vertices at Z=170 sit near the sun (V=0.95).
-		// Scaling both rings to the sun sprite size collapses the rays into a halo.
-		const TFLOAT fLength = TMath::EaseInOut( 0.9f );
-		const TFLOAT fInnerRadius = ( fLength * 6.0f + 4.0f ) / 1.6f;
-		const TFLOAT fOuterRadius = 10.0f / 170.0f;
-		TVector3*    pRayDir2D = TREINTERPRETCAST( TVector3*, &vecRayDir );
-		TINT         iNumVerts = 0;
-
-		for ( TINT i = 11; i != 0; i-- )
+		// The original strip interpolates UVs between Z=1.6 and Z=170.
+		// Normalizing only its endpoints onto the sky shell loses that perspective
+		// falloff and stretches the bright part of the texture across the sky.
+		// Sample the original strip before normalization, retaining both radius/Z
+		// and UV at each sample. Log-spaced depths resolve the near end as well.
+		const TFLOAT fTipRadius = TMath::EaseInOut( 0.9f ) * 6.0f + 4.0f;
+		TUINT16 uiNumVerts = 0;
+		for ( TUINT32 uiRow = 0; uiRow <= kVRFlareRadialSegments; uiRow++ )
 		{
-			const TFLOAT fInnerX = pRayDir2D->x * fInnerRadius;
-			const TFLOAT fInnerY = pRayDir2D->y * fInnerRadius;
-			const TFLOAT fOuterX = pRayDir2D->x * fOuterRadius;
-			const TFLOAT fOuterY = pRayDir2D->y * fOuterRadius;
-			const TVector3 vecInnerRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fInnerX, fInnerY );
-			const TVector3 vecOuterRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, fOuterX, fOuterY );
-
-			pVertices[ iNumVerts ].vPosition.Set(
-			    vecInnerRay.x * kVRCelestialDepth,
-			    vecInnerRay.y * kVRCelestialDepth,
-			    vecInnerRay.z * kVRCelestialDepth
-			);
-			pVertices[ iNumVerts ].vUV.Set( fU, 0.2f );
-			pVertices[ iNumVerts ].uiColor = uiColour;
-			iNumVerts++;
-
-			pVertices[ iNumVerts ].vPosition.Set(
-			    vecOuterRay.x * kVRCelestialDepth,
-			    vecOuterRay.y * kVRCelestialDepth,
-			    vecOuterRay.z * kVRCelestialDepth
-			);
-			pVertices[ iNumVerts ].vUV.Set( fU, 0.95f );
-			pVertices[ iNumVerts ].uiColor = uiColour;
-			iNumVerts++;
-
-			pRayDir2D->RotateZ( fAngleStep );
-			fU += 0.3f;
+			const TFLOAT fDepth = 1.6f * TMath::Pow( 170.0f / 1.6f, TFLOAT( uiRow ) / TFLOAT( kVRFlareRadialSegments ) );
+			const TFLOAT fBlend = ( fDepth - 1.6f ) / ( 170.0f - 1.6f );
+			const TFLOAT fRadius = TMath::LERP( fTipRadius, 10.0f, fBlend ) / fDepth;
+			const TFLOAT fV = TMath::LERP( 0.2f, 0.95f, fBlend );
+			TVector3 vecRadial( 1.0f, 0.0f, 0.0f );
+			for ( TUINT32 uiColumn = 0; uiColumn < kVRFlareRingVertices; uiColumn++ )
+			{
+				const TVector3 vecRay = GetVRWorldLockedPatchRay( vecViewDirection, vecViewRight, vecViewUp, vecRadial.x * fRadius, vecRadial.y * fRadius );
+				pVertices[ uiNumVerts ].vPosition.Set( vecRay.x * kVRCelestialDepth, vecRay.y * kVRCelestialDepth, vecRay.z * kVRCelestialDepth );
+				pVertices[ uiNumVerts ].vUV.Set( -1.5f + TFLOAT( uiColumn ) * 0.3f, fV );
+				pVertices[ uiNumVerts ].uiColor = uiColour;
+				uiNumVerts++;
+				vecRadial.RotateZ( fAngleStep );
+			}
 		}
 
-		TINT iNumIndices = 0;
-		for ( TINT i = 0; i < iNumVerts; i++ )
-			pIndices[ iNumIndices++ ] = i;
+		TUINT16 uiNumIndices = 0;
+		for ( TUINT32 uiRow = 0; uiRow < kVRFlareRadialSegments; uiRow++ )
+		{
+			if ( uiRow > 0 )
+			{
+				const TUINT16 uiLastIndex = pIndices[ uiNumIndices - 1 ];
+				pIndices[ uiNumIndices++ ] = uiLastIndex;
+				pIndices[ uiNumIndices++ ] = TUINT16( uiRow * kVRFlareRingVertices );
+			}
+			for ( TUINT32 uiColumn = 0; uiColumn < kVRFlareRingVertices; uiColumn++ )
+			{
+				pIndices[ uiNumIndices++ ] = TUINT16( uiRow * kVRFlareRingVertices + uiColumn );
+				pIndices[ uiNumIndices++ ] = TUINT16( ( uiRow + 1 ) * kVRFlareRingVertices + uiColumn );
+			}
+		}
 
-		m_pFlareMesh->Unlock( iNumVerts, iNumIndices );
+		m_pFlareMesh->Unlock( uiNumVerts, uiNumIndices );
 		m_pFlareMesh->Validate();
 		return;
 	}
