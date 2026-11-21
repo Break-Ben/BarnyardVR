@@ -326,6 +326,7 @@ struct AVRManager::Impl
 	TBOOL bSessionFocused = TFALSE;
 	TBOOL bLoggedInputSyncFailure = TFALSE;
 	XrSpace hLocalSpace = XR_NULL_HANDLE;
+	XrSpace hHeadSpace = XR_NULL_HANDLE;
 	XrEnvironmentBlendMode eBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	XrFrameState oFrameState = { XR_TYPE_FRAME_STATE };
 	XrViewState oViewState = { XR_TYPE_VIEW_STATE };
@@ -1213,6 +1214,11 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	for ( AVRManager::Impl::Target& rEye : a_rImpl.aEyes )
 		DestroyTarget( a_rImpl, rEye );
 
+	if ( a_rImpl.hHeadSpace != XR_NULL_HANDLE )
+	{
+		xrDestroySpace( a_rImpl.hHeadSpace );
+		a_rImpl.hHeadSpace = XR_NULL_HANDLE;
+	}
 	if ( a_rImpl.hLocalSpace != XR_NULL_HANDLE )
 	{
 		xrDestroySpace( a_rImpl.hLocalSpace );
@@ -1259,6 +1265,13 @@ static TBOOL CreateSessionAndTargets( AVRManager::Impl& a_rImpl )
 	oSpaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
 	oSpaceInfo.poseInReferenceSpace.orientation.w = 1.0f;
 	if ( XR_FAILED( xrCreateReferenceSpace( a_rImpl.hSession, &oSpaceInfo, &a_rImpl.hLocalSpace ) ) )
+	{
+		DestroySessionTargets( a_rImpl );
+		return TFALSE;
+	}
+
+	oSpaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+	if ( XR_FAILED( xrCreateReferenceSpace( a_rImpl.hSession, &oSpaceInfo, &a_rImpl.hHeadSpace ) ) )
 	{
 		DestroySessionTargets( a_rImpl );
 		return TFALSE;
@@ -1498,6 +1511,34 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 TBOOL AVRManager::IsActive() const
 {
 	return m_pImpl->bGraphicsReady && m_pImpl->bSessionRunning && !m_pImpl->bRuntimeLost;
+}
+
+TBOOL AVRManager::GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TMatrix44& a_rOutHead ) const
+{
+	const Impl& rImpl = *m_pImpl;
+	if ( !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending ||
+	     rImpl.hHeadSpace == XR_NULL_HANDLE || rImpl.oFrameState.predictedDisplayTime <= 0 )
+		return TFALSE;
+
+	// Simulation normally runs before BeginFrame. Locate the center head for the
+	// next predicted display time rather than using a cached left/right eye pose.
+	const XrTime time = rImpl.oFrameState.predictedDisplayTime +
+	    ( rImpl.bFrameBegun ? 0 : rImpl.oFrameState.predictedDisplayPeriod );
+	XrSpaceLocation location = { XR_TYPE_SPACE_LOCATION };
+	if ( XR_FAILED( xrLocateSpace( rImpl.hHeadSpace, rImpl.hLocalSpace, time, &location ) ) ||
+	     !( location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT ) ||
+	     !( location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT ) )
+		return TFALSE;
+
+	const auto& p = location.pose.position;
+	const auto& q = location.pose.orientation;
+	if ( !std::isfinite( p.x ) || !std::isfinite( p.y ) || !std::isfinite( p.z ) ||
+	     !std::isfinite( q.x ) || !std::isfinite( q.y ) || !std::isfinite( q.z ) || !std::isfinite( q.w ) ||
+	     q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w < 1.0e-6f )
+		return TFALSE;
+
+	a_rOutHead = MakeEyeWorldMatrix( a_rcRigCamera, location.pose, rImpl.vNeutralPosition, rImpl.qReferenceYaw );
+	return TTRUE;
 }
 
 TBOOL AVRManager::HasControllerInput() const
@@ -2071,6 +2112,7 @@ AVRManager& AVRManager::GetSingleton()
 	return s_oInstance;
 }
 
+TBOOL AVRManager::GetHeadWorldMatrix( const Toshi::TMatrix44&, Toshi::TMatrix44& ) const { return TFALSE; }
 TBOOL AVRManager::Prepare( Toshi::TRenderInterface* ) { return TFALSE; }
 TBOOL AVRManager::Initialize( Toshi::TRenderInterface* ) { return TFALSE; }
 void AVRManager::Shutdown() {}

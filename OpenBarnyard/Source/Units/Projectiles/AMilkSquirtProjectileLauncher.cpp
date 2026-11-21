@@ -16,6 +16,8 @@
 #include "Cameras/ACameraManager.h"
 #include "Cameras/AFirstPersonCamera.h"
 #include "Helpers/AHintManager.h"
+#include "Player/APlayerManager.h"
+#include "VR/AVRManager.h"
 
 #include <Math/TMatrix44.h>
 #include <Math/TQuaternion.h>
@@ -112,14 +114,23 @@ TBOOL AMilkSquirtProjectileLauncher::Update( TFLOAT a_fDeltaTime )
 
 	TRandom* pRandom = &ARandom::GetSingleton()->m_oRandom;
 
-	TVector4        vLaunchPosition = GetLaunchPosition();
-	const TVector4* pOwnerDirection = GetOwnerUnit()->GetSteer()->GetDirection();
+	TVector4        vLaunchPosition  = GetLaunchPosition();
+	TVector4        vStreamDirection = *GetOwnerUnit()->GetSteer()->GetDirection();
+	const TVector4* pOwnerDirection  = &vStreamDirection;
 
 	TVector4 vRight;
 	vRight.CrossProduct( *pOwnerDirection, TVector4::VEC_NEGY );
 
 	TVector4 vUp;
 	vUp.Multiply( TVector4::VEC_NEGY, 0.05f );
+
+	TMatrix44 head;
+	if ( GetVRHeadPose( head ) )
+	{
+		vStreamDirection = head.AsBasisVector4( BASISVECTOR_FORWARD );
+		vRight = head.AsBasisVector4( BASISVECTOR_RIGHT );
+		vUp.Multiply( head.AsBasisVector4( BASISVECTOR_UP ), -0.05f );
+	}
 
 	TVector4 vSide;
 	vSide.Multiply( vRight, 0.05f );
@@ -282,10 +293,35 @@ void AMilkSquirtProjectileLauncher::OnThrown( AProjectile* a_pProjectile )
 	a_pProjectile->OnLaunched();
 }
 
+// The human player changes with the active player set in minigames. Do not steer
+// AI rivals (also AUnitPlayer instances) or NPC launchers with the headset.
+TBOOL AMilkSquirtProjectileLauncher::IsVRHeadAiming()
+{
+	return AVRManager::GetSingleton().IsActive() && APlayerManager::IsSingletonCreated() &&
+	    GetOwnerUnit() == APlayerManager::GetSingleton()->GetPlayer( 0 );
+}
+
+TBOOL AMilkSquirtProjectileLauncher::GetVRHeadPose( TMatrix44& a_rOutHead )
+{
+	return IsVRHeadAiming() && ACameraManager::IsSingletonCreated() &&
+	    AVRManager::GetSingleton().GetHeadWorldMatrix( ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), a_rOutHead );
+}
+
 // $Barnyard: FUNCTION 00669640
 Toshi::TVector4 AMilkSquirtProjectileLauncher::GetLaunchPosition()
 {
 	AUnit* pOwner = GetOwnerUnit();
+
+	TMatrix44 head;
+	if ( GetVRHeadPose( head ) )
+	{
+		const TVector4& pos = head.AsBasisVector4( BASISVECTOR_TRANSLATION );
+		const TVector4& fwd = head.AsBasisVector4( BASISVECTOR_FORWARD );
+		const TVector4& down = head.AsBasisVector4( BASISVECTOR_UP );
+		return TVector4( pos.x + fwd.x * 0.34f + down.x * 0.30f,
+		    pos.y + fwd.y * 0.34f + down.y * 0.30f,
+		    pos.z + fwd.z * 0.34f + down.z * 0.30f, 1.0f );
+	}
 
 	if ( AFirstPersonCamera::IsUnitInFirstPerson( pOwner ) && ACameraManager::IsSingletonCreated() )
 	{
@@ -318,6 +354,10 @@ Toshi::TVector4 AMilkSquirtProjectileLauncher::GetLaunchPosition()
 Toshi::TVector4 AMilkSquirtProjectileLauncher::GetLaunchDirection()
 {
 	AUnit* pOwner = GetOwnerUnit();
+
+	TMatrix44 head;
+	if ( GetVRHeadPose( head ) )
+		return head.AsBasisVector4( BASISVECTOR_FORWARD );
 
 	if ( AFirstPersonCamera::IsUnitInOnFootFirstPerson( pOwner ) && ACameraManager::IsSingletonCreated() )
 	{

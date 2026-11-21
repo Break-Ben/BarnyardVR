@@ -1,6 +1,7 @@
 #pragma once
 #include "AProjectileLauncher.h"
 #include "ALaunchAmmo.h"
+#include <Math/TMatrix44.h>
 
 class AMilkProjectile;
 
@@ -42,6 +43,10 @@ public:
 
 	// Restarts the stream ids (the Sharp Squirter combos compare them)
 	static void ResetLastStreamId() { ms_iLastStreamId = 0; }
+
+protected:
+	TBOOL IsVRHeadAiming();
+	TBOOL GetVRHeadPose( Toshi::TMatrix44& a_rOutHead );
 
 private:
 	// Starts a new projectile of the stream (giving back the ammo it uses up) and makes it m_pStreamProjectile.
