@@ -465,8 +465,7 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 		// movement request separate from the model's camera-aligned facing.
 		const TVector4 vMovementFacing = *m_pKinematics->GetDesiredFacing();
 		m_pKinematics->SetFacing( vFirstPersonForward );
-		if ( m_pKinematics->GetDesiredSpeed() > 0.05f )
-			m_pKinematics->SetDesiredFacing( vMovementFacing );
+		m_pKinematics->SetDesiredFacing( vMovementFacing );
 	};
 
 	if ( AFirstPersonCamera::IsUnitInFirstPerson( &rParentUnit ) &&
@@ -497,10 +496,11 @@ TBOOL APlayerSteer::Update( TFLOAT a_fDeltaTime )
 
 	if ( bFirstPersonFacing )
 	{
-		if ( m_pKinematics->GetDesiredSpeed() > 0.05f )
-			m_pKinematics->SetFacing( *m_pKinematics->GetDesiredFacing() );
-		else
-			m_pKinematics->SetDesiredFacing( vFirstPersonForward );
+		// Desired speed is zero during deceleration, not just when stationary.
+		// Step along the movement direction even after release; turning from the
+		// camera-facing direction here would redirect momentum and build turn speed.
+		const TVector4 vMovementFacing = *m_pKinematics->GetDesiredFacing();
+		m_pKinematics->SetFacing( vMovementFacing );
 	}
 
 	if ( ( this->*ms_aStateUpdates[ m_eActionState ] )( fDeltaTime ) )

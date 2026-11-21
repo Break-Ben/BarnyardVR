@@ -6,6 +6,7 @@
 #include "Cameras/ACamera.h"
 #include "Cameras/AFirstPersonCamera.h"
 #include "UnitMovement/Steering/APlayerSteer.h"
+#include "UnitMovement/Steering/ASteerKinematics.h"
 #include "UnitMovement/Steering/ASteerTraits.h"
 #include "Player/APlayerProfileManager.h"
 #include "Terrain/ATerrainInterface.h"
@@ -348,7 +349,13 @@ void ASimplePlayerControlComponent::UpdateMovement( TFLOAT a_fDeltaTime, TFLOAT 
 	else if ( m_bMoving )
 	{
 		TVector4 vDirection;
-		pSteer->CopyDirection( vDirection );
+		if ( AFirstPersonCamera::IsUnitInFirstPerson( pOwner ) )
+		{
+			// First-person model facing follows the camera, not the last movement.
+			vDirection = *pSteer->GetKinematics()->GetDesiredFacing();
+		}
+		else
+			pSteer->CopyDirection( vDirection );
 		pSteer->SetDesiredVelocity( vDirection );
 		pSteer->SetDesiredSpeed( a_fStopSpeed );
 		pSteer->SetTilt( 0.0f, 0.0f, 0.0f );
