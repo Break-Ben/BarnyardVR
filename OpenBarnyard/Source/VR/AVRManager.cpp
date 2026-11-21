@@ -607,42 +607,7 @@ static void AttachInputActions( AVRManager::Impl& a_rImpl )
 	}
 }
 
-// Trace runtime values before the game's button-mask conversion. This is kept
-// opt-in because it queries binding metadata on action changes.
-static void TraceActionState( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hHand,
-    const char* a_szName, XrBool32 a_bActive, TFLOAT a_fValue, XrBool32 a_bChanged, XrTime a_iLastChange )
-{
-	static const bool bTrace = IsCommandLineOption( GetCommandLineA(), "-vrinputtrace" );
-	if ( !bTrace || !a_bChanged ) return;
-
-	XrInteractionProfileState oProfile = { XR_TYPE_INTERACTION_PROFILE_STATE };
-	char szProfile[ XR_MAX_PATH_LENGTH ] = "unknown";
-	uint32_t uiLength = 0;
-	if ( XR_SUCCEEDED( xrGetCurrentInteractionProfile( a_rImpl.hSession, a_hHand, &oProfile ) ) )
-	{
-		if ( oProfile.interactionProfile == XR_NULL_PATH )
-			std::strcpy( szProfile, "none" );
-		else if ( XR_FAILED( xrPathToString( a_rImpl.hInstance, oProfile.interactionProfile, sizeof( szProfile ), &uiLength, szProfile ) ) )
-			std::strcpy( szProfile, "unknown" );
-	}
-	Toshi::TUtil::Log( "[vrinput-runtime] time=%lu action=%s active=%u value=%.4f lastChange=%lld profile=%s\n",
-	    GetTickCount(), a_szName, unsigned( a_bActive ), a_fValue, static_cast<long long>( a_iLastChange ), szProfile );
-
-	XrBoundSourcesForActionEnumerateInfo oInfo = { XR_TYPE_BOUND_SOURCES_FOR_ACTION_ENUMERATE_INFO };
-	oInfo.action = a_hAction;
-	uint32_t uiCount = 0;
-	if ( XR_FAILED( xrEnumerateBoundSourcesForAction( a_rImpl.hSession, &oInfo, 0, &uiCount, TNULL ) ) ) return;
-	std::vector<XrPath> aSources( uiCount );
-	if ( uiCount && XR_FAILED( xrEnumerateBoundSourcesForAction( a_rImpl.hSession, &oInfo, uiCount, &uiCount, aSources.data() ) ) ) return;
-	for ( uint32_t i = 0; i < uiCount; ++i )
-	{
-		char szSource[ XR_MAX_PATH_LENGTH ] = {};
-		if ( XR_SUCCEEDED( xrPathToString( a_rImpl.hInstance, aSources[ i ], sizeof( szSource ), &uiLength, szSource ) ) )
-			Toshi::TUtil::Log( "[vrinput-runtime] action=%s boundSource=%s\n", a_szName, szSource );
-	}
-}
-
-static TBOOL ReadBooleanAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath, const char* a_szName )
+static TBOOL ReadBooleanAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath )
 {
 	XrActionStateGetInfo oGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
 	oGetInfo.action = a_hAction;
@@ -650,20 +615,16 @@ static TBOOL ReadBooleanAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, X
 	XrActionStateBoolean oState = { XR_TYPE_ACTION_STATE_BOOLEAN };
 	if ( XR_FAILED( xrGetActionStateBoolean( a_rImpl.hSession, &oGetInfo, &oState ) ) )
 		return TFALSE;
-	TraceActionState( a_rImpl, a_hAction, a_hSubactionPath, a_szName, oState.isActive, TFLOAT( oState.currentState ), oState.changedSinceLastSync, oState.lastChangeTime );
 	return oState.isActive && oState.currentState;
 }
 
-static TFLOAT ReadFloatAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath, const char* a_szName )
+static TFLOAT ReadFloatAction( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hSubactionPath )
 {
 	XrActionStateGetInfo oGetInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
 	oGetInfo.action = a_hAction;
 	oGetInfo.subactionPath = a_hSubactionPath;
 	XrActionStateFloat oState = { XR_TYPE_ACTION_STATE_FLOAT };
-	if ( XR_FAILED( xrGetActionStateFloat( a_rImpl.hSession, &oGetInfo, &oState ) ) )
-		return 0.0f;
-	TraceActionState( a_rImpl, a_hAction, a_hSubactionPath, a_szName, oState.isActive, oState.currentState, oState.changedSinceLastSync, oState.lastChangeTime );
-	if ( !oState.isActive || !std::isfinite( oState.currentState ) )
+	if ( XR_FAILED( xrGetActionStateFloat( a_rImpl.hSession, &oGetInfo, &oState ) ) || !oState.isActive || !std::isfinite( oState.currentState ) )
 		return 0.0f;
 	return std::max( 0.0f, std::min( oState.currentState, 1.0f ) );
 }
@@ -747,19 +708,18 @@ static void SyncControllerInput( AVRManager::Impl& a_rImpl )
 		if ( a_bDown )
 			a_rImpl.oControllerInputState.uiButtonMask |= TUINT32( a_eButton );
 	};
-	SetButton( AVRManager::CONTROLLER_BUTTON_SELECT, ReadBooleanAction( a_rImpl, a_rImpl.hLeftMenuAction, a_rImpl.hLeftHandPath, "LeftMenu" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_START, ReadBooleanAction( a_rImpl, a_rImpl.hRightMenuAction, a_rImpl.hRightHandPath, "RightMenu" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_STICK_LEFT, ReadBooleanAction( a_rImpl, a_rImpl.hLeftStickClickAction, a_rImpl.hLeftHandPath, "LeftStickClick" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_STICK_RIGHT, ReadBooleanAction( a_rImpl, a_rImpl.hRightStickClickAction, a_rImpl.hRightHandPath, "RightStickClick" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_1, ReadBooleanAction( a_rImpl, a_rImpl.hContext1Action, a_rImpl.hLeftHandPath, "Context1" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_2, ReadBooleanAction( a_rImpl, a_rImpl.hContext2Action, a_rImpl.hRightHandPath, "Context2" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_3, ReadBooleanAction( a_rImpl, a_rImpl.hContext3Action, a_rImpl.hRightHandPath, "Context3" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_4, ReadBooleanAction( a_rImpl, a_rImpl.hContext4Action, a_rImpl.hLeftHandPath, "Context4" ) );
-	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_1, ReadFloatAction( a_rImpl, a_rImpl.hLeftSqueezeAction, a_rImpl.hLeftHandPath, "LeftSqueeze" ) >= kGripButtonThreshold );
-	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_1, ReadFloatAction( a_rImpl, a_rImpl.hRightSqueezeAction, a_rImpl.hRightHandPath, "RightSqueeze" ) >= kGripButtonThreshold );
-	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_2, ReadFloatAction( a_rImpl, a_rImpl.hLeftTriggerAction, a_rImpl.hLeftHandPath, "LeftTrigger" ) >= kTriggerButtonThreshold );
-	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_2, ReadFloatAction( a_rImpl, a_rImpl.hRightTriggerAction, a_rImpl.hRightHandPath, "RightTrigger" ) >= kTriggerButtonThreshold );
-
+	SetButton( AVRManager::CONTROLLER_BUTTON_SELECT, ReadBooleanAction( a_rImpl, a_rImpl.hLeftMenuAction, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_START, ReadBooleanAction( a_rImpl, a_rImpl.hRightMenuAction, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_STICK_LEFT, ReadBooleanAction( a_rImpl, a_rImpl.hLeftStickClickAction, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_STICK_RIGHT, ReadBooleanAction( a_rImpl, a_rImpl.hRightStickClickAction, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_1, ReadBooleanAction( a_rImpl, a_rImpl.hContext1Action, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_2, ReadBooleanAction( a_rImpl, a_rImpl.hContext2Action, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_3, ReadBooleanAction( a_rImpl, a_rImpl.hContext3Action, a_rImpl.hRightHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_CONTEXT_4, ReadBooleanAction( a_rImpl, a_rImpl.hContext4Action, a_rImpl.hLeftHandPath ) );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_1, ReadFloatAction( a_rImpl, a_rImpl.hLeftSqueezeAction, a_rImpl.hLeftHandPath ) >= kGripButtonThreshold );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_1, ReadFloatAction( a_rImpl, a_rImpl.hRightSqueezeAction, a_rImpl.hRightHandPath ) >= kGripButtonThreshold );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_LEFT_2, ReadFloatAction( a_rImpl, a_rImpl.hLeftTriggerAction, a_rImpl.hLeftHandPath ) >= kTriggerButtonThreshold );
+	SetButton( AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_2, ReadFloatAction( a_rImpl, a_rImpl.hRightTriggerAction, a_rImpl.hRightHandPath ) >= kTriggerButtonThreshold );
 	// Re-query after each sync: switching between optical hands and physical
 	// Touch controllers need not change the reported interaction profile. Clear
 	// the whole emulated hand, not just pinch, since grip/face buttons are also
@@ -1226,11 +1186,7 @@ TBOOL AVRManager::Prepare( Toshi::TRenderInterface* a_pRenderer )
 	}
 	static_cast<Toshi::TRenderD3DInterface*>( a_pRenderer )->SetPreferredAdapterLuid( rImpl.oD3D11Requirements.adapterLuid, rImpl.oD3D11Requirements.minFeatureLevel );
 
-	// Desktop/gamepad play can retain headset rendering without accepting
-	// any OpenXR hand-controller actions (also isolates runtime ghost input).
-	if ( IsCommandLineOption( szCommandLine, "-novrcontrollers" ) )
-		Toshi::TUtil::Log( "OpenXR: hand-controller input disabled by -novrcontrollers; headset rendering remains enabled.\n" );
-	else if ( !CreateInputActions( rImpl ) )
+	if ( !CreateInputActions( rImpl ) )
 		TWARN( "OpenXR: controller actions could not be created; continuing with headset rendering only.\n" );
 
 	rImpl.bPrepared = TTRUE;

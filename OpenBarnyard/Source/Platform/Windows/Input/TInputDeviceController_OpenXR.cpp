@@ -93,10 +93,6 @@ void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )
 	if ( !AVRManager::GetSingleton().GetControllerInputState( oState ) )
 		oState = {};
 
-	static const TBOOL bTraceInput = T2String8::FindString( GetCommandLineA(), "-vrinputtrace" ) != TNULL;
-	if ( bTraceInput && m_uiButtonMask != oState.uiButtonMask )
-		TUtil::Log( "[vrinput-adapter] time=%lu device=%p oldMask=0x%X newMask=0x%X\n",
-		    GetTickCount(), static_cast<void*>( this ), m_uiButtonMask, oState.uiButtonMask );
 	m_uiButtonMask = oState.uiButtonMask;
 
 	// OpenXR reports stick Y as positive-up; the game's standard controller axis

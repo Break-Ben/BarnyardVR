@@ -28,10 +28,6 @@ AInputMapManager::AInputMapManager()
 	InitKeyboardDoodads();
 	InitGamepadDoodads();
 	InitCommandMap();
-#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
-	if ( T2String8::FindString( GetCommandLineA(), "-vrinputtrace" ) )
-		TUtil::Log( "[vrinput] Command tracing enabled: Aim/Switch, Shoot, ShootAlt, Jump. These are mapped commands, not confirmation that gameplay accepted them.\n" );
-#endif
 }
 
 // $Barnyard: FUNCTION 0059ae20
@@ -238,31 +234,6 @@ void AInputMapManager::GetEventCommands( const Toshi::TInputInterface::InputEven
 
 			if ( bCommandValid )
 			{
-#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
-				// Diagnose phantom actions in mixed desktop/OpenXR input without
-				// filtering devices or changing the default controls. Only explicit
-				// opt-in runs log these gameplay commands (not typed characters).
-				static const TBOOL bTraceInput = T2String8::FindString( GetCommandLineA(), "-vrinputtrace" ) != TNULL;
-				if ( bTraceInput && ( eCommand == AInputCommand_Switch || eCommand == AInputCommand_Shoot ||
-				                       eCommand == AInputCommand_ShootAlt || eCommand == AInputCommand_Jump ) )
-				{
-					auto pSource = a_pEvent->GetSource();
-					const TCHAR* szCommand = eCommand == AInputCommand_Switch ? "Aim/Switch" :
-					                         eCommand == AInputCommand_Shoot ? "Shoot" :
-					                         eCommand == AInputCommand_ShootAlt ? "ShootAlt" : "Jump";
-					const TCHAR* szEvent = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN ? "down" :
-					                       a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_UP ? "up" :
-					                       a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_REPEAT ? "repeat" :
-					                       a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL ? "axis" : "moved";
-					TUtil::Log( "[vrinput] time=%lu map=%s command=%s source=%s device=%p port=%d doodad=0x%X event=%s axes=%d x=%.4f y=%.4f\n",
-					    GetTickCount(), m_pActiveInputMap->GetName().GetString(), szCommand,
-					    pSource->GetClass()->GetName(), static_cast<void*>( pSource ),
-					    pSource->IsA( &TGetClass( TInputDeviceController ) ) ? TSTATICCAST( TInputDeviceController, pSource )->GetPortIndex() : -1,
-					    TUINT( a_pEvent->GetDoodad() ), szEvent, TINT( a_pEvent->GetAxisCount() ),
-					    a_pEvent->GetAxisCount() > 0 ? a_pEvent->GetMagnitudeFloat( 0 ) : 0.0f,
-					    a_pEvent->GetAxisCount() > 1 ? a_pEvent->GetMagnitudeFloat( 1 ) : 0.0f );
-				}
-#endif
 				a_rCommandArray.AddCommand( eCommand );
 			}
 
