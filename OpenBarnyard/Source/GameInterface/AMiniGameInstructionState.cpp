@@ -94,9 +94,12 @@ void AMiniGameInstructionState::TryDismiss()
 // The loading/instruction prompt is distinct from the front-end title prompt.
 void AMiniGameInstructionState::UpdateContinuePrompt()
 {
-	const TWCHAR* text = ( AInputHandler::GetSingleton()->IsControllerUsed() ) ?
+	const TWCHAR* text = AInputHandler::GetSingleton()->IsControllerUsed() ?
 	    L"Press A or B" : g_pLocaleManager->GetString( 0x20c );
-	m_oTextBox.SetTextAndFitWidth( text );
+	// Both choices are stable strings. Do not dirty/recalculate the text layout
+	// each frame while the same prompt is already displayed.
+	if ( m_oTextBox.GetText() != text )
+		m_oTextBox.SetTextAndFitWidth( text );
 }
 
 // $Barnyard: FUNCTION 0046c780

@@ -33,6 +33,17 @@ TINT ButtonIndex( Doodad a_iButton )
 	return -1;
 }
 
+TBOOL UsesPrimaryActionButton( const char* a_szMapName )
+{
+	constexpr const char* maps[] = {
+		"ABarnYardPoolMiniGame", "ACookingMiniGame", "ATapperMiniGameState",
+		"AWhackARaccMiniGameState", "AGopherShopGame", "AHoneyCollectingGame"
+	};
+	for ( const char* map : maps )
+		if ( std::strcmp( a_szMapName, map ) == 0 ) return TTRUE;
+	return TFALSE;
+}
+
 struct Preference
 {
 	AInputCommand command;
@@ -140,7 +151,7 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 	std::vector<Preference> preferences;
 	// Car chase calls its pedals Forward/BackwardWithUp, unlike the bike.
 	// Do not reinterpret these directional commands in tapper/whack/QTE maps.
-	if ( std::strcmp( a_rOwner.GetName().GetString(), "ACarChaseMiniGameState" ) == 0 )
+	if ( std::strcmp( mapName, "ACarChaseMiniGameState" ) == 0 )
 	{
 		preferences.push_back( { AInputCommand_ForwardWithUp, Pad::BUTTON_SHOULDER_RIGHT_2 } );
 		preferences.push_back( { AInputCommand_BackwardWithUp, Pad::BUTTON_SHOULDER_LEFT_2 } );
@@ -156,7 +167,7 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 	}
 	else if ( std::strcmp( mapName, "ADartMiniGame" ) == 0 )
 		preferences.push_back( { AInputCommand_Interact, Pad::BUTTON_CONTEXT_3 } );
-	else if ( std::strcmp( mapName, "ABarnYardPoolMiniGame" ) == 0 || std::strcmp( mapName, "ACookingMiniGame" ) == 0 || std::strcmp( mapName, "ATapperMiniGameState" ) == 0 || std::strcmp( mapName, "AWhackARaccMiniGameState" ) == 0 || std::strcmp( mapName, "AGopherShopGame" ) == 0 || std::strcmp( mapName, "AHoneyCollectingGame" ) == 0 )
+	else if ( UsesPrimaryActionButton( mapName ) )
 		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } );
 
 	if ( gameplay )

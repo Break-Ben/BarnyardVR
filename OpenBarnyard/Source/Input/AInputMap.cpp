@@ -27,7 +27,6 @@ AControllerBindings::Map& AInputMap::GetCommandMap( TBOOL a_bModern )
 	return AControllerBindings::Resolve( *this, m_oDoodadToCommandMap, a_bModern );
 }
 
-
 // $Barnyard: FUNCTION 00596c60
 void AInputMap::LoadFromProperties( const PBProperties& a_rProperties )
 {

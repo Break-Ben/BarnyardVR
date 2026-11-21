@@ -642,8 +642,9 @@ void AInventoryState2::OnInsertion()
 	// The prompts at the bottom of the screen
 	pFont                  = T2GUIFontManager::FindFont( "Rekord26" );
 	std::wstring usePrompt = ALocaleManager::Interface()->GetString( 1047 );
-	const auto   mapPos    = usePrompt.find( L"NormalBarnyard" );
-	if ( mapPos != std::wstring::npos ) usePrompt.replace( mapPos, 13, L"VRInventory" );
+	constexpr TWCHAR sourceMap[] = L"NormalBarnyard";
+	const auto       mapPos      = usePrompt.find( sourceMap );
+	if ( mapPos != std::wstring::npos ) usePrompt.replace( mapPos, TARRAYSIZE( sourceMap ) - 1, L"VRInventory" );
 	ALocale::FormatInputTags( m_wszUsePrompt, TARRAYSIZE( m_wszUsePrompt ), usePrompt.c_str() );
 
 	TWCHAR wszClosePrompt[ 64 ];
