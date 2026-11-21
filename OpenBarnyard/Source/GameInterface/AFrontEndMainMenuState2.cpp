@@ -30,6 +30,7 @@
 #include "Cameras/ACameraManager.h"
 #include "Cameras/ABoneAttachCameraHelper.h"
 #include "Assets/AKeyFrameLibraryManager.h"
+#include "VR/AVRManager.h"
 
 #include <Input/TInputDeviceKeyboard.h>
 #include <Input/TInputDeviceController.h>
@@ -157,7 +158,8 @@ TBOOL AFrontEndMainMenuState2::OnUpdate( TFLOAT a_fDeltaTime )
 
 	m_fAFKTime += a_fDeltaTime;
 
-	if ( ms_fPlayIntroAFKTime <= m_fAFKTime )
+	// Keep the menu available indefinitely in VR; do not fade into the idle movie.
+	if ( !AVRManager::GetSingleton().IsActive() && ms_fPlayIntroAFKTime <= m_fAFKTime )
 	{
 		if ( !AFadeManager::GetSingleton()->HasAnyFadesInProgress( TTRUE ) )
 		{
