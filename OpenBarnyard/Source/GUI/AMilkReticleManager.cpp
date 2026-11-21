@@ -446,9 +446,15 @@ AUnit* AMilkReticleManager::PickTarget( AAimedSquirtProjectileLauncher* a_pLaunc
 {
 	m_iPickIndex++;
 
-	const TMatrix44& rcCameraMatrix  = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
-	TVector4         vCameraForward  = rcCameraMatrix.AsBasisVector4( BASISVECTOR_FORWARD );
-	TVector4         vCameraPosition = rcCameraMatrix.AsBasisVector4( BASISVECTOR_TRANSLATION );
+	TMatrix44 cameraMatrix = ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix();
+	TMatrix44 head;
+	const TBOOL bHeadView = a_pLauncher && APlayerManager::IsSingletonCreated() &&
+	    a_pLauncher->GetOwnerUnit() == APlayerManager::GetSingleton()->GetPlayer( 0 ) &&
+	    AVRManager::GetSingleton().GetHeadWorldMatrix( cameraMatrix, head );
+	if ( bHeadView )
+		cameraMatrix = head;
+	const TVector4 vCameraForward = cameraMatrix.AsBasisVector4( BASISVECTOR_FORWARD );
+	const TVector4 vCameraPosition = cameraMatrix.AsBasisVector4( BASISVECTOR_TRANSLATION );
 
 	m_oCandidates.iNumCandidates = 0;
 
@@ -485,13 +491,47 @@ AUnit* AMilkReticleManager::PickTarget( AAimedSquirtProjectileLauncher* a_pLaunc
 		else
 			continue;
 
-		InsertCandidate( i, vCameraForward.z * vDirection.z + vCameraForward.x * vDirection.x, fDistance, iWeight );
+		const TFLOAT fDot = bHeadView ? TVector4::DotProduct3( vCameraForward, vDirection ) :
+		    vCameraForward.z * vDirection.z + vCameraForward.x * vDirection.x;
+		if ( bHeadView )
+		{
+			// The legacy distance bonus can outweigh gaze alignment. In VR rank
+			// eligible targets by angle from the headset, not proximity to the rig.
+			// Keep hit/occlusion filtering above, but don't acquire behind the gaze.
+			if ( fDot <= 0.0f )
+				continue;
+
+			Candidate candidate;
+			candidate.iTarget = i;
+			candidate.fDot = fDot;
+			candidate.fDistance = fDistance;
+			candidate.fScore = fDot;
+			TINT iInsert = 0;
+			while ( iInsert < m_oCandidates.iNumCandidates &&
+			        ( m_oCandidates.aCandidates[ iInsert ].fScore > fDot ||
+			          ( m_oCandidates.aCandidates[ iInsert ].fScore == fDot &&
+			            m_oCandidates.aCandidates[ iInsert ].fDistance <= fDistance ) ) )
+				++iInsert;
+			m_oCandidates.InsertAt( iInsert, candidate );
+		}
+		else
+		{
+			InsertCandidate( i, fDot, fDistance, iWeight );
+		}
 	}
 
 	if ( m_oCandidates.iNumCandidates == 0 )
 	{
 		m_iPickIndex = 0;
 		return TNULL;
+	}
+
+	// Acquiring a VR lock follows gaze. Do not cycle away from the best match
+	// or exclude it merely because it was the previously locked target.
+	if ( bHeadView )
+	{
+		m_iPickIndex = 0;
+		return m_aTargets[ m_oCandidates.aCandidates[ 0 ].iTarget ].oUnit->GetUnit();
 	}
 
 	// Go through the candidates, but not back to the previous target

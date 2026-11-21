@@ -67,6 +67,10 @@ public:
 	TUINT32 GetViewCount() const;
 	TUINT32 GetCurrentEye() const;
 
+	// Center-head pose for gameplay, independent of eye rendering. Uses the same
+	// recentering, coordinate conversion and yaw-only rig as the rendered views.
+	TBOOL GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TMatrix44& a_rOutHead ) const;
+
 	// The camera matrix is the ordinary, gravity-locked game camera pose for this frame.
 	TBOOL BeginEye(
 	    TUINT32 a_uiEye,
