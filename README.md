@@ -48,10 +48,13 @@ Modern resolves each game's native controller map rather than changing the origi
 | Sprint / boost | Left stick click |
 | Inventory | Y |
 | Bell / horn | Y when not occupied by Inventory; otherwise displaced |
-| Bike tricks 1–4 | Left grip, right grip, X, Y |
+| Bike boost (`Trick1`) | Left stick click |
+| Bike left / right airborne trick (`Trick3` / `Trick4`) | Left grip / right grip |
 | Previous / next selection | Left grip / right grip |
 
 These are **priorities, not additive binds**: when a minigame uses the same source button for multiple state-dependent actions, the group stays together. Higher-priority actions (jump, pedals, shooting, interaction) win; displaced actions move with their original button group, so no original action is removed and no new button-sharing is introduced. Follow the game's effective button prompts for the particular activity. Generic face-button/QTE and direction-only maps retain their native layout. UI maps separately prefer A for OK/Yes and B for Cancel/Back/No. The resolver covers normal play, bike/races, car chase, golf, pool, darts, cooking, tapper, cow tipping, gate crash, honey collecting, gopher shop, statues, whack-a-raccoon, and the herding/defender/squirt/microgame contexts through their shared maps. Triggers remain digital; this does not add analog throttle.
+
+The bike's native command names are misleading: `Trick1` is sprint/boost, `Trick3` and `Trick4` control the left/right airborne tricks, and holding both selects the combined trick variant. `Trick2` has no bike handler; Modern adds no preference or handler for it. Existing gameplay handlers, Classic bindings and keyboard/mouse controls are unchanged.
 
 **Activity-specific Modern controls:** inventory uses **A to select/use** and **Y or B to close**, with its own effective map so on-foot B interaction is unaffected. Golf uses **A to swing**, **left trigger to zoom out**, and **right trigger to zoom in**. Darts uses **A to throw**; pool, cooking, tapper, whack-a-raccoon, gopher shop and honey collecting also prefer A for their primary action. These activity preferences take priority over the generic combat layout above.
 

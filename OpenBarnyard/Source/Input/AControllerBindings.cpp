@@ -72,10 +72,11 @@ constexpr Preference PREFERENCES[] = {
 	{ AInputCommand_Bell, Pad::BUTTON_CONTEXT_1 },
 	{ AInputCommand_Horn, Pad::BUTTON_CONTEXT_1 },
 	{ AInputCommand_Leave, Pad::BUTTON_CONTEXT_2 },
-	{ AInputCommand_Trick1, Pad::BUTTON_SHOULDER_LEFT_1 },
-	{ AInputCommand_Trick2, Pad::BUTTON_SHOULDER_RIGHT_1 },
-	{ AInputCommand_Trick3, Pad::BUTTON_CONTEXT_4 },
-	{ AInputCommand_Trick4, Pad::BUTTON_CONTEXT_1 },
+	// Trick1 is the bike's existing sprint/boost command, not an airborne trick.
+	// Trick2 has no bike handler and needs no Modern preference.
+	{ AInputCommand_Trick1, Pad::BUTTON_STICK_LEFT },
+	{ AInputCommand_Trick3, Pad::BUTTON_SHOULDER_LEFT_1 },
+	{ AInputCommand_Trick4, Pad::BUTTON_SHOULDER_RIGHT_1 },
 	{ AInputCommand_SelectPrevious, Pad::BUTTON_SHOULDER_LEFT_1 },
 	{ AInputCommand_SelectNext, Pad::BUTTON_SHOULDER_RIGHT_1 },
 	{ AInputCommand_Look, Pad::BUTTON_STICK_RIGHT },
