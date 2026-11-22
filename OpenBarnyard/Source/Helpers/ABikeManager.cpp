@@ -222,7 +222,12 @@ TBOOL ABikeManager::OnUpdate( TFLOAT a_fDeltaTime )
 				pSteer->GetPhysics()->SetFrozen( TTRUE );
 				pPlayerBikeObject->PlayAnimation( TPS8( bk_ftdn ) );
 				pPlayerBikeObject->Update( 0.0f );
-				AttachRideCamera( 0.5f );
+
+				// First-person already attached during unracking. Do not save the
+				// bike near clip over the original value when the animation ends.
+				ACameraManager* pCameraManager = ACameraManager::GetSingleton();
+				if ( pCameraManager->GetCurrentCameraHelper() != pCameraManager->GetCameraHelper( ACameraManager::CAMERAHELPER_BIKE ) )
+					AttachRideCamera( 0.5f );
 
 				// The units of the bike and of the rider aren't used during the ride
 				GetBike()->GetSteer()->SetPosition( TVector4::VEC_ZERO );
@@ -1645,6 +1650,12 @@ void ABikeManager::CreatePlayerBike()
 	AAnimatableObject* pPlayerBikeObject = TSTATICCAST( AAnimatedUnit, pPlayerBike )->GetAnimatableObject();
 	pPlayerBikeObject->Update( 0.0f );
 	pPlayerBikeObject->UpdateAttachedObjectTransforms();
+
+	// The rack animation moves the model, not the frozen physics body. Use
+	// that stable cockpit anchor instead of leaving the on-foot camera behind.
+	// Attach only after the bike position, direction and physics are ready.
+	if ( bParked && AFirstPersonCamera::IsEnabled() )
+		AttachRideCamera( 0.5f );
 
 	m_pMainHudElement = AHudManager::GetSingleton()->FindElement<ASimPlayerMainHudElement>();
 
