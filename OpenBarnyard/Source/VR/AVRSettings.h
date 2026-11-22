@@ -21,7 +21,7 @@ public:
 	// Graphics settings take effect on the next application start.
 	inline static constexpr TINT RESOLUTION_MIN  = 50;
 	inline static constexpr TINT RESOLUTION_MAX  = 200;
-	inline static constexpr TINT RESOLUTION_STEP = 5;
+	inline static constexpr TINT RESOLUTION_STEP = 10;
 	inline static constexpr TINT MSAA_SAMPLES[]  = { 1, 2, 4, 8 };
 	TINT                         GetResolutionPercent() const { return m_iResolutionPercent; }
 	void                         SetResolutionPercent( TINT a_iPercent );

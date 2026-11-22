@@ -319,6 +319,9 @@ struct AVRManager::Impl
 	double                                fStatsSeconds     = 0.0;
 	TUINT32                               uiStatsFrames     = 0;
 	TFLOAT                                fStatsFPS         = 0.0f;
+	double fStatsWaitSeconds = 0.0;
+	TFLOAT fStatsWaitMS = 0.0f;
+	TFLOAT fStatsOutsideWaitMS = 0.0f;
 	TFLOAT fQuadHeightMeters = 1.0f;
 
 	XrInstance hInstance = XR_NULL_HANDLE;
@@ -1878,11 +1881,48 @@ TBOOL AVRManager::BeginFrame()
 
 	XrFrameWaitInfo oWaitInfo = { XR_TYPE_FRAME_WAIT_INFO };
 	rImpl.oFrameState = { XR_TYPE_FRAME_STATE };
+	const auto waitStart = std::chrono::steady_clock::now();
 	if ( XR_FAILED( xrWaitFrame( rImpl.hSession, &oWaitInfo, &rImpl.oFrameState ) ) )
 	{
 		MarkRuntimeLost( rImpl );
 		return TFALSE;
 	}
+
+	// Measure once per application frame, not per eye. Use wait-return to
+	// wait-return intervals so the remaining wall time includes simulation,
+	// both eyes, submission, Present and any driver/GPU stalls between waits.
+	// This is intentionally not labelled CPU busy time or GPU execution time.
+	const auto statsNow = std::chrono::steady_clock::now();
+	const double waitSeconds = std::chrono::duration<double>( statsNow - waitStart ).count();
+	if ( rImpl.lastStatsFrame != std::chrono::steady_clock::time_point{} )
+	{
+		const double seconds = std::chrono::duration<double>( statsNow - rImpl.lastStatsFrame ).count();
+		if ( seconds > 0.0 && seconds < 1.0 )
+		{
+			rImpl.fStatsSeconds += seconds;
+			rImpl.fStatsWaitSeconds += waitSeconds;
+			++rImpl.uiStatsFrames;
+			if ( rImpl.fStatsSeconds >= 0.5 )
+			{
+				rImpl.fStatsFPS = TFLOAT( rImpl.uiStatsFrames / rImpl.fStatsSeconds );
+				rImpl.fStatsWaitMS = TFLOAT( 1000.0 * rImpl.fStatsWaitSeconds / rImpl.uiStatsFrames );
+				rImpl.fStatsOutsideWaitMS = TFLOAT( 1000.0 * std::max( 0.0, rImpl.fStatsSeconds - rImpl.fStatsWaitSeconds ) / rImpl.uiStatsFrames );
+				rImpl.fStatsSeconds = 0.0;
+				rImpl.fStatsWaitSeconds = 0.0;
+				rImpl.uiStatsFrames = 0;
+			}
+		}
+		else
+		{
+			rImpl.fStatsSeconds = 0.0;
+			rImpl.fStatsWaitSeconds = 0.0;
+			rImpl.uiStatsFrames = 0;
+			rImpl.fStatsFPS = 0.0f;
+			rImpl.fStatsWaitMS = 0.0f;
+			rImpl.fStatsOutsideWaitMS = 0.0f;
+		}
+	}
+	rImpl.lastStatsFrame = statsNow;
 
 	XrFrameBeginInfo oBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
 	if ( XR_FAILED( xrBeginFrame( rImpl.hSession, &oBeginInfo ) ) )
@@ -1930,31 +1970,6 @@ TBOOL AVRManager::BeginFrame()
 			return TTRUE;
 	}
 	rImpl.bViewsValid = TTRUE;
-	// Measure application frames once, not once per eye, using wall time so
-	// pausing gameplay does not turn this into a simulation-rate counter.
-	const auto statsNow = std::chrono::steady_clock::now();
-	if ( rImpl.lastStatsFrame != std::chrono::steady_clock::time_point{} )
-	{
-		const double seconds = std::chrono::duration<double>( statsNow - rImpl.lastStatsFrame ).count();
-		if ( seconds > 0.0 && seconds < 1.0 )
-		{
-			rImpl.fStatsSeconds += seconds;
-			++rImpl.uiStatsFrames;
-			if ( rImpl.fStatsSeconds >= 0.5 )
-			{
-				rImpl.fStatsFPS     = TFLOAT( rImpl.uiStatsFrames / rImpl.fStatsSeconds );
-				rImpl.fStatsSeconds = 0.0;
-				rImpl.uiStatsFrames = 0;
-			}
-		}
-		else
-		{
-			rImpl.fStatsSeconds = 0.0;
-			rImpl.uiStatsFrames = 0;
-			rImpl.fStatsFPS     = 0.0f;
-		}
-	}
-	rImpl.lastStatsFrame = statsNow;
 	// Snapshot once: both eyes and the UI must use exactly the same fade.
 	rImpl.vFadeColour = ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() ) ? AFadeManager::GetSingleton()->GetCompositeColour() : Toshi::TVector4( 0.0f, 0.0f, 0.0f, 0.0f );
 	if ( rImpl.bColorCorrectionAvailable )
@@ -2327,6 +2342,19 @@ void AVRManager::RenderDebugHUD()
 	else
 		std::swprintf( text, 128, L"FPS: --" );
 	drawLine( text );
+	if ( rImpl.fStatsFPS > 0.0f )
+	{
+		std::swprintf( text, 128, L"Outside XR wait: %.2f ms", rImpl.fStatsOutsideWaitMS );
+		drawLine( text );
+		std::swprintf( text, 128, L"XR wait: %.2f ms", rImpl.fStatsWaitMS );
+		drawLine( text );
+	}
+	const double periodMS = double( rImpl.oFrameState.predictedDisplayPeriod ) / 1000000.0;
+	if ( periodMS > 0.0 )
+	{
+		std::swprintf( text, 128, L"XR period: %.2f ms", periodMS );
+		drawLine( text );
+	}
 	const auto& left  = rImpl.aEyes[ 0 ];
 	const auto& right = rImpl.aEyes[ 1 ];
 	if ( left.uiWidth == right.uiWidth && left.uiHeight == right.uiHeight )

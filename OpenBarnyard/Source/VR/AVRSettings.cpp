@@ -130,8 +130,11 @@ void AVRSettings::Load()
 			SetDebugHUDEnabled( number != 0 );
 		else if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
 			SetSnapTurnDegrees( TINT( number ) );
-		else if ( key == "ResolutionPercent" && number >= RESOLUTION_MIN && number <= RESOLUTION_MAX )
-			SetResolutionPercent( TINT( number ) );
+		else if ( key == "ResolutionPercent" && number >= RESOLUTION_MIN && number <= RESOLUTION_MAX && number % 5 == 0 )
+		{
+			// Migrate previous 5% settings to the nearest 10% step (ties up).
+			SetResolutionPercent( ( TINT( number ) + RESOLUTION_STEP / 2 ) / RESOLUTION_STEP * RESOLUTION_STEP );
+		}
 		else if ( key == "MSAASamples" && number >= 1 && number <= 8 )
 			SetMSAASamples( TINT( number ) );
 	}
@@ -157,7 +160,7 @@ TBOOL AVRSettings::Save()
 	if ( !pFile ) return TFALSE;
 	fprintf( pFile, "# BarnyardVR settings. SnapTurnDegrees: 0 (disabled), 15, 30, 45, 60, 90.\n" );
 	fprintf( pFile, "SnapTurnDegrees=%d\nModernControls=%d\n", m_iSnapTurnDegrees, m_bModernControls ? 1 : 0 );
-	fprintf( pFile, "# VR graphics: restart required. ResolutionPercent: 50-200 in steps of 5; 100 is the OpenXR recommendation.\n" );
+	fprintf( pFile, "# VR graphics: restart required. ResolutionPercent: 50-200 in steps of 10; 100 is the OpenXR recommendation.\n" );
 	fprintf( pFile, "# The -vrscale command-line option overrides ResolutionPercent.\n" );
 	fprintf( pFile, "# MSAASamples: 1 (off), 2, 4, 8. Unsupported counts fall back to a lower level.\n" );
 	fprintf( pFile, "ResolutionPercent=%d\nMSAASamples=%d\n", m_iResolutionPercent, m_iMSAASamples );
