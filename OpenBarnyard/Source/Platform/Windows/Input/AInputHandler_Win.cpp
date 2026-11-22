@@ -384,6 +384,9 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 		    TMath::Abs( a_pEvent->GetMagnitudeFloat( 0 ) ) + TMath::Abs( a_pEvent->GetMagnitudeFloat( 1 ) ) >= 0.1f;
 		if ( pressed || moved )
 		{
+			// Gameplay pause checks IsValidDevice(), not just prompt style. Keep
+			// the primary device in step when switching gamepad <-> OpenXR.
+			m_pMainController = TSTATICCAST( TInputDeviceController, pInputSource );
 #if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
 			AInputPrompts::SetOpenXRActive( pInputSource->GetClass()->IsA( &TGetClass( TInputOpenXRDeviceController ) ) );
 #else

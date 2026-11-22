@@ -25,7 +25,6 @@ def label(draw, xy, text, font=FONT):
 def cell(family, icon):
     image = Image.new("RGBA", (CELL, CELL))
     d = ImageDraw.Draw(image)
-    d.rounded_rectangle((3, 3, 60, 60), radius=12, fill=(26, 30, 36, 255), outline="white", width=2)
     hand = "L" if icon.startswith("Left") and icon != "Left" else "R" if icon.startswith("Right") and icon != "Right" else ""
     kind = icon.removeprefix("Left").removeprefix("Right") if hand else icon
     filename = None
@@ -41,12 +40,13 @@ def cell(family, icon):
             filename = "Vive_" + names[kind] + ".png"
     if filename:
         original = Image.open(SOURCE / filename).convert("RGBA")
-        original.thumbnail((44, 40), Image.Resampling.LANCZOS)
-        # A light inset keeps the pack's dark artwork visible on Barnyard's wood.
-        d.rounded_rectangle((10, 9, 53, 49), radius=7, fill=(215, 220, 227, 255))
-        image.alpha_composite(original, ((CELL-original.width)//2, 9+(40-original.height)//2))
-        label(d, (32, 55), hand if hand else "MENU", SMALL)
+        # Keep the source silhouette, without nesting it in two extra keycaps.
+        original = original.crop(original.getbbox())
+        original.thumbnail((60, 52), Image.Resampling.LANCZOS)
+        image.alpha_composite(original, ((CELL-original.width)//2, (52-original.height)//2))
+        label(d, (32, 57), hand if hand else "MENU", SMALL)
     else:
+        d.rounded_rectangle((3, 3, 60, 60), radius=12, fill=(26, 30, 36, 255), outline="white", width=2)
         words = {"Trigger": "TRIG", "Grip": "GRIP", "Stick": "STICK", "StickClick": "CLICK",
                  "Pad": "PAD", "PadClick": "PRESS", "Menu": "MENU", "DPad": "D-PAD",
                  "Up": "UP", "Right": "RIGHT", "Down": "DOWN", "Left": "LEFT", "Unavailable": "N/A"}

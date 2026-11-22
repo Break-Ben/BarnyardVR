@@ -54,12 +54,13 @@ public:
 	// the font engine; the resolver and its resources outlive all font draws.
 	struct InlineGlyph
 	{
-		TFLOAT width = 0.0f;
-		TFLOAT height = 0.0f;
+		TFLOAT         width    = 0.0f;
+		TFLOAT         height   = 0.0f;
+		TFLOAT         yOffset  = 0.0f;
 		T2GUIMaterial* material = TNULL;
-		TVector2 uv1 { 0.0f, 0.0f };
-		TVector2 uv2 { 1.0f, 1.0f };
-		const TWCHAR* text = TNULL; // Native text/glyph fallback, never another token.
+		TVector2       uv1{ 0.0f, 0.0f };
+		TVector2       uv2{ 1.0f, 1.0f };
+		const TWCHAR*  text = TNULL; // Native text/glyph fallback, never another token.
 	};
 	using InlineGlyphResolver = TBOOL ( * )( const T2GUIFont*, TWCHAR, InlineGlyph& );
 	inline static InlineGlyphResolver ms_fnInlineGlyph = TNULL;

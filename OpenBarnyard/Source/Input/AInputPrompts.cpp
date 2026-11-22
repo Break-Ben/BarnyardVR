@@ -61,15 +61,34 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	const auto& token     = s_tokens[ index ];
 	auto*       manager   = AInputMapManager::GetSingleton();
 	auto*       map       = token.doodad == -1 ? manager->FindMap( token.map ) : TNULL;
-	const auto  doodad    = token.doodad != -1 ? token.doodad : map ? map->GetCommandDoodad( token.command, TFALSE ) :
+	const auto  doodad    = token.doodad != -1 ? token.doodad : map ? map->GetCommandDoodad( token.command, !AInputHandler::GetSingleton()->IsControllerUsed() ) :
 	                                                                  -1;
-	const TBOOL vrControl = s_openXRActive && doodad >= Pad::BUTTON_DPAD_UP && doodad <= Pad::VIRTSTK_DPAD;
+	const TBOOL vrControl = AInputHandler::GetSingleton()->IsControllerUsed() && s_openXRActive && doodad >= Pad::BUTTON_DPAD_UP && doodad <= Pad::VIRTSTK_DPAD;
 	const auto  prompt    = vrControl ? AVRManager::GetSingleton().GetControllerPrompt( doodad ) : AVRControllerPrompt{};
-	if ( vrControl && s_material )
+	// Touch face labels match the game's existing A/B/X/Y glyphs exactly.
+	// Do not shrink a picture of a button inside another boxed keycap.
+	const TWCHAR* face = TNULL;
+	if ( vrControl && prompt.family == AVRControllerFamily::Touch )
+	{
+		switch ( prompt.icon )
+		{
+			case AVRControlIcon::RightA: face = L"\x0F0B"; break;
+			case AVRControlIcon::RightB: face = L"\x0F0C"; break;
+			case AVRControlIcon::LeftX: face = L"\x0F1B"; break;
+			case AVRControlIcon::LeftY: face = L"\x0F0A"; break;
+			default: break;
+		}
+		if ( face && !font->FindCharData( *face ) ) face = TNULL;
+	}
+	if ( vrControl && !face && s_material )
 	{
 		const TINT column = TINT( prompt.icon );
 		const TINT row    = TINT( prompt.family );
-		glyph.width = glyph.height = std::clamp( TINT( font->GetFontDef()->uiLineHeight ), 12, 64 );
+		// Native button glyphs can extend above/below the text's line height.
+		// Match their actual ink size and baseline, not just the text advance.
+		const auto* reference = font->FindCharData( L'\x0F0B' );
+		glyph.width = glyph.height = reference ? reference->ui8CharHeight : font->GetFontDef()->uiLineHeight;
+		glyph.yOffset              = reference ? reference->iYOffset : 0.0f;
 		glyph.material             = s_material;
 		const TFLOAT width         = TFLOAT( CELL_SIZE * TINT( AVRControlIcon::Count ) );
 		const TFLOAT height        = TFLOAT( CELL_SIZE * FAMILY_COUNT );
@@ -83,7 +102,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	if ( doodad != -1 && !manager->GetDoodadCustomName( doodad, name ) )
 		manager->GetDoodadLocalisedName( doodad, name );
 	// Do not fall back to a PS2 icon for missing OpenXR artwork/metadata.
-	if ( vrControl ) name = ControlLabel( prompt.icon );
+	if ( vrControl ) name = face ? face : ControlLabel( prompt.icon );
 	glyph.text  = name ? name : L"?";
 	glyph.width = std::clamp( std::ceil( const_cast<T2GUIFont*>( font )->GetTextWidth( glyph.text ) - font->GetFontDef()->iLetterSpacing ), 0.0f, 255.0f );
 	return TTRUE;

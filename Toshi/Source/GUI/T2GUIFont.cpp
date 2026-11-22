@@ -186,11 +186,14 @@ void T2GUIFont::DrawTextSingleLine( const TWCHAR* a_wszText, TINT a_iTextLength,
 			{
 				pRenderer->SetColour( a_uiColour );
 				pRenderer->SetMaterial( glyph.material );
-				const TFLOAT y = a_fY + ( pFontDef->uiLineHeight - glyph.height ) * a_fScale;
+				const TFLOAT y = a_fY + ( pFontDef->uiLineHeight + glyph.yOffset - glyph.height ) * a_fScale;
 				pRenderer->RenderRectangle( { a_fX + fOffsetX, y + fOffsetY },
 				    { a_fX + fOffsetX + glyph.width * a_fScale, y + fOffsetY + glyph.height * a_fScale }, glyph.uv1, glyph.uv2 );
 			}
-			pPrevMaterial = TNULL; // Inline draws may have changed the renderer material.
+			// Restore the outer draw's material even when the token ends the line.
+			// A nested native-text draw (or atlas draw) must not leak its texture
+			// into subsequent UI primitives. Keep the UV cache paired with it.
+			pRenderer->SetMaterial( pPrevMaterial ? pPrevMaterial : m_ppMaterials[ 0 ] );
 			pRenderer->SetColour( a_uiColour );
 			a_fX += ( pFontDef->iLetterSpacing + glyph.width ) * a_fScale;
 			continue;
