@@ -27,6 +27,11 @@ void AVROptionsState::RefreshLabels()
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: Disabled" );
 	else
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
+	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"VR Resolution: %d%% (restart)", settings.GetResolutionPercent() );
+	if ( settings.GetMSAASamples() == 1 )
+		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"VR MSAA: Off (restart)" );
+	else
+		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"VR MSAA: %dx (restart)", settings.GetMSAASamples() );
 	std::swprintf( m_awszLabels[ ROW_DEFAULTS ], 96, L"Restore Defaults" );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 		m_aButtons[ i ].GetTextBox().SetText( m_awszLabels[ i ] );
@@ -36,6 +41,8 @@ void AVROptionsState::OnInsertion()
 {
 	m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
 	m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
+	m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
+	m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 	m_bConfirmed               = TFALSE;
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
@@ -64,6 +71,8 @@ void AVROptionsState::OnRemoval()
 	// Restore on forced removal too. A successful save advances this snapshot.
 	AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
 	AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
+	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
+	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
@@ -82,6 +91,31 @@ void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 	{
 		auto& settings = AVRSettings::GetSingleton();
 		settings.SetModernControls( !settings.IsModernControls() );
+		RefreshLabels();
+		return;
+	}
+	if ( a_iRow == ROW_RESOLUTION )
+	{
+		auto& settings = AVRSettings::GetSingleton();
+		TINT  percent  = settings.GetResolutionPercent() + a_iDirection * AVRSettings::RESOLUTION_STEP;
+		if ( percent < AVRSettings::RESOLUTION_MIN ) percent = AVRSettings::RESOLUTION_MAX;
+		if ( percent > AVRSettings::RESOLUTION_MAX ) percent = AVRSettings::RESOLUTION_MIN;
+		settings.SetResolutionPercent( percent );
+		RefreshLabels();
+		return;
+	}
+	if ( a_iRow == ROW_MSAA )
+	{
+		auto&          settings = AVRSettings::GetSingleton();
+		constexpr TINT count    = sizeof( AVRSettings::MSAA_SAMPLES ) / sizeof( AVRSettings::MSAA_SAMPLES[ 0 ] );
+		for ( TINT i = 0; i < count; ++i )
+		{
+			if ( AVRSettings::MSAA_SAMPLES[ i ] == settings.GetMSAASamples() )
+			{
+				settings.SetMSAASamples( AVRSettings::MSAA_SAMPLES[ ( i + a_iDirection + count ) % count ] );
+				break;
+			}
+		}
 		RefreshLabels();
 		return;
 	}
@@ -123,7 +157,7 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS )
+	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_RESOLUTION || row == ROW_MSAA )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
@@ -154,6 +188,8 @@ void AVROptionsState::OnMenuClose()
 	{
 		AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
 		AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
+		AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
+		AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 		AGameState::Remove();
 		return;
 	}
@@ -161,6 +197,8 @@ void AVROptionsState::OnMenuClose()
 	{
 		m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
 		m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
+		m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
+		m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 		AGameState::Remove();
 		return;
 	}

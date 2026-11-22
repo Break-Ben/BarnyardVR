@@ -21,6 +21,8 @@ private:
 	{
 		ROW_CONTROLS,
 		ROW_SNAP_TURN,
+		ROW_RESOLUTION,
+		ROW_MSAA,
 		ROW_DEFAULTS,
 		ROW_COUNT
 	};
@@ -30,6 +32,8 @@ private:
 
 	TBOOL m_bOriginalModernControls  = TTRUE;
 	TINT  m_iOriginalSnapTurnDegrees = 0;
+	TINT  m_iOriginalResolutionPercent = 100;
+	TINT  m_iOriginalMSAASamples       = 2;
 	TBOOL m_bConfirmed               = TFALSE;
 
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];

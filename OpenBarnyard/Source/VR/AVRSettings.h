@@ -14,6 +14,16 @@ public:
 	void                         SetSnapTurnDegrees( TINT a_iDegrees );
 	TBOOL                        IsModernControls() const { return m_bModernControls; }
 	void                         SetModernControls( TBOOL a_bModern );
+
+	// Graphics settings take effect on the next application start.
+	inline static constexpr TINT RESOLUTION_MIN  = 50;
+	inline static constexpr TINT RESOLUTION_MAX  = 200;
+	inline static constexpr TINT RESOLUTION_STEP = 5;
+	inline static constexpr TINT MSAA_SAMPLES[]  = { 1, 2, 4, 8 };
+	TINT                         GetResolutionPercent() const { return m_iResolutionPercent; }
+	void                         SetResolutionPercent( TINT a_iPercent );
+	TINT                         GetMSAASamples() const { return m_iMSAASamples; }
+	void                         SetMSAASamples( TINT a_iSamples );
 	void                         RestoreDefaults();
 
 	// Save only when dirty. A failed save leaves the values dirty for retry.
@@ -27,5 +37,7 @@ private:
 
 	TBOOL m_bModernControls  = TTRUE;
 	TINT  m_iSnapTurnDegrees = 0;
+	TINT  m_iResolutionPercent = 100;
+	TINT  m_iMSAASamples       = 2;
 	TBOOL m_bDirty           = TFALSE;
 };

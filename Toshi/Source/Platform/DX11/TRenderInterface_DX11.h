@@ -645,6 +645,7 @@ private:
 	TUINT32                   m_uiExternalHeight;
 	TBOOL                     m_bExternalTargetActive;
 	TBOOL                     m_bExternalPremultipliedAlpha;
+	TBOOL                     m_bExternalSavedMultisample = TFALSE;
 	TBOOL                     m_bHasPreferredAdapterLuid;
 	LUID                      m_oPreferredAdapterLuid;
 	D3D_FEATURE_LEVEL         m_eMinFeatureLevel;
