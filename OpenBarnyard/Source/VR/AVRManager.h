@@ -91,24 +91,6 @@ public:
 	TBOOL BeginUILayer();
 	// Draw within the GUI viewport, after normal UI; also available in release builds.
 	void  RenderDebugHUD();
-	// Wall times from both eyes; sections are subsets of the world-call time.
-	enum DebugWorldSection
-	{
-		DEBUG_WORLD_MODELS,
-		DEBUG_WORLD_TERRAIN,
-		DEBUG_WORLD_TREES,
-		DEBUG_WORLD_INSTANCES,
-		DEBUG_WORLD_REGROWTH,
-		DEBUG_WORLD_FLUSH,
-		DEBUG_WORLD_SECTION_COUNT
-	};
-	void  BeginDebugWorldSection();
-	void  EndDebugWorldSection( DebugWorldSection a_eSection );
-	// Wall time of both world render calls and the desktop EndScene call.
-	void  BeginDebugWorldTiming();
-	void  EndDebugWorldTiming();
-	void  BeginDebugPresentTiming();
-	void  EndDebugPresentTiming();
 	void  EndUILayer();
 	void  EndFrame();
 
