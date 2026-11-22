@@ -181,7 +181,32 @@ void T2GUIFont::DrawTextSingleLine( const TWCHAR* a_wszText, TINT a_iTextLength,
 		{
 			if ( a_fnCallback ) TREINTERPRETCAST( CharCallback, a_fnCallback )( i, &fOffsetX, &fOffsetY );
 			if ( glyph.text )
-				DrawTextSingleLine( glyph.text, a_fX + fOffsetX, a_fY + fOffsetY, a_uiColour, a_fScale );
+			{
+				// Controller icons are tightly packed in the retail font pages.
+				// The text renderer's extra +1 texel/quad overscan can expose a
+				// neighbour as a coloured sliver, especially on scaled prompts.
+				// Sample only this icon's texel centres; leave ordinary text alone.
+				const auto* icon = glyph.text[ 0 ] >= 0x0F00 && glyph.text[ 0 ] <= 0x0FFF && glyph.text[ 1 ] == 0 ?
+				    GetNativeCharData( glyph.text[ 0 ] ) :
+				    TNULL;
+				if ( icon && icon->ui8CharWidth && icon->ui8CharHeight )
+				{
+					auto*        material      = GetCharMaterial( glyph.text[ 0 ], icon );
+					const TFLOAT textureWidth  = TFLOAT( pRenderer->GetWidth( material ) );
+					const TFLOAT textureHeight = TFLOAT( pRenderer->GetHeight( material ) );
+					pRenderer->SetMaterial( material );
+					const TFLOAT x = a_fX + fOffsetX + icon->iLeftPadding * a_fScale;
+					const TFLOAT y = a_fY + fOffsetY + ( pFontDef->uiLineHeight + icon->iYOffset - icon->ui8CharHeight ) * a_fScale;
+					pRenderer->RenderRectangle(
+					    { x, y },
+					    { x + icon->ui8CharWidth * a_fScale, y + icon->ui8CharHeight * a_fScale },
+					    { ( icon->ui16PosX + 0.5f ) / textureWidth, ( icon->ui16PosY + 0.5f ) / textureHeight },
+					    { ( icon->ui16PosX + icon->ui8CharWidth - 0.5f ) / textureWidth,
+					      ( icon->ui16PosY + icon->ui8CharHeight - 0.5f ) / textureHeight } );
+				}
+				else
+					DrawTextSingleLine( glyph.text, a_fX + fOffsetX, a_fY + fOffsetY, a_uiColour, a_fScale );
+			}
 			else if ( glyph.material )
 			{
 				pRenderer->SetColour( a_uiColour );

@@ -65,22 +65,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	                                                                  -1;
 	const TBOOL vrControl = AInputHandler::GetSingleton()->IsControllerUsed() && s_openXRActive && doodad >= Pad::BUTTON_DPAD_UP && doodad <= Pad::VIRTSTK_DPAD;
 	const auto  prompt    = vrControl ? AVRManager::GetSingleton().GetControllerPrompt( doodad ) : AVRControllerPrompt{};
-	// Touch face labels match the game's existing A/B/X/Y glyphs exactly.
-	// Do not shrink a picture of a button inside another boxed keycap.
-	const TWCHAR* face = TNULL;
-	if ( vrControl && prompt.family == AVRControllerFamily::Touch )
-	{
-		switch ( prompt.icon )
-		{
-			case AVRControlIcon::RightA: face = L"\x0F0B"; break;
-			case AVRControlIcon::RightB: face = L"\x0F0C"; break;
-			case AVRControlIcon::LeftX: face = L"\x0F1B"; break;
-			case AVRControlIcon::LeftY: face = L"\x0F0A"; break;
-			default: break;
-		}
-		if ( face && !font->GetNativeCharData( *face ) ) face = TNULL;
-	}
-	if ( vrControl && !face && s_material )
+	if ( vrControl && s_material )
 	{
 		const TINT column = TINT( prompt.icon );
 		const TINT row    = TINT( prompt.family );
@@ -102,7 +87,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	if ( doodad != -1 && !manager->GetDoodadCustomName( doodad, name ) )
 		manager->GetDoodadLocalisedName( doodad, name );
 	// Do not fall back to a PS2 icon for missing OpenXR artwork/metadata.
-	if ( vrControl ) name = face ? face : ControlLabel( prompt.icon );
+	if ( vrControl ) name = ControlLabel( prompt.icon );
 	glyph.text  = name ? name : L"?";
 	glyph.width = std::clamp( std::ceil( const_cast<T2GUIFont*>( font )->GetTextWidth( glyph.text ) - font->GetFontDef()->iLetterSpacing ), 0.0f, 255.0f );
 	return TTRUE;
