@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 #include "GameInterface/AGameStateController.h"
 #include "Tasks/ARootTask.h"
 #include "Units/AControlComponentManager.h"
@@ -373,6 +374,30 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 
 
 #ifdef BARNYARD_COMMUNITY_PATCH
+	// Track the pad actually used, including pad-to-pad transitions while the
+	// controller-used flag remains true. Releases/repeats/idle axes cannot steal
+	// the prompt family from a mouse, keyboard or another physical controller.
+	if ( pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
+	{
+		const TBOOL pressed = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN;
+		const TBOOL moved = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL && a_pEvent->GetAxisCount() >= 2 &&
+		    TMath::Abs( a_pEvent->GetMagnitudeFloat( 0 ) ) + TMath::Abs( a_pEvent->GetMagnitudeFloat( 1 ) ) >= 0.1f;
+		if ( pressed || moved )
+		{
+#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
+			AInputPrompts::SetOpenXRActive( pInputSource->GetClass()->IsA( &TGetClass( TInputOpenXRDeviceController ) ) );
+#else
+			AInputPrompts::SetOpenXRActive( TFALSE );
+#endif
+#ifdef TOSHI_SKU_WINDOWS
+			m_bControllerXInput = pInputSource->GetClass()->IsA( &TGetClass( TInputXInputDeviceController ) );
+#endif
+		}
+	}
+	else if ( a_pEvent->GetEventType() != TInputInterface::EVENT_TYPE_VIRTUAL &&
+	          ( pInputSource == m_pMouseDevice || pInputSource == m_pKeyboardDevice ) )
+		AInputPrompts::SetOpenXRActive( TFALSE );
+
 	// Update whether controller is used or not
 	if ( !IsControllerUsed() && pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
 	{

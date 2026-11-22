@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "AGUI2TextBox.h"
+#include "Input/AInputPrompts.h"
+#include <unordered_map>
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -8,6 +10,24 @@
 #include <Core/TMemoryDebugOn.h>
 
 TOSHI_NAMESPACE_USING
+
+namespace
+{
+// External bookkeeping preserves the inherited binary class layout used by mods.
+// Entries are removed on destruction/recreation, never weak pointers to output text.
+struct PromptLayout
+{
+	TBOOL   fit      = TFALSE;
+	TUINT32 revision = 0;
+};
+auto& PromptLayouts()
+{
+	// Some text boxes are globals destroyed after GUI shutdown. Keep the empty
+	// registry object alive until process exit; each box still erases its entry.
+	static auto* layouts = new std::unordered_map<const AGUI2TextBox*, PromptLayout>;
+	return *layouts;
+}
+} // namespace
 
 // $Barnyard: FUNCTION 006c3620
 AGUI2TextBox::AGUI2TextBox()
@@ -27,12 +47,14 @@ AGUI2TextBox::AGUI2TextBox()
 // $Barnyard: FUNCTION 00666f60
 AGUI2TextBox::~AGUI2TextBox()
 {
+	PromptLayouts().erase( this );
 }
 
 // $Barnyard: FUNCTION 006c3670
 // $BarnyardWiiJP: FUNCTION 804a24ac
 void AGUI2TextBox::Create( T2GUIFont* a_pFont, TFLOAT a_fWidth )
 {
+	PromptLayouts().erase( this );
 	m_pFont                = a_pFont;
 	T2GUIElement::m_fWidth = a_fWidth;
 	m_bDimensionsDirty     = TTRUE;
@@ -41,8 +63,17 @@ void AGUI2TextBox::Create( T2GUIFont* a_pFont, TFLOAT a_fWidth )
 
 void AGUI2TextBox::SetText( const TWCHAR* a_wszText )
 {
+	PromptLayouts().erase( this );
 	m_wszText          = a_wszText;
 	m_bDimensionsDirty = TTRUE;
+}
+
+void AGUI2TextBox::SetTextAndFitWidth( const TWCHAR* text )
+{
+	SetText( text );
+	m_bFixedHeight = TFALSE;
+	m_fWidth       = m_pFont->GetTextWidth( text ) * m_fScale;
+	if ( AInputPrompts::ContainsToken( text ) ) PromptLayouts()[ this ] = { TTRUE, 0 };
 }
 
 // $Barnyard: FUNCTION 006c3780
@@ -158,6 +189,18 @@ void AGUI2TextBox::Render()
 // $Barnyard: FUNCTION 006c36c0
 void AGUI2TextBox::GetDimensions( TFLOAT& a_rWidth, TFLOAT& a_rHeight )
 {
+	if ( m_pFont && AInputPrompts::ContainsToken( m_wszText ) )
+	{
+		auto&      layout   = PromptLayouts()[ this ];
+		const auto revision = AInputPrompts::GetRevision();
+		if ( layout.revision != revision )
+		{
+			if ( layout.fit ) m_fWidth = m_pFont->GetTextWidth( m_wszText ) * m_fScale;
+			m_bDimensionsDirty = TTRUE;
+			layout.revision    = revision;
+		}
+	}
+
 	if ( !m_bFixedHeight && m_bDimensionsDirty )
 	{
 		if ( !m_wszText || !m_pFont )
@@ -199,6 +242,7 @@ TFLOAT AGUI2TextBox::GetHeight()
 // $Barnyard: FUNCTION 0063ad20
 void AGUI2TextBox::SetWidth( TFLOAT a_fWidth )
 {
+	PromptLayouts().erase( this );
 	T2GUIElement::m_fWidth = a_fWidth;
 	m_bDimensionsDirty     = TTRUE;
 }
@@ -207,6 +251,7 @@ void AGUI2TextBox::SetWidth( TFLOAT a_fWidth )
 // $BarnyardWiiJP: FUNCTION 804a24c8
 void AGUI2TextBox::SetSize( TFLOAT a_fWidth, TFLOAT a_fHeight, TBOOL a_bFixedHeight )
 {
+	PromptLayouts().erase( this );
 	m_bFixedHeight         = a_bFixedHeight;
 	T2GUIElement::m_fWidth = a_fWidth;
 

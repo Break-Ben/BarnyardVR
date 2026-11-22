@@ -1,6 +1,7 @@
 #pragma once
 #include "T2GUIMaterial.h"
 #include "T2GUIFontResource.h"
+#include <Math/TVector2.h>
 
 TOSHI_NAMESPACE_START
 
@@ -49,6 +50,20 @@ public:
 	using CharCallback = void( __stdcall* )( TINT a_iCharIndex, TFLOAT* a_pOffsetX, TFLOAT* a_pOffsetY );
 
 public:
+	// Optional application-owned inline glyphs. No game/platform dependency in
+	// the font engine; the resolver and its resources outlive all font draws.
+	struct InlineGlyph
+	{
+		TFLOAT width = 0.0f;
+		TFLOAT height = 0.0f;
+		T2GUIMaterial* material = TNULL;
+		TVector2 uv1 { 0.0f, 0.0f };
+		TVector2 uv2 { 1.0f, 1.0f };
+		const TWCHAR* text = TNULL; // Native text/glyph fallback, never another token.
+	};
+	using InlineGlyphResolver = TBOOL ( * )( const T2GUIFont*, TWCHAR, InlineGlyph& );
+	inline static InlineGlyphResolver ms_fnInlineGlyph = TNULL;
+
 	// $Barnyard: FUNCTION 006c2ce0
 	T2GUIFont() {}
 	~T2GUIFont();
@@ -120,6 +135,16 @@ private:
 	// Character data of a character of the font or TNULL (the lookup the PC functions inline)
 	const T2GUIFontDefCharacterData* FindCharData( TWCHAR a_wcChar ) const
 	{
+		InlineGlyph glyph;
+		if ( ms_fnInlineGlyph && ms_fnInlineGlyph( this, a_wcChar, glyph ) )
+		{
+			// Match the native font advance, including its letter spacing. Each
+			// lookup's result is consumed immediately (the renderer copies it).
+			static thread_local T2GUIFontDefCharacterData data;
+			data = {};
+			data.ui8CharWidth = TUINT8( glyph.width );
+			return &data;
+		}
 		if ( m_pFontDef->ui16MinCharacter <= a_wcChar && a_wcChar <= m_pFontDef->ui16MaxCharacter )
 		{
 			TINT iCharIndex = m_pFontDef->pCharactersMap[ a_wcChar - m_pFontDef->ui16MinCharacter ];

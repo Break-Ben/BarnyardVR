@@ -11,7 +11,7 @@
 #include "Helpers/AGameLoader.h"
 #include "GUI/AGUISlideshow.h"
 #include "Render/ARenderer.h"
-#include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Input/TInputDeviceKeyboard.h>
@@ -94,8 +94,7 @@ void AMiniGameInstructionState::TryDismiss()
 // The loading/instruction prompt is distinct from the front-end title prompt.
 void AMiniGameInstructionState::UpdateContinuePrompt()
 {
-	const TWCHAR* text = AInputHandler::GetSingleton()->IsControllerUsed() ?
-	    L"Press A or B" : g_pLocaleManager->GetString( 0x20c );
+	const TWCHAR* text = AInputPrompts::GetContinueText( g_pLocaleManager->GetString( 0x20c ) );
 	// Both choices are stable strings. Do not dirty/recalculate the text layout
 	// each frame while the same prompt is already displayed.
 	if ( m_oTextBox.GetText() != text )

@@ -2,6 +2,7 @@
 #include "ALocale.h"
 #include "ALocaleManager.h"
 #include "Input/AInputMapManager.h"
+#include "Input/AInputPrompts.h"
 
 #include <Toshi/TStringManager.h>
 #include <Math/TMathInline.h>
@@ -343,6 +344,14 @@ void ALocale::FormatInputTags( TWCHAR* a_wszOutString, TINT a_iOutSize, const TW
 			TWCHAR wszMove[ 128 ];
 			FormatInputTags( wszMove, 128, g_pLocaleManager->GetString( 1285 ) );
 			strResult.Concat( wszMove, -1 );
+		}
+		else if ( TWCHAR token = AInputPrompts::GetToken( pInputMap->GetName(), eCommand ) )
+		{
+			// Resolve at measure/draw time so cached localized strings follow
+			// device, OpenXR profile and Modern/Classic changes without dangling
+			// output-buffer registrations or per-screen reconstruction.
+			const TWCHAR text[] = { token, 0 };
+			strResult.Concat( text, 1 );
 		}
 		else
 		{
