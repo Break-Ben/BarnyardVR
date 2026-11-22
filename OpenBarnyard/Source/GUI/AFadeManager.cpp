@@ -127,3 +127,31 @@ TBOOL AFadeManager::HasAnyFadesInProgress( TBOOL a_bThrowFadeOver )
 
 	return TFALSE;
 }
+
+TVector4 AFadeManager::GetCompositeColour()
+{
+	TVector4 vColour( 0.0f, 0.0f, 0.0f, 0.0f );
+	// GUI children render last-added first. Accumulate front to back so
+	// overlapping fades retain the same ordering as their GUI rectangles.
+	for ( auto it = m_ActiveFades.Begin(); it != m_ActiveFades.End(); it++ )
+	{
+		const AFade::Color colour( it->GetRectangleElement().GetColour() );
+		const TFLOAT fAlpha = ( colour.A / 255.0f ) * ( 1.0f - vColour.w );
+		vColour.x += ( colour.R / 255.0f ) * fAlpha;
+		vColour.y += ( colour.G / 255.0f ) * fAlpha;
+		vColour.z += ( colour.B / 255.0f ) * fAlpha;
+		vColour.w += fAlpha;
+	}
+	return vColour;
+}
+
+void AFadeManager::SetOverlaysVisible( TBOOL a_bVisible )
+{
+	for ( auto it = m_ActiveFades.Begin(); it != m_ActiveFades.End(); it++ )
+	{
+		if ( a_bVisible )
+			it->GetRectangleElement().Show();
+		else
+			it->GetRectangleElement().Hide();
+	}
+}
