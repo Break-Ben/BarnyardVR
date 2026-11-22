@@ -77,6 +77,22 @@ public:
 
 	T2GUIFontDef* GetFontDef() const { return m_pFontDef; }
 
+	// Read-only native glyph metrics, without invoking the inline resolver.
+	// Safe for a resolver to query when matching a supplemental icon's baseline.
+	const T2GUIFontDefCharacterData* GetNativeCharData( TWCHAR a_wcChar ) const
+	{
+		if ( !m_pFontDef ) return TNULL;
+		if ( m_pFontDef->ui16MinCharacter <= a_wcChar && a_wcChar <= m_pFontDef->ui16MaxCharacter )
+		{
+			TINT iCharIndex = m_pFontDef->pCharactersMap[ a_wcChar - m_pFontDef->ui16MinCharacter ];
+
+			if ( iCharIndex >= 0 )
+				return &m_pFontDef->pCharactersData[ iCharIndex ];
+		}
+
+		return TNULL;
+	}
+
 	TBOOL Create( T2GUIFontDef* a_pFontDef );
 
 	void DrawTextWrapped( const TWCHAR* a_wszText, TFLOAT a_fX, TFLOAT a_fY, TFLOAT a_fWidth, TFLOAT a_fHeight, TUINT32 a_uiColour, TFLOAT a_fScale, TextAlign a_eAlign, void* a_fnCallback = TNULL );
@@ -146,15 +162,7 @@ private:
 			data.ui8CharWidth = TUINT8( glyph.width );
 			return &data;
 		}
-		if ( m_pFontDef->ui16MinCharacter <= a_wcChar && a_wcChar <= m_pFontDef->ui16MaxCharacter )
-		{
-			TINT iCharIndex = m_pFontDef->pCharactersMap[ a_wcChar - m_pFontDef->ui16MinCharacter ];
-
-			if ( iCharIndex >= 0 )
-				return &m_pFontDef->pCharactersData[ iCharIndex ];
-		}
-
-		return TNULL;
+		return GetNativeCharData( a_wcChar );
 	}
 
 	// Material of a character (the high byte of the character)

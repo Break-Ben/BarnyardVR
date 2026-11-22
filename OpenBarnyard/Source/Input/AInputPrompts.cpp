@@ -78,7 +78,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 			case AVRControlIcon::LeftY: face = L"\x0F0A"; break;
 			default: break;
 		}
-		if ( face && !font->FindCharData( *face ) ) face = TNULL;
+		if ( face && !font->GetNativeCharData( *face ) ) face = TNULL;
 	}
 	if ( vrControl && !face && s_material )
 	{
@@ -86,7 +86,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 		const TINT row    = TINT( prompt.family );
 		// Native button glyphs can extend above/below the text's line height.
 		// Match their actual ink size and baseline, not just the text advance.
-		const auto* reference = font->FindCharData( L'\x0F0B' );
+		const auto* reference = font->GetNativeCharData( L'\x0F0B' );
 		glyph.width = glyph.height = reference ? reference->ui8CharHeight : font->GetFontDef()->uiLineHeight;
 		glyph.yOffset              = reference ? reference->iYOffset : 0.0f;
 		glyph.material             = s_material;
