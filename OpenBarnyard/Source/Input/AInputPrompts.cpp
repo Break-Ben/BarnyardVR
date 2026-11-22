@@ -9,6 +9,7 @@
 #include <Input/TInputDeviceController.h>
 #include <GUI/T2GUI.h>
 #include <GUI/T2GUIFont.h>
+#include <GUI/T2GUIFontManager.h>
 #include <GUI/T2GUIRenderer.h>
 #include <Render/TRenderInterface.h>
 #include <Render/TTextureFactory.h>
@@ -36,10 +37,12 @@ struct Token
 	TINT          doodad = -1; // Fixed physical controls for the title/instruction screen.
 };
 std::vector<Token> s_tokens;
-T2GUIMaterial*     s_material     = TNULL;
-TTexture*          s_texture      = TNULL;
-TBOOL              s_initialised  = TFALSE;
-TBOOL              s_openXRActive = TFALSE;
+T2GUIMaterial*     s_material        = TNULL;
+TTexture*          s_texture         = TNULL;
+T2GUIFont*         s_smallPromptFont = TNULL;
+T2GUIFont*         s_menuGlyphFont   = TNULL;
+TBOOL              s_initialised     = TFALSE;
+TBOOL              s_openXRActive    = TFALSE;
 
 const TWCHAR* ControlLabel( AVRControlIcon icon )
 {
@@ -87,7 +90,21 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 		manager->GetDoodadLocalisedName( doodad, name );
 	// Do not fall back to a PS2 icon for missing OpenXR artwork/metadata.
 	if ( vrControl ) name = ControlLabel( prompt.icon );
-	glyph.text  = name ? name : L"?";
+	glyph.text = name ? name : L"?";
+	// Rekord18 is used by interaction/instruction prompts; the same Xbox
+	// icons render correctly in the menu's Rekord26 page. Borrow that native
+	// glyph (not its text font) and scale to the destination line height.
+	// Leave menu rendering, keyboard text, other pads and OpenXR untouched.
+	if ( !vrControl && AInputHandler::GetSingleton()->IsControllerUsed() &&
+	     AInputHandler::GetSingleton()->IsControllerXInput() && font == s_smallPromptFont &&
+	     s_menuGlyphFont && name && name[ 0 ] >= 0x0F00 && name[ 0 ] <= 0x0FFF && !name[ 1 ] &&
+	     s_menuGlyphFont->GetNativeCharData( name[ 0 ] ) && s_menuGlyphFont->GetFontDef()->uiLineHeight )
+	{
+		glyph.textFont  = s_menuGlyphFont;
+		glyph.textScale = TFLOAT( font->GetFontDef()->uiLineHeight ) / s_menuGlyphFont->GetFontDef()->uiLineHeight;
+		glyph.width     = std::clamp( std::ceil( s_menuGlyphFont->GetTextWidth( name ) * glyph.textScale - font->GetFontDef()->iLetterSpacing ), 0.0f, 255.0f );
+		return TTRUE;
+	}
 	glyph.width = std::clamp( std::ceil( const_cast<T2GUIFont*>( font )->GetTextWidth( glyph.text ) - font->GetFontDef()->iLetterSpacing ), 0.0f, 255.0f );
 	return TTRUE;
 }
@@ -96,7 +113,9 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 void AInputPrompts::Initialise()
 {
 	if ( s_initialised ) return;
-	s_initialised = TTRUE;
+	s_initialised     = TTRUE;
+	s_smallPromptFont = T2GUIFontManager::FindFont( "Rekord18" );
+	s_menuGlyphFont   = T2GUIFontManager::FindFont( "Rekord26" );
 	// DDS is copied by the existing Content/Common build/deployment step.
 	// Keep native text fallback functional on other renderer targets.
 #if defined( TRENDERINTERFACE_DX11 ) && defined( TOSHI_SKU_WINDOWS ) && !defined( TOSHI_SKU_WASM )
@@ -117,6 +136,9 @@ void AInputPrompts::Initialise()
 void AInputPrompts::Shutdown()
 {
 	T2GUIFont::ms_fnInlineGlyph = TNULL;
+	if ( s_smallPromptFont ) T2GUIFontManager::ReleaseFont( s_smallPromptFont );
+	if ( s_menuGlyphFont ) T2GUIFontManager::ReleaseFont( s_menuGlyphFont );
+	s_smallPromptFont = s_menuGlyphFont = TNULL;
 	if ( s_material ) T2GUI::GetRenderer()->DestroyMaterial( s_material );
 	if ( s_texture ) s_texture->DestroyResource();
 	s_material = TNULL;

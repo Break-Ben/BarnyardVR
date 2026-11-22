@@ -61,6 +61,8 @@ public:
 		TVector2       uv1{ 0.0f, 0.0f };
 		TVector2       uv2{ 1.0f, 1.0f };
 		const TWCHAR*  text = TNULL; // Native text/glyph fallback, never another token.
+		T2GUIFont*     textFont = TNULL; // Optional native glyph source; TNULL uses this font.
+		TFLOAT         textScale = 1.0f;
 	};
 	using InlineGlyphResolver = TBOOL ( * )( const T2GUIFont*, TWCHAR, InlineGlyph& );
 	inline static InlineGlyphResolver ms_fnInlineGlyph = TNULL;
@@ -155,7 +157,7 @@ private:
 		InlineGlyph glyph;
 		if ( ms_fnInlineGlyph && ms_fnInlineGlyph( this, a_wcChar, glyph ) )
 		{
-			if ( glyph.text && glyph.text[ 0 ] && !glyph.text[ 1 ] )
+			if ( glyph.text && !glyph.textFont && glyph.text[ 0 ] && !glyph.text[ 1 ] )
 				return GetNativeCharData( glyph.text[ 0 ] );
 			// Match the native font advance, including its letter spacing. Each
 			// lookup's result is consumed immediately (the renderer copies it).

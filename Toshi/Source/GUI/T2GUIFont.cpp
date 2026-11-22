@@ -178,7 +178,7 @@ void T2GUIFont::DrawTextSingleLine( const TWCHAR* a_wszText, TINT a_iTextLength,
 
 		InlineGlyph glyph;
 		const TBOOL resolved = ms_fnInlineGlyph && ms_fnInlineGlyph( this, wChar, glyph );
-		if ( resolved && glyph.text && glyph.text[ 0 ] && !glyph.text[ 1 ] )
+		if ( resolved && glyph.text && !glyph.textFont && glyph.text[ 0 ] && !glyph.text[ 1 ] )
 		{
 			// A native alias is still a native character: use the original draw
 			// below, including its material, padding, dimensions and UVs.
@@ -188,7 +188,12 @@ void T2GUIFont::DrawTextSingleLine( const TWCHAR* a_wszText, TINT a_iTextLength,
 		{
 			if ( a_fnCallback ) TREINTERPRETCAST( CharCallback, a_fnCallback )( i, &fOffsetX, &fOffsetY );
 			if ( glyph.text )
-				DrawTextSingleLine( glyph.text, a_fX + fOffsetX, a_fY + fOffsetY, a_uiColour, a_fScale );
+			{
+				auto* textFont = glyph.textFont ? glyph.textFont : this;
+				const TFLOAT y = a_fY + fOffsetY +
+				    ( pFontDef->uiLineHeight - textFont->GetFontDef()->uiLineHeight * glyph.textScale ) * a_fScale;
+				textFont->DrawTextSingleLine( glyph.text, a_fX + fOffsetX, y, a_uiColour, a_fScale * glyph.textScale );
+			}
 			else if ( glyph.material )
 			{
 				pRenderer->SetColour( a_uiColour );
