@@ -360,6 +360,7 @@ void ARenderer::RenderGUI()
 
 	// Render UI that is attached to the context
 	AGUI2::GetContext()->Render();
+	AVRManager::GetSingleton().RenderDebugHUD();
 
 	pViewport->End();
 

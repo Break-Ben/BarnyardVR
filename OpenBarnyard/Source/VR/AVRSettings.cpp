@@ -58,6 +58,15 @@ void AVRSettings::SetModernControls( TBOOL a_bModern )
 	}
 }
 
+void AVRSettings::SetDebugHUDEnabled( TBOOL a_bEnabled )
+{
+	if ( m_bDebugHUD != a_bEnabled )
+	{
+		m_bDebugHUD = a_bEnabled;
+		m_bDirty    = TTRUE;
+	}
+}
+
 void AVRSettings::SetResolutionPercent( TINT a_iPercent )
 {
 	if ( a_iPercent >= RESOLUTION_MIN && a_iPercent <= RESOLUTION_MAX &&
@@ -86,6 +95,7 @@ void AVRSettings::RestoreDefaults()
 	SetModernControls( TTRUE );
 	SetResolutionPercent( 100 );
 	SetMSAASamples( 2 );
+	SetDebugHUDEnabled( TFALSE );
 }
 
 void AVRSettings::Load()
@@ -116,6 +126,8 @@ void AVRSettings::Load()
 
 		if ( key == "ModernControls" && ( number == 0 || number == 1 ) )
 			SetModernControls( number != 0 );
+		else if ( key == "DebugHUD" && ( number == 0 || number == 1 ) )
+			SetDebugHUDEnabled( number != 0 );
 		else if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
 			SetSnapTurnDegrees( TINT( number ) );
 		else if ( key == "ResolutionPercent" && number >= RESOLUTION_MIN && number <= RESOLUTION_MAX )
@@ -149,6 +161,7 @@ TBOOL AVRSettings::Save()
 	fprintf( pFile, "# The -vrscale command-line option overrides ResolutionPercent.\n" );
 	fprintf( pFile, "# MSAASamples: 1 (off), 2, 4, 8. Unsupported counts fall back to a lower level.\n" );
 	fprintf( pFile, "ResolutionPercent=%d\nMSAASamples=%d\n", m_iResolutionPercent, m_iMSAASamples );
+	fprintf( pFile, "DebugHUD=%d\n", m_bDebugHUD ? 1 : 0 );
 	TBOOL written = fflush( pFile ) == 0 && ferror( pFile ) == 0;
 	if ( fclose( pFile ) != 0 ) written = TFALSE;
 

@@ -27,11 +27,12 @@ void AVROptionsState::RefreshLabels()
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: Disabled" );
 	else
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
-	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"VR Resolution: %d%% (restart)", settings.GetResolutionPercent() );
+	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Resolution: %d%% (restart)", settings.GetResolutionPercent() );
 	if ( settings.GetMSAASamples() == 1 )
-		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"VR MSAA: Off (restart)" );
+		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: Off (restart)" );
 	else
-		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"VR MSAA: %dx (restart)", settings.GetMSAASamples() );
+		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: %dx (restart)", settings.GetMSAASamples() );
+	std::swprintf( m_awszLabels[ ROW_DEBUG_HUD ], 96, L"Debug HUD: %ls", settings.IsDebugHUDEnabled() ? L"On" : L"Off" );
 	std::swprintf( m_awszLabels[ ROW_DEFAULTS ], 96, L"Restore Defaults" );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 		m_aButtons[ i ].GetTextBox().SetText( m_awszLabels[ i ] );
@@ -43,6 +44,7 @@ void AVROptionsState::OnInsertion()
 	m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
 	m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 	m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
+	m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();
 	m_bConfirmed               = TFALSE;
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
@@ -73,6 +75,7 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
+	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
@@ -91,6 +94,13 @@ void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 	{
 		auto& settings = AVRSettings::GetSingleton();
 		settings.SetModernControls( !settings.IsModernControls() );
+		RefreshLabels();
+		return;
+	}
+	if ( a_iRow == ROW_DEBUG_HUD )
+	{
+		auto& settings = AVRSettings::GetSingleton();
+		settings.SetDebugHUDEnabled( !settings.IsDebugHUDEnabled() );
 		RefreshLabels();
 		return;
 	}
@@ -157,7 +167,7 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_RESOLUTION || row == ROW_MSAA )
+	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_RESOLUTION || row == ROW_MSAA || row == ROW_DEBUG_HUD )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
@@ -190,6 +200,7 @@ void AVROptionsState::OnMenuClose()
 		AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
 		AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 		AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
+		AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
 		AGameState::Remove();
 		return;
 	}
@@ -199,6 +210,7 @@ void AVROptionsState::OnMenuClose()
 		m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
 		m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 		m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
+		m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();
 		AGameState::Remove();
 		return;
 	}

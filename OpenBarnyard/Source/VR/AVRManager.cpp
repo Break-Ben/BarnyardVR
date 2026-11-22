@@ -4,6 +4,8 @@
 #if !defined( TOSHI_SKU_WASM ) && defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
 
 #include "GUI/AFadeManager.h"
+#include "GUI/AGUI2.h"
+#include "GUI/T2GUIFontManager.h"
 #include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
 
@@ -22,6 +24,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -312,6 +315,10 @@ struct AVRManager::Impl
 	TFLOAT fVRScale = 1.0f;
 	TUINT32 uiRequestedSamples = 2;
 	TUINT32 uiEyeSamples = 1;
+	std::chrono::steady_clock::time_point lastStatsFrame{};
+	double                                fStatsSeconds     = 0.0;
+	TUINT32                               uiStatsFrames     = 0;
+	TFLOAT                                fStatsFPS         = 0.0f;
 	TFLOAT fQuadHeightMeters = 1.0f;
 
 	XrInstance hInstance = XR_NULL_HANDLE;
@@ -1923,6 +1930,31 @@ TBOOL AVRManager::BeginFrame()
 			return TTRUE;
 	}
 	rImpl.bViewsValid = TTRUE;
+	// Measure application frames once, not once per eye, using wall time so
+	// pausing gameplay does not turn this into a simulation-rate counter.
+	const auto statsNow = std::chrono::steady_clock::now();
+	if ( rImpl.lastStatsFrame != std::chrono::steady_clock::time_point{} )
+	{
+		const double seconds = std::chrono::duration<double>( statsNow - rImpl.lastStatsFrame ).count();
+		if ( seconds > 0.0 && seconds < 1.0 )
+		{
+			rImpl.fStatsSeconds += seconds;
+			++rImpl.uiStatsFrames;
+			if ( rImpl.fStatsSeconds >= 0.5 )
+			{
+				rImpl.fStatsFPS     = TFLOAT( rImpl.uiStatsFrames / rImpl.fStatsSeconds );
+				rImpl.fStatsSeconds = 0.0;
+				rImpl.uiStatsFrames = 0;
+			}
+		}
+		else
+		{
+			rImpl.fStatsSeconds = 0.0;
+			rImpl.uiStatsFrames = 0;
+			rImpl.fStatsFPS     = 0.0f;
+		}
+	}
+	rImpl.lastStatsFrame = statsNow;
 	// Snapshot once: both eyes and the UI must use exactly the same fade.
 	rImpl.vFadeColour = ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() ) ? AFadeManager::GetSingleton()->GetCompositeColour() : Toshi::TVector4( 0.0f, 0.0f, 0.0f, 0.0f );
 	if ( rImpl.bColorCorrectionAvailable )
@@ -2267,6 +2299,57 @@ TBOOL AVRManager::BeginUILayer()
 	return TTRUE;
 }
 
+void AVRManager::RenderDebugHUD()
+{
+	const Impl& rImpl = *m_pImpl;
+	if ( !rImpl.bUILayerActive || !AVRSettings::GetSingleton().IsDebugHUDEnabled() || !AGUI2::IsSingletonCreated() )
+		return;
+
+	auto* pFont = Toshi::T2GUIFontManager::FindFont( "Rekord18" );
+	if ( !pFont ) return;
+
+	TFLOAT width, height;
+	AGUI2::GetSingleton()->GetDimensions( width, height );
+	const TFLOAT x            = -width * 0.5f + 12.0f;
+	TFLOAT       y            = -height * 0.5f + 12.0f;
+	auto*        pGUIRenderer = AGUI2::GetContext()->GetRenderer();
+	pGUIRenderer->BeginScene();
+	pGUIRenderer->ClearScissor();
+	pGUIRenderer->ResetZCoordinate();
+	auto drawLine = [ & ]( const TWCHAR* text ) {
+		pFont->DrawTextSingleLine( text, x + 1.0f, y + 1.0f, 0xE0000000, 1.0f );
+		pFont->DrawTextSingleLine( text, x, y, 0xFFFFFFFF, 1.0f );
+		y += pFont->GetLineHeight() + 2.0f;
+	};
+	TWCHAR text[ 128 ];
+	if ( rImpl.fStatsFPS > 0.0f )
+		std::swprintf( text, 128, L"FPS: %.1f", rImpl.fStatsFPS );
+	else
+		std::swprintf( text, 128, L"FPS: --" );
+	drawLine( text );
+	const auto& left  = rImpl.aEyes[ 0 ];
+	const auto& right = rImpl.aEyes[ 1 ];
+	if ( left.uiWidth == right.uiWidth && left.uiHeight == right.uiHeight )
+	{
+		std::swprintf( text, 128, L"Resolution: %ux%u per eye", left.uiWidth, left.uiHeight );
+		drawLine( text );
+	}
+	else
+	{
+		std::swprintf( text, 128, L"Resolution L: %ux%u", left.uiWidth, left.uiHeight );
+		drawLine( text );
+		std::swprintf( text, 128, L"Resolution R: %ux%u", right.uiWidth, right.uiHeight );
+		drawLine( text );
+	}
+	if ( rImpl.uiEyeSamples > 1 )
+		std::swprintf( text, 128, L"MSAA: %ux", rImpl.uiEyeSamples );
+	else
+		std::swprintf( text, 128, L"MSAA: Off" );
+	drawLine( text );
+	pGUIRenderer->EndScene();
+	Toshi::T2GUIFontManager::ReleaseFont( pFont );
+}
+
 void AVRManager::EndUILayer()
 {
 	Impl& rImpl = *m_pImpl;
@@ -2476,6 +2559,7 @@ TBOOL AVRManager::BeginEye( TUINT32, const Toshi::TMatrix44&, Toshi::TCameraObje
 void AVRManager::ApplyEyeProjection( Toshi::TRenderContext* ) {}
 void AVRManager::EndEye() {}
 TBOOL AVRManager::BeginUILayer() { return TFALSE; }
+void                AVRManager::RenderDebugHUD() {}
 void AVRManager::EndUILayer() {}
 void AVRManager::EndFrame() {}
 void AVRManager::OnDeviceLost() {}

@@ -15,6 +15,9 @@ public:
 	TBOOL                        IsModernControls() const { return m_bModernControls; }
 	void                         SetModernControls( TBOOL a_bModern );
 
+	TBOOL IsDebugHUDEnabled() const { return m_bDebugHUD; }
+	void SetDebugHUDEnabled( TBOOL a_bEnabled );
+
 	// Graphics settings take effect on the next application start.
 	inline static constexpr TINT RESOLUTION_MIN  = 50;
 	inline static constexpr TINT RESOLUTION_MAX  = 200;
@@ -39,5 +42,6 @@ private:
 	TINT  m_iSnapTurnDegrees = 0;
 	TINT  m_iResolutionPercent = 100;
 	TINT  m_iMSAASamples       = 2;
+	TBOOL m_bDebugHUD = TFALSE;
 	TBOOL m_bDirty           = TFALSE;
 };
