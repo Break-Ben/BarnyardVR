@@ -1167,31 +1167,9 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera )
 				TVector4        vEyePos;
 				ComputePlayerEyePosition( pUnit, rcBase, s_fOnFootEyeHeight, vEyePos );
 
-				if ( pCamMgr->m_bIsPosLerping )
-				{
-					// If the transition started right at the eye (e.g. leaving aim mode), keep tracking the player's eye
-					if ( TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) <= 0.25f )
-					{
-						a_pCamera->GetMatrix().GetTranslation() = vEyePos;
-						ApplyFirstPersonNearClip();
-						ApplyUnitHidden( pUnit, HIDE_PLAYER, vEyePos );
-						return;
-					}
-
-					// Blending in from a distant camera: only hide the player once the camera enters the head region
-					TFLOAT fDistSq = TVector4::DistanceSq( a_pCamera->GetMatrix().GetTranslation(), vEyePos );
-
-					if ( fDistSq <= HIDE_ENTER_DISTANCE * HIDE_ENTER_DISTANCE )
-					{
-						ApplyFirstPersonNearClip();
-						ApplyUnitHidden( pUnit, HIDE_PLAYER, vEyePos );
-					}
-					else
-					{
-						RestoreHiddenUnitImmediate();
-					}
-					return;
-				}
+				// Enter on-foot first-person immediately, even if the camera manager
+				// is blending from a minigame, loading camera or third-person view.
+				// Never render the approach to the player or briefly restore the body.
 
 				a_pCamera->GetMatrix().GetTranslation() = vEyePos;
 				a_pCamera->LookAtDirection( s_vOnFootForward );
