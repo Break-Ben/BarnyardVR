@@ -316,6 +316,7 @@ struct AVRManager::Impl
 	TUINT32 uiRequestedSamples = 2;
 	TUINT32 uiEyeSamples = 1;
 	std::chrono::steady_clock::time_point lastStatsFrame{};
+	std::chrono::steady_clock::time_point debugWorldStart{}, debugPresentStart{};
 	double                                fStatsSeconds     = 0.0;
 	TUINT32                               uiStatsFrames     = 0;
 	TFLOAT                                fStatsFPS         = 0.0f;
@@ -2332,14 +2333,24 @@ TBOOL AVRManager::BeginUILayer()
 	return TTRUE;
 }
 
-void AVRManager::AddDebugWorldTime( double a_fSeconds )
+void AVRManager::BeginDebugWorldTiming()
 {
-	m_pImpl->fFrameWorldSeconds += a_fSeconds;
+	m_pImpl->debugWorldStart = std::chrono::steady_clock::now();
 }
 
-void AVRManager::AddDebugPresentTime( double a_fSeconds )
+void AVRManager::EndDebugWorldTiming()
 {
-	m_pImpl->fFramePresentSeconds += a_fSeconds;
+	m_pImpl->fFrameWorldSeconds += std::chrono::duration<double>( std::chrono::steady_clock::now() - m_pImpl->debugWorldStart ).count();
+}
+
+void AVRManager::BeginDebugPresentTiming()
+{
+	m_pImpl->debugPresentStart = std::chrono::steady_clock::now();
+}
+
+void AVRManager::EndDebugPresentTiming()
+{
+	m_pImpl->fFramePresentSeconds += std::chrono::duration<double>( std::chrono::steady_clock::now() - m_pImpl->debugPresentStart ).count();
 }
 
 void AVRManager::RenderDebugHUD()
@@ -2624,8 +2635,10 @@ void AVRManager::ApplyEyeProjection( Toshi::TRenderContext* ) {}
 void AVRManager::EndEye() {}
 TBOOL AVRManager::BeginUILayer() { return TFALSE; }
 void                AVRManager::RenderDebugHUD() {}
-void AVRManager::AddDebugWorldTime( double ) {}
-void AVRManager::AddDebugPresentTime( double ) {}
+void AVRManager::BeginDebugWorldTiming() {}
+void AVRManager::EndDebugWorldTiming() {}
+void AVRManager::BeginDebugPresentTiming() {}
+void AVRManager::EndDebugPresentTiming() {}
 void AVRManager::EndUILayer() {}
 void AVRManager::EndFrame() {}
 void AVRManager::OnDeviceLost() {}

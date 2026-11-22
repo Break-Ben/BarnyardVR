@@ -36,7 +36,6 @@
 
 #include "Render/ABackend.h"
 
-#include <chrono>
 #include <resource.h>
 
 // NOTE: the physics headers pull in Opcode's PI macro, keep them last
@@ -844,9 +843,9 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 					{
 						if ( bWorldRendered )
 						{
-							const auto worldStart = std::chrono::steady_clock::now();
+							oVRManager.BeginDebugWorldTiming();
 							RenderMainScene( uiEye == 0 ? a_fDeltaTime : 0.0f );
-							oVRManager.AddDebugWorldTime( std::chrono::duration<double>( std::chrono::steady_clock::now() - worldStart ).count() );
+							oVRManager.EndDebugWorldTiming();
 						}
 						oVRManager.EndEye();
 					}
@@ -907,11 +906,12 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 #endif
 		}
 
-		const auto presentStart = std::chrono::steady_clock::now();
+		if ( bXRFrameBegun )
+			oVRManager.BeginDebugPresentTiming();
 		pRender->EndScene();
 		if ( bXRFrameBegun )
 		{
-			oVRManager.AddDebugPresentTime( std::chrono::duration<double>( std::chrono::steady_clock::now() - presentStart ).count() );
+			oVRManager.EndDebugPresentTiming();
 			oVRManager.EndFrame();
 		}
 
@@ -962,11 +962,12 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 #endif
 		}
 
-		const auto presentStart = std::chrono::steady_clock::now();
+		if ( bXRFrameBegun )
+			oVRManager.BeginDebugPresentTiming();
 		pRender->EndScene();
 		if ( bXRFrameBegun )
 		{
-			oVRManager.AddDebugPresentTime( std::chrono::duration<double>( std::chrono::steady_clock::now() - presentStart ).count() );
+			oVRManager.EndDebugPresentTiming();
 			oVRManager.EndFrame();
 		}
 		return TTRUE;
