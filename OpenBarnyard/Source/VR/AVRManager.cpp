@@ -317,6 +317,11 @@ struct AVRManager::Impl
 	TUINT32 uiEyeSamples = 1;
 	std::chrono::steady_clock::time_point lastStatsFrame{};
 	std::chrono::steady_clock::time_point debugWorldStart{}, debugPresentStart{};
+	std::chrono::steady_clock::time_point debugWorldSectionStart{};
+	TBOOL bDebugWorldSectionActive = TFALSE;
+	std::array<double, AVRManager::DEBUG_WORLD_SECTION_COUNT> aFrameWorldSectionSeconds{};
+	std::array<double, AVRManager::DEBUG_WORLD_SECTION_COUNT> aStatsWorldSectionSeconds{};
+	std::array<TFLOAT, AVRManager::DEBUG_WORLD_SECTION_COUNT> aStatsWorldSectionMS{};
 	double                                fStatsSeconds     = 0.0;
 	TUINT32                               uiStatsFrames     = 0;
 	TFLOAT                                fStatsFPS         = 0.0f;
@@ -1913,6 +1918,8 @@ TBOOL AVRManager::BeginFrame()
 			rImpl.fStatsImageWaitSeconds += rImpl.fFrameImageWaitSeconds;
 			rImpl.fStatsPresentSeconds += rImpl.fFramePresentSeconds;
 			rImpl.fStatsEndSeconds += rImpl.fFrameEndSeconds;
+			for ( TUINT32 i = 0; i < DEBUG_WORLD_SECTION_COUNT; ++i )
+				rImpl.aStatsWorldSectionSeconds[ i ] += rImpl.aFrameWorldSectionSeconds[ i ];
 			++rImpl.uiStatsFrames;
 			if ( rImpl.fStatsSeconds >= 0.5 )
 			{
@@ -1923,6 +1930,9 @@ TBOOL AVRManager::BeginFrame()
 				rImpl.fStatsImageWaitMS = TFLOAT( 1000.0 * rImpl.fStatsImageWaitSeconds / rImpl.uiStatsFrames );
 				rImpl.fStatsPresentMS = TFLOAT( 1000.0 * rImpl.fStatsPresentSeconds / rImpl.uiStatsFrames );
 				rImpl.fStatsEndMS = TFLOAT( 1000.0 * rImpl.fStatsEndSeconds / rImpl.uiStatsFrames );
+				for ( TUINT32 i = 0; i < DEBUG_WORLD_SECTION_COUNT; ++i )
+					rImpl.aStatsWorldSectionMS[ i ] = TFLOAT( 1000.0 * rImpl.aStatsWorldSectionSeconds[ i ] / rImpl.uiStatsFrames );
+				rImpl.aStatsWorldSectionSeconds.fill( 0.0 );
 				rImpl.fStatsSeconds = 0.0;
 				rImpl.fStatsWaitSeconds = 0.0;
 				rImpl.fStatsWorldSeconds = rImpl.fStatsImageWaitSeconds = rImpl.fStatsPresentSeconds = rImpl.fStatsEndSeconds = 0.0;
@@ -1934,6 +1944,7 @@ TBOOL AVRManager::BeginFrame()
 			rImpl.fStatsSeconds = 0.0;
 			rImpl.fStatsWaitSeconds = 0.0;
 			rImpl.fStatsWorldSeconds = rImpl.fStatsImageWaitSeconds = rImpl.fStatsPresentSeconds = rImpl.fStatsEndSeconds = 0.0;
+			rImpl.aStatsWorldSectionSeconds.fill( 0.0 );
 			rImpl.uiStatsFrames = 0;
 			rImpl.fStatsFPS = 0.0f;
 			rImpl.fStatsWaitMS = 0.0f;
@@ -1942,6 +1953,7 @@ TBOOL AVRManager::BeginFrame()
 	}
 	rImpl.lastStatsFrame = statsNow;
 	rImpl.fFrameWorldSeconds = rImpl.fFrameImageWaitSeconds = rImpl.fFramePresentSeconds = rImpl.fFrameEndSeconds = 0.0;
+	rImpl.aFrameWorldSectionSeconds.fill( 0.0 );
 
 	XrFrameBeginInfo oBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
 	if ( XR_FAILED( xrBeginFrame( rImpl.hSession, &oBeginInfo ) ) )
@@ -2333,6 +2345,22 @@ TBOOL AVRManager::BeginUILayer()
 	return TTRUE;
 }
 
+void AVRManager::BeginDebugWorldSection()
+{
+	Impl& rImpl = *m_pImpl;
+	rImpl.bDebugWorldSectionActive = rImpl.bEyeActive && AVRSettings::GetSingleton().IsDebugHUDEnabled();
+	if ( rImpl.bDebugWorldSectionActive )
+		rImpl.debugWorldSectionStart = std::chrono::steady_clock::now();
+}
+
+void AVRManager::EndDebugWorldSection( DebugWorldSection a_eSection )
+{
+	Impl& rImpl = *m_pImpl;
+	if ( rImpl.bDebugWorldSectionActive && a_eSection >= 0 && a_eSection < DEBUG_WORLD_SECTION_COUNT )
+		rImpl.aFrameWorldSectionSeconds[ a_eSection ] += std::chrono::duration<double>( std::chrono::steady_clock::now() - rImpl.debugWorldSectionStart ).count();
+	rImpl.bDebugWorldSectionActive = TFALSE;
+}
+
 void AVRManager::BeginDebugWorldTiming()
 {
 	m_pImpl->debugWorldStart = std::chrono::steady_clock::now();
@@ -2388,6 +2416,12 @@ void AVRManager::RenderDebugHUD()
 		std::swprintf( text, 128, L"XR wait: %.2f ms", rImpl.fStatsWaitMS );
 		drawLine( text );
 		std::swprintf( text, 128, L"World calls: %.2f ms", rImpl.fStatsWorldMS );
+		drawLine( text );
+		std::swprintf( text, 128, L"Models / terrain: %.2f / %.2f ms", rImpl.aStatsWorldSectionMS[ DEBUG_WORLD_MODELS ], rImpl.aStatsWorldSectionMS[ DEBUG_WORLD_TERRAIN ] );
+		drawLine( text );
+		std::swprintf( text, 128, L"Trees / instances: %.2f / %.2f ms", rImpl.aStatsWorldSectionMS[ DEBUG_WORLD_TREES ], rImpl.aStatsWorldSectionMS[ DEBUG_WORLD_INSTANCES ] );
+		drawLine( text );
+		std::swprintf( text, 128, L"Regrowth / flush: %.2f / %.2f ms", rImpl.aStatsWorldSectionMS[ DEBUG_WORLD_REGROWTH ], rImpl.aStatsWorldSectionMS[ DEBUG_WORLD_FLUSH ] );
 		drawLine( text );
 		std::swprintf( text, 128, L"XR image wait: %.2f ms", rImpl.fStatsImageWaitMS );
 		drawLine( text );
@@ -2635,6 +2669,8 @@ void AVRManager::ApplyEyeProjection( Toshi::TRenderContext* ) {}
 void AVRManager::EndEye() {}
 TBOOL AVRManager::BeginUILayer() { return TFALSE; }
 void                AVRManager::RenderDebugHUD() {}
+void AVRManager::BeginDebugWorldSection() {}
+void AVRManager::EndDebugWorldSection( DebugWorldSection ) {}
 void AVRManager::BeginDebugWorldTiming() {}
 void AVRManager::EndDebugWorldTiming() {}
 void AVRManager::BeginDebugPresentTiming() {}

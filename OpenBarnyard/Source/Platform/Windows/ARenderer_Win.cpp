@@ -610,6 +610,7 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 		auto  pViewport       = m_pViewport;
 		auto  pOldContext     = pRender->SetCurrentRenderContext( pViewport->GetRenderContext() );
 		auto& rTransformStack = pRender->GetTransforms();
+		AVRManager& oVR            = AVRManager::GetSingleton();
 
 		rTransformStack.Reset();
 		rTransformStack.PushNull().Identity();
@@ -642,28 +643,42 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 		TRenderContext* pContext    = pRender->GetCurrentContext();
 		TBOOL           bFogEnabled = pContext->IsFogEnabled();
 
+		oVR.BeginDebugWorldSection();
 		pRender->FlushShaders();
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_FLUSH );
 		pContext->EnableFog( TFALSE );
 		m_pSkyDome->Render1();
 		m_pSkyDome->Render2();
+		oVR.BeginDebugWorldSection();
 		pRender->FlushShaders();
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_FLUSH );
 		pContext->EnableFog( bFogEnabled );
 
 		// Model instances without the glow flag
+		oVR.BeginDebugWorldSection();
 		g_pModelRepos->RenderModels( AModelRepos::RENDERMASK_NORMAL );
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_MODELS );
 
 		// Terrain, gates, trees, instances and regrowth
 		if ( ATerrainInterface::GetSingleton() )
 		{
+			oVR.BeginDebugWorldSection();
 			ATerrainInterface::GetSingleton()->Render();
+			oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_TERRAIN );
 
 			if ( AGateManager::IsSingletonCreated() )
 				AGateManager::GetSingleton()->Render();
 
+			oVR.BeginDebugWorldSection();
 			ATreeManager::GetSingleton()->Render();
+			oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_TREES );
+			oVR.BeginDebugWorldSection();
 			AInstanceManager::GetSingleton()->Render();
+			oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_INSTANCES );
 
+			oVR.BeginDebugWorldSection();
 			ARegrowthManager::GetSingleton()->Render();
+			oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_REGROWTH );
 		}
 
 		// NOTE: retail keeps the weather manager at ARenderer+0x80, here it's a singleton created by AGameSystemManager
@@ -682,8 +697,12 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 			AHintManager::GetSingleton()->Render( a_fDeltaTime );
 
 		// Glowing model instances
+		oVR.BeginDebugWorldSection();
 		pRender->FlushShaders();
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_FLUSH );
+		oVR.BeginDebugWorldSection();
 		g_pModelRepos->RenderModels( AModelRepos::RENDERMASK_GLOW );
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_MODELS );
 
 		AGameStateController::GetSingleton()->PostRenderStates( a_fDeltaTime );
 
@@ -697,20 +716,26 @@ void ARenderer::RenderMainScene( TFLOAT a_fDeltaTime )
 		// Development: the world debug drawing, with the depth of the scene
 		if ( AWorldDebugDraw::IsSingletonCreated() )
 		{
+			oVR.BeginDebugWorldSection();
 			pRender->FlushShaders();
+			oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_FLUSH );
 			AWorldDebugDraw::GetSingleton()->Render();
 		}
 #endif
 
 #ifdef PRIMEDEBUG_DEV
+		oVR.BeginDebugWorldSection();
 		pRender->FlushShaders();
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_FLUSH );
 		APrimeDebug::Render3D();
 #endif
 
 		pViewport->GetRenderContext()->SetCameraObject( pOldCameraObject );
 		rTransformStack.Pop();
 
+		oVR.BeginDebugWorldSection();
 		pRender->FlushShaders();
+		oVR.EndDebugWorldSection( AVRManager::DEBUG_WORLD_FLUSH );
 		pViewport->End();
 
 		m_pHALViewport2->Begin();
