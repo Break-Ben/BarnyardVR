@@ -3,6 +3,8 @@
 
 #if !defined( TOSHI_SKU_WASM ) && defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
 
+#include "GUI/AFadeManager.h"
+
 #include <Input/TInputDeviceController.h>
 #include <Render/TBackend.h>
 #include <Render/TCameraObject.h>
@@ -360,6 +362,8 @@ struct AVRManager::Impl
 	XrGraphicsRequirementsD3D11KHR oD3D11Requirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR };
 	ID3D11Device* pD3D11Device = TNULL;
 	ID3D11DeviceContext* pD3D11Context = TNULL;
+	ID3D11Buffer* pFadeConstants = TNULL;
+	Toshi::TVector4 vFadeColour = { 0.0f, 0.0f, 0.0f, 0.0f };
 	ID3D11VertexShader* pMirrorVertexShader = TNULL;
 	ID3D11PixelShader* pMirrorPixelShader = TNULL;
 	ID3D11PixelShader* pColorResolvePixelShader = TNULL;
@@ -870,6 +874,11 @@ static void SyncControllerInput( AVRManager::Impl& a_rImpl )
 
 static void DestroyMirrorPipeline( AVRManager::Impl& a_rImpl )
 {
+	if ( a_rImpl.pFadeConstants )
+	{
+		a_rImpl.pFadeConstants->Release();
+		a_rImpl.pFadeConstants = TNULL;
+	}
 	if ( a_rImpl.pMirrorAlphaBlend )
 	{
 		a_rImpl.pMirrorAlphaBlend->Release();
@@ -1111,7 +1120,7 @@ using t_D3DCompile = HRESULT ( WINAPI* )( LPCVOID, SIZE_T, LPCSTR, const D3D_SHA
 static TBOOL CreateMirrorPipeline( AVRManager::Impl& a_rImpl )
 {
 	if ( a_rImpl.pMirrorVertexShader && a_rImpl.pMirrorPixelShader && a_rImpl.pColorResolvePixelShader &&
-	     a_rImpl.pColorResolveUIPixelShader && a_rImpl.pMirrorSampler && a_rImpl.pMirrorRasterizer && a_rImpl.pMirrorAlphaBlend )
+	     a_rImpl.pColorResolveUIPixelShader && a_rImpl.pFadeConstants && a_rImpl.pMirrorSampler && a_rImpl.pMirrorRasterizer && a_rImpl.pMirrorAlphaBlend )
 	{
 		a_rImpl.bColorCorrectionAvailable = TTRUE;
 		return TTRUE;
@@ -1143,6 +1152,7 @@ V VSMain(uint id : SV_VertexID)
 }
 Texture2D sourceTexture : register(t0);
 SamplerState sourceSampler : register(s0);
+cbuffer FadeConstants : register(b0) { float4 fadeColour; };
 
 float3 SrgbToLinear(float3 c)
 {
@@ -1154,15 +1164,39 @@ float3 SrgbToLinear(float3 c)
 	              c.b <= 0.04045 ? low.b : high.b);
 }
 
+// Fade in linear light, matching OpenXR's composition of the eye and UI layers.
+float3 ApplyFade(float3 colour)
+{
+	float alpha = saturate(fadeColour.a);
+	float3 fade = alpha > 0.000001 ? SrgbToLinear(fadeColour.rgb / alpha) * alpha : float3(0.0, 0.0, 0.0);
+	return colour * (1.0 - alpha) + fade;
+}
+
+float3 LinearToSrgb(float3 c)
+{
+	c = saturate(c);
+	float3 low = c * 12.92;
+	float3 high = 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+	return float3(c.r <= 0.0031308 ? low.r : high.r,
+	              c.g <= 0.0031308 ? low.g : high.g,
+	              c.b <= 0.0031308 ? low.b : high.b);
+}
+
 float4 PSCopy(V i) : SV_Target
 {
-	return sourceTexture.Sample(sourceSampler, i.uv);
+	float4 c = sourceTexture.Sample(sourceSampler, i.uv);
+	if (fadeColour.a <= 0.0) return c;
+	// The desktop mirror reads the display-encoded intermediates, not the
+	// resolved XR images. Apply the same fade without changing its encoding.
+	float alpha = saturate(c.a);
+	float3 straight = alpha > 0.000001 ? c.rgb / alpha : float3(0.0, 0.0, 0.0);
+	return float4(LinearToSrgb(ApplyFade(SrgbToLinear(straight))) * alpha, alpha);
 }
 
 float4 PSResolve(V i) : SV_Target
 {
 	float4 c = sourceTexture.Sample(sourceSampler, i.uv);
-	return float4(SrgbToLinear(c.rgb), c.a);
+	return float4(ApplyFade(SrgbToLinear(c.rgb)), c.a);
 }
 
 float4 PSResolvePremultiplied(V i) : SV_Target
@@ -1170,7 +1204,9 @@ float4 PSResolvePremultiplied(V i) : SV_Target
 	float4 c = sourceTexture.Sample(sourceSampler, i.uv);
 	float alpha = saturate(c.a);
 	float3 straight = alpha > 0.000001 ? c.rgb / alpha : float3(0.0, 0.0, 0.0);
-	return float4(SrgbToLinear(straight) * alpha, alpha);
+	// Retain UI coverage: fading its alpha as well would apply the fade twice
+	// to the world behind translucent UI. Both layers use the same colour fade.
+	return float4(ApplyFade(SrgbToLinear(straight)) * alpha, alpha);
 }
 
 )";
@@ -1200,6 +1236,16 @@ float4 PSResolvePremultiplied(V i) : SV_Target
 	if ( SUCCEEDED( hRes ) ) hRes = fnCreatePixelShader( "PSResolvePremultiplied", &a_rImpl.pColorResolveUIPixelShader );
 	FreeLibrary( hCompiler );
 	if ( FAILED( hRes ) )
+	{
+		DestroyMirrorPipeline( a_rImpl );
+		return TFALSE;
+	}
+
+	D3D11_BUFFER_DESC oFadeBuffer = {};
+	oFadeBuffer.ByteWidth = sizeof( Toshi::TVector4 );
+	oFadeBuffer.Usage = D3D11_USAGE_DEFAULT;
+	oFadeBuffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	if ( FAILED( a_rImpl.pD3D11Device->CreateBuffer( &oFadeBuffer, TNULL, &a_rImpl.pFadeConstants ) ) )
 	{
 		DestroyMirrorPipeline( a_rImpl );
 		return TFALSE;
@@ -1766,6 +1812,8 @@ TBOOL AVRManager::BeginFrame()
 			return TTRUE;
 	}
 	rImpl.bViewsValid = TTRUE;
+	// Snapshot once: both eyes and the UI must use exactly the same fade.
+	rImpl.vFadeColour = ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() ) ? AFadeManager::GetSingleton()->GetCompositeColour() : Toshi::TVector4( 0.0f, 0.0f, 0.0f, 0.0f );
 
 	if ( !rImpl.bHasNeutralPose || rImpl.bRecenterPending )
 	{
@@ -1802,7 +1850,7 @@ TUINT32 AVRManager::GetCurrentEye() const
 
 static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetView* a_pRenderTarget, const D3D11_VIEWPORT& a_rcViewport, ID3D11ShaderResourceView* a_pSource, ID3D11PixelShader* a_pPixelShader, TBOOL a_bAlphaBlend )
 {
-	if ( !a_rImpl.pMirrorVertexShader || !a_pPixelShader || !a_pSource || !a_pRenderTarget || a_rcViewport.Width <= 0.0f || a_rcViewport.Height <= 0.0f )
+	if ( !a_rImpl.pFadeConstants || !a_rImpl.pMirrorVertexShader || !a_pPixelShader || !a_pSource || !a_pRenderTarget || a_rcViewport.Width <= 0.0f || a_rcViewport.Height <= 0.0f )
 		return TFALSE;
 
 	ID3D11ShaderResourceView* pNullSRV = TNULL;
@@ -1817,7 +1865,11 @@ static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetV
 	a_rImpl.pD3D11Context->PSSetShader( a_pPixelShader, TNULL, 0 );
 	a_rImpl.pD3D11Context->PSSetShaderResources( 0, 1, &a_pSource );
 	a_rImpl.pD3D11Context->PSSetSamplers( 0, 1, &a_rImpl.pMirrorSampler );
+	a_rImpl.pD3D11Context->UpdateSubresource( a_rImpl.pFadeConstants, 0, TNULL, &a_rImpl.vFadeColour, 0, 0 );
+	a_rImpl.pD3D11Context->PSSetConstantBuffers( 0, 1, &a_rImpl.pFadeConstants );
 	a_rImpl.pD3D11Context->Draw( 3, 0 );
+	ID3D11Buffer* pNullBuffer = TNULL;
+	a_rImpl.pD3D11Context->PSSetConstantBuffers( 0, 1, &pNullBuffer );
 	a_rImpl.pD3D11Context->PSSetShaderResources( 0, 1, &pNullSRV );
 
 	// The raw D3D draw changed blend/rasterizer state as well as shader bindings.
@@ -2062,6 +2114,10 @@ TBOOL AVRManager::BeginUILayer()
 	    TTRUE
 	);
 
+	// Only suppress the panel overlays when the full-view resolve is available.
+	// Restore them at EndUILayer so non-VR rendering keeps its native behaviour.
+	if ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() )
+		AFadeManager::GetSingleton()->SetOverlaysVisible( TFALSE );
 	rImpl.bUILayerActive = TTRUE;
 	const TFLOAT fClearAlpha = rImpl.bWorldRendered ? 0.0f : 1.0f;
 	Toshi::TRenderD3DInterface::Interface()->ClearCurrentTargetRGBA( 0.0f, 0.0f, 0.0f, fClearAlpha, TTRUE, 1.0f );
@@ -2075,6 +2131,8 @@ void AVRManager::EndUILayer()
 		return;
 
 	Toshi::TRenderD3DInterface::Interface()->EndExternalTarget();
+	if ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() )
+		AFadeManager::GetSingleton()->SetOverlaysVisible( TTRUE );
 
 	TBOOL bUILayerReady = !rImpl.bDeviceLost;
 	if ( bUILayerReady && rImpl.bColorCorrectionAvailable )

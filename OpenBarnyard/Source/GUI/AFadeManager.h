@@ -2,6 +2,7 @@
 #include "AFade.h"
 
 #include <Toshi/TTask.h>
+#include <Math/TVector4.h>
 
 class AFadeManager : public Toshi::TTask
     , public Toshi::TSingleton<AFadeManager>
@@ -19,6 +20,10 @@ public:
 
 	AFade* StartFade( const AFade::Color& a_rFadeFrom, const AFade::Color& a_rFadeTo, TFLOAT a_fFadeTime );
 	TBOOL  HasAnyFadesInProgress( TBOOL a_bThrowFadeOver );
+
+	// Premultiplied overlay colour, using the current GUI colours (no timer updates).
+	Toshi::TVector4 GetCompositeColour();
+	void SetOverlaysVisible( TBOOL a_bVisible );
 
 private:
 	Toshi::T2ObjectPool<AFade, 8> m_Fades;
