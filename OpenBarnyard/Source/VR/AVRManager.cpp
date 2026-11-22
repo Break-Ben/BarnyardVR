@@ -4,6 +4,7 @@
 #if !defined( TOSHI_SKU_WASM ) && defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
 
 #include "GUI/AFadeManager.h"
+#include "GameInterface/AGameStateController.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Render/TBackend.h>
@@ -290,6 +291,8 @@ struct AVRManager::Impl
 	TBOOL bWorldRendered = TFALSE;
 	TBOOL bUILayerReady = TFALSE;
 	TBOOL bUILayerActive = TFALSE;
+	TBOOL bStateOverlaySuppressed = TFALSE;
+	TUINT32 uiStateOverlayColour = 0;
 	TBOOL bEyeActive = TFALSE;
 	TBOOL bHasNeutralPose = TFALSE;
 	TBOOL bRecenterPending = TFALSE;
@@ -1748,6 +1751,21 @@ TBOOL AVRManager::ShouldExit() const
 	return m_pImpl->bExitRequested;
 }
 
+// State transitions, scripted fades and fade activities share OVERLAY_3.
+// OVERLAY_2 is ordinary menu dimming and must remain on the UI panel.
+static Toshi::T2GUIRectangle* GetStateFadeOverlay()
+{
+	if ( !AGameStateController::IsSingletonCreated() )
+		return TNULL;
+
+	auto* pStates = AGameStateController::GetSingleton();
+	if ( pStates->GetNumStates() <= 1 || pStates->GetCurrentState()->GetOverlay() != AGameState::OVERLAY_3 )
+		return TNULL;
+
+	auto& rOverlay = pStates->GetOverlayElement();
+	return rOverlay.IsLinked() && rOverlay.IsVisible() ? &rOverlay : TNULL;
+}
+
 TBOOL AVRManager::BeginFrame()
 {
 	Impl& rImpl = *m_pImpl;
@@ -1814,6 +1832,19 @@ TBOOL AVRManager::BeginFrame()
 	rImpl.bViewsValid = TTRUE;
 	// Snapshot once: both eyes and the UI must use exactly the same fade.
 	rImpl.vFadeColour = ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() ) ? AFadeManager::GetSingleton()->GetCompositeColour() : Toshi::TVector4( 0.0f, 0.0f, 0.0f, 0.0f );
+	if ( rImpl.bColorCorrectionAvailable )
+	{
+		if ( auto* pOverlay = GetStateFadeOverlay() )
+		{
+			const AFade::Color colour( pOverlay->GetColour() );
+			const TFLOAT fAlpha = colour.A / 255.0f;
+			const TFLOAT fBehind = 1.0f - rImpl.vFadeColour.w;
+			rImpl.vFadeColour.x += ( colour.R / 255.0f ) * fAlpha * fBehind;
+			rImpl.vFadeColour.y += ( colour.G / 255.0f ) * fAlpha * fBehind;
+			rImpl.vFadeColour.z += ( colour.B / 255.0f ) * fAlpha * fBehind;
+			rImpl.vFadeColour.w += fAlpha * fBehind;
+		}
+	}
 
 	if ( !rImpl.bHasNeutralPose || rImpl.bRecenterPending )
 	{
@@ -2118,6 +2149,18 @@ TBOOL AVRManager::BeginUILayer()
 	// Restore them at EndUILayer so non-VR rendering keeps its native behaviour.
 	if ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() )
 		AFadeManager::GetSingleton()->SetOverlaysVisible( TFALSE );
+	rImpl.bStateOverlaySuppressed = TFALSE;
+	if ( rImpl.bColorCorrectionAvailable )
+	{
+		if ( auto* pOverlay = GetStateFadeOverlay() )
+		{
+			rImpl.uiStateOverlayColour = pOverlay->GetColour();
+			// Make only the rectangle transparent; hiding it would also hide
+			// loading text and other GUI elements attached as its children.
+			pOverlay->SetColour( 0 );
+			rImpl.bStateOverlaySuppressed = TTRUE;
+		}
+	}
 	rImpl.bUILayerActive = TTRUE;
 	const TFLOAT fClearAlpha = rImpl.bWorldRendered ? 0.0f : 1.0f;
 	Toshi::TRenderD3DInterface::Interface()->ClearCurrentTargetRGBA( 0.0f, 0.0f, 0.0f, fClearAlpha, TTRUE, 1.0f );
@@ -2133,6 +2176,10 @@ void AVRManager::EndUILayer()
 	Toshi::TRenderD3DInterface::Interface()->EndExternalTarget();
 	if ( rImpl.bColorCorrectionAvailable && AFadeManager::IsSingletonCreated() )
 		AFadeManager::GetSingleton()->SetOverlaysVisible( TTRUE );
+
+	if ( rImpl.bStateOverlaySuppressed && AGameStateController::IsSingletonCreated() )
+		AGameStateController::GetSingleton()->GetOverlayElement().SetColour( rImpl.uiStateOverlayColour );
+	rImpl.bStateOverlaySuppressed = TFALSE;
 
 	TBOOL bUILayerReady = !rImpl.bDeviceLost;
 	if ( bUILayerReady && rImpl.bColorCorrectionAvailable )
