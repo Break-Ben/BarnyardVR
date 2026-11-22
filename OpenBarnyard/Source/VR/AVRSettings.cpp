@@ -130,11 +130,8 @@ void AVRSettings::Load()
 			SetDebugHUDEnabled( number != 0 );
 		else if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
 			SetSnapTurnDegrees( TINT( number ) );
-		else if ( key == "ResolutionPercent" && number >= RESOLUTION_MIN && number <= RESOLUTION_MAX && number % 5 == 0 )
-		{
-			// Migrate previous 5% settings to the nearest 10% step (ties up).
-			SetResolutionPercent( ( TINT( number ) + RESOLUTION_STEP / 2 ) / RESOLUTION_STEP * RESOLUTION_STEP );
-		}
+		else if ( key == "ResolutionPercent" && number >= RESOLUTION_MIN && number <= RESOLUTION_MAX )
+			SetResolutionPercent( TINT( number ) );
 		else if ( key == "MSAASamples" && number >= 1 && number <= 8 )
 			SetMSAASamples( TINT( number ) );
 	}

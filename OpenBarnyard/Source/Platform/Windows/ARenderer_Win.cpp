@@ -36,6 +36,7 @@
 
 #include "Render/ABackend.h"
 
+#include <chrono>
 #include <resource.h>
 
 // NOTE: the physics headers pull in Opcode's PI macro, keep them last
@@ -842,7 +843,11 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 					if ( oVRManager.BeginEye( uiEye, oCenterCamera, m_pCameraObject, m_pViewport, m_pHALViewport1, m_pHALViewport2, bWorldRendered ) )
 					{
 						if ( bWorldRendered )
+						{
+							const auto worldStart = std::chrono::steady_clock::now();
 							RenderMainScene( uiEye == 0 ? a_fDeltaTime : 0.0f );
+							oVRManager.AddDebugWorldTime( std::chrono::duration<double>( std::chrono::steady_clock::now() - worldStart ).count() );
+						}
 						oVRManager.EndEye();
 					}
 				}
@@ -902,9 +907,13 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 #endif
 		}
 
+		const auto presentStart = std::chrono::steady_clock::now();
 		pRender->EndScene();
 		if ( bXRFrameBegun )
+		{
+			oVRManager.AddDebugPresentTime( std::chrono::duration<double>( std::chrono::steady_clock::now() - presentStart ).count() );
 			oVRManager.EndFrame();
+		}
 
 		UpdateScreenCapture( pRender );
 		return TTRUE;
@@ -953,9 +962,13 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 #endif
 		}
 
+		const auto presentStart = std::chrono::steady_clock::now();
 		pRender->EndScene();
 		if ( bXRFrameBegun )
+		{
+			oVRManager.AddDebugPresentTime( std::chrono::duration<double>( std::chrono::steady_clock::now() - presentStart ).count() );
 			oVRManager.EndFrame();
+		}
 		return TTRUE;
 	}
 }

@@ -91,6 +91,9 @@ public:
 	TBOOL BeginUILayer();
 	// Draw within the GUI viewport, after normal UI; also available in release builds.
 	void  RenderDebugHUD();
+	// Wall time of both world render calls and the desktop EndScene call.
+	void  AddDebugWorldTime( double a_fSeconds );
+	void  AddDebugPresentTime( double a_fSeconds );
 	void  EndUILayer();
 	void  EndFrame();
 

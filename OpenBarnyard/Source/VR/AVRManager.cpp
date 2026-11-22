@@ -322,6 +322,10 @@ struct AVRManager::Impl
 	double fStatsWaitSeconds = 0.0;
 	TFLOAT fStatsWaitMS = 0.0f;
 	TFLOAT fStatsOutsideWaitMS = 0.0f;
+	// Current and accumulated wall-clock intervals within the outside-wait time.
+	double fFrameWorldSeconds = 0.0, fFrameImageWaitSeconds = 0.0, fFramePresentSeconds = 0.0, fFrameEndSeconds = 0.0;
+	double fStatsWorldSeconds = 0.0, fStatsImageWaitSeconds = 0.0, fStatsPresentSeconds = 0.0, fStatsEndSeconds = 0.0;
+	TFLOAT fStatsWorldMS = 0.0f, fStatsImageWaitMS = 0.0f, fStatsPresentMS = 0.0f, fStatsEndMS = 0.0f;
 	TFLOAT fQuadHeightMeters = 1.0f;
 
 	XrInstance hInstance = XR_NULL_HANDLE;
@@ -1011,7 +1015,7 @@ static void ReleaseTargetImage( AVRManager::Impl& a_rImpl, AVRManager::Impl::Tar
 	a_rTarget.bAcquired = TFALSE;
 }
 
-static TBOOL AcquireTargetImage( AVRManager::Impl::Target& a_rTarget )
+static TBOOL AcquireTargetImage( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget )
 {
 	if ( a_rTarget.hSwapchain == XR_NULL_HANDLE )
 		return TFALSE;
@@ -1023,7 +1027,10 @@ static TBOOL AcquireTargetImage( AVRManager::Impl::Target& a_rTarget )
 	a_rTarget.bAcquired = TTRUE;
 	XrSwapchainImageWaitInfo oWaitInfo = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
 	oWaitInfo.timeout = XR_INFINITE_DURATION;
-	if ( XR_FAILED( xrWaitSwapchainImage( a_rTarget.hSwapchain, &oWaitInfo ) ) )
+	const auto waitStart = std::chrono::steady_clock::now();
+	const XrResult waitResult = xrWaitSwapchainImage( a_rTarget.hSwapchain, &oWaitInfo );
+	a_rImpl.fFrameImageWaitSeconds += std::chrono::duration<double>( std::chrono::steady_clock::now() - waitStart ).count();
+	if ( XR_FAILED( waitResult ) )
 	{
 		XrSwapchainImageReleaseInfo oReleaseInfo = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
 		xrReleaseSwapchainImage( a_rTarget.hSwapchain, &oReleaseInfo );
@@ -1901,14 +1908,23 @@ TBOOL AVRManager::BeginFrame()
 		{
 			rImpl.fStatsSeconds += seconds;
 			rImpl.fStatsWaitSeconds += waitSeconds;
+			rImpl.fStatsWorldSeconds += rImpl.fFrameWorldSeconds;
+			rImpl.fStatsImageWaitSeconds += rImpl.fFrameImageWaitSeconds;
+			rImpl.fStatsPresentSeconds += rImpl.fFramePresentSeconds;
+			rImpl.fStatsEndSeconds += rImpl.fFrameEndSeconds;
 			++rImpl.uiStatsFrames;
 			if ( rImpl.fStatsSeconds >= 0.5 )
 			{
 				rImpl.fStatsFPS = TFLOAT( rImpl.uiStatsFrames / rImpl.fStatsSeconds );
 				rImpl.fStatsWaitMS = TFLOAT( 1000.0 * rImpl.fStatsWaitSeconds / rImpl.uiStatsFrames );
 				rImpl.fStatsOutsideWaitMS = TFLOAT( 1000.0 * std::max( 0.0, rImpl.fStatsSeconds - rImpl.fStatsWaitSeconds ) / rImpl.uiStatsFrames );
+				rImpl.fStatsWorldMS = TFLOAT( 1000.0 * rImpl.fStatsWorldSeconds / rImpl.uiStatsFrames );
+				rImpl.fStatsImageWaitMS = TFLOAT( 1000.0 * rImpl.fStatsImageWaitSeconds / rImpl.uiStatsFrames );
+				rImpl.fStatsPresentMS = TFLOAT( 1000.0 * rImpl.fStatsPresentSeconds / rImpl.uiStatsFrames );
+				rImpl.fStatsEndMS = TFLOAT( 1000.0 * rImpl.fStatsEndSeconds / rImpl.uiStatsFrames );
 				rImpl.fStatsSeconds = 0.0;
 				rImpl.fStatsWaitSeconds = 0.0;
+				rImpl.fStatsWorldSeconds = rImpl.fStatsImageWaitSeconds = rImpl.fStatsPresentSeconds = rImpl.fStatsEndSeconds = 0.0;
 				rImpl.uiStatsFrames = 0;
 			}
 		}
@@ -1916,6 +1932,7 @@ TBOOL AVRManager::BeginFrame()
 		{
 			rImpl.fStatsSeconds = 0.0;
 			rImpl.fStatsWaitSeconds = 0.0;
+			rImpl.fStatsWorldSeconds = rImpl.fStatsImageWaitSeconds = rImpl.fStatsPresentSeconds = rImpl.fStatsEndSeconds = 0.0;
 			rImpl.uiStatsFrames = 0;
 			rImpl.fStatsFPS = 0.0f;
 			rImpl.fStatsWaitMS = 0.0f;
@@ -1923,6 +1940,7 @@ TBOOL AVRManager::BeginFrame()
 		}
 	}
 	rImpl.lastStatsFrame = statsNow;
+	rImpl.fFrameWorldSeconds = rImpl.fFrameImageWaitSeconds = rImpl.fFramePresentSeconds = rImpl.fFrameEndSeconds = 0.0;
 
 	XrFrameBeginInfo oBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
 	if ( XR_FAILED( xrBeginFrame( rImpl.hSession, &oBeginInfo ) ) )
@@ -2143,7 +2161,7 @@ TBOOL AVRManager::BeginEye( TUINT32 a_uiEye, const Toshi::TMatrix44& a_rcCenterC
 		return TFALSE;
 
 	Impl::Target& rTarget = rImpl.aEyes[ a_uiEye ];
-	if ( !AcquireTargetImage( rTarget ) )
+	if ( !AcquireTargetImage( rImpl, rTarget ) )
 		return TFALSE;
 
 	rImpl.pActiveCamera = a_pCamera;
@@ -2278,7 +2296,7 @@ void AVRManager::EndEye()
 TBOOL AVRManager::BeginUILayer()
 {
 	Impl& rImpl = *m_pImpl;
-	if ( !rImpl.bFrameBegun || !rImpl.bShouldRender || !rImpl.bViewsValid || rImpl.bUILayerActive || !AcquireTargetImage( rImpl.oUI ) )
+	if ( !rImpl.bFrameBegun || !rImpl.bShouldRender || !rImpl.bViewsValid || rImpl.bUILayerActive || !AcquireTargetImage( rImpl, rImpl.oUI ) )
 		return TFALSE;
 
 	ID3D11Texture2D* pRenderTexture = rImpl.bColorCorrectionAvailable ? rImpl.oUI.pColorRenderTexture : rImpl.oUI.aD3D11Images[ rImpl.oUI.uiImageIndex ].texture;
@@ -2314,6 +2332,16 @@ TBOOL AVRManager::BeginUILayer()
 	return TTRUE;
 }
 
+void AVRManager::AddDebugWorldTime( double a_fSeconds )
+{
+	m_pImpl->fFrameWorldSeconds += a_fSeconds;
+}
+
+void AVRManager::AddDebugPresentTime( double a_fSeconds )
+{
+	m_pImpl->fFramePresentSeconds += a_fSeconds;
+}
+
 void AVRManager::RenderDebugHUD()
 {
 	const Impl& rImpl = *m_pImpl;
@@ -2338,15 +2366,21 @@ void AVRManager::RenderDebugHUD()
 	};
 	TWCHAR text[ 128 ];
 	if ( rImpl.fStatsFPS > 0.0f )
-		std::swprintf( text, 128, L"FPS: %.1f", rImpl.fStatsFPS );
+		std::swprintf( text, 128, L"XR loop FPS: %.1f", rImpl.fStatsFPS );
 	else
-		std::swprintf( text, 128, L"FPS: --" );
+		std::swprintf( text, 128, L"XR loop FPS: --" );
 	drawLine( text );
 	if ( rImpl.fStatsFPS > 0.0f )
 	{
 		std::swprintf( text, 128, L"Outside XR wait: %.2f ms", rImpl.fStatsOutsideWaitMS );
 		drawLine( text );
 		std::swprintf( text, 128, L"XR wait: %.2f ms", rImpl.fStatsWaitMS );
+		drawLine( text );
+		std::swprintf( text, 128, L"World calls: %.2f ms", rImpl.fStatsWorldMS );
+		drawLine( text );
+		std::swprintf( text, 128, L"XR image wait: %.2f ms", rImpl.fStatsImageWaitMS );
+		drawLine( text );
+		std::swprintf( text, 128, L"Present / XR end: %.2f / %.2f ms", rImpl.fStatsPresentMS, rImpl.fStatsEndMS );
 		drawLine( text );
 	}
 	const double periodMS = double( rImpl.oFrameState.predictedDisplayPeriod ) / 1000000.0;
@@ -2458,7 +2492,9 @@ void AVRManager::EndFrame()
 	oEndInfo.environmentBlendMode = rImpl.eBlendMode;
 	oEndInfo.layerCount = uiLayerCount;
 	oEndInfo.layers = uiLayerCount ? aLayers : TNULL;
+	const auto endStart = std::chrono::steady_clock::now();
 	const XrResult eEndResult = xrEndFrame( rImpl.hSession, &oEndInfo );
+	rImpl.fFrameEndSeconds += std::chrono::duration<double>( std::chrono::steady_clock::now() - endStart ).count();
 	rImpl.bFrameBegun = TFALSE;
 	if ( XR_FAILED( eEndResult ) && !rImpl.bDeviceLost )
 		MarkRuntimeLost( rImpl );
@@ -2588,6 +2624,8 @@ void AVRManager::ApplyEyeProjection( Toshi::TRenderContext* ) {}
 void AVRManager::EndEye() {}
 TBOOL AVRManager::BeginUILayer() { return TFALSE; }
 void                AVRManager::RenderDebugHUD() {}
+void AVRManager::AddDebugWorldTime( double ) {}
+void AVRManager::AddDebugPresentTime( double ) {}
 void AVRManager::EndUILayer() {}
 void AVRManager::EndFrame() {}
 void AVRManager::OnDeviceLost() {}
