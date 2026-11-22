@@ -396,6 +396,12 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 			m_bControllerXInput = pInputSource->GetClass()->IsA( &TGetClass( TInputXInputDeviceController ) );
 #endif
 		}
+		// Every connected pad emits idle axes each frame. Do not let an idle
+		// OpenXR pad overwrite the Xbox look vector (or vice versa). Meaningful
+		// motion above already selects the source; its own zero still stops it.
+		if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
+		     a_pEvent->GetAxisCount() >= 2 && pInputSource != m_pMainController )
+			return TFALSE;
 	}
 	else if ( a_pEvent->GetEventType() != TInputInterface::EVENT_TYPE_VIRTUAL &&
 	          ( pInputSource == m_pMouseDevice || pInputSource == m_pKeyboardDevice ) )

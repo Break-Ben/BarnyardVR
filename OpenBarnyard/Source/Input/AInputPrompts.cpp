@@ -69,9 +69,8 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	{
 		const TINT column = TINT( prompt.icon );
 		const TINT row    = TINT( prompt.family );
-		// Native button glyphs can extend above/below the text's line height.
-		// Match their actual ink size and baseline, not just the text advance.
-		const auto* reference = font->GetNativeCharData( L'\x0F0B' );
+		// Match capital-letter ink, not the oversized native GameCube A icon.
+		const auto* reference = font->GetNativeCharData( L'B' );
 		glyph.width = glyph.height = reference ? reference->ui8CharHeight : font->GetFontDef()->uiLineHeight;
 		glyph.yOffset              = reference ? reference->iYOffset : 0.0f;
 		glyph.material             = s_material;

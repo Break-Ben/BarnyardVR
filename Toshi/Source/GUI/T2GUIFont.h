@@ -155,6 +155,8 @@ private:
 		InlineGlyph glyph;
 		if ( ms_fnInlineGlyph && ms_fnInlineGlyph( this, a_wcChar, glyph ) )
 		{
+			if ( glyph.text && glyph.text[ 0 ] && !glyph.text[ 1 ] )
+				return GetNativeCharData( glyph.text[ 0 ] );
 			// Match the native font advance, including its letter spacing. Each
 			// lookup's result is consumed immediately (the renderer copies it).
 			static thread_local T2GUIFontDefCharacterData data;

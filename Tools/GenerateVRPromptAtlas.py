@@ -42,9 +42,8 @@ def cell(family, icon):
         original = Image.open(SOURCE / filename).convert("RGBA")
         # Keep the source silhouette, without nesting it in two extra keycaps.
         original = original.crop(original.getbbox())
-        original.thumbnail((60, 52), Image.Resampling.LANCZOS)
-        image.alpha_composite(original, ((CELL-original.width)//2, (52-original.height)//2))
-        label(d, (32, 57), hand if hand else "MENU", SMALL)
+        original.thumbnail((60, 60), Image.Resampling.LANCZOS)
+        image.alpha_composite(original, ((CELL-original.width)//2, (CELL-original.height)//2))
     else:
         d.rounded_rectangle((3, 3, 60, 60), radius=12, fill=(26, 30, 36, 255), outline="white", width=2)
         words = {"Trigger": "TRIG", "Grip": "GRIP", "Stick": "STICK", "StickClick": "CLICK",
