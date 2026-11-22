@@ -1889,6 +1889,10 @@ void TRenderD3DInterface::BeginExternalTarget( ID3D11Texture2D* a_pTexture, ID3D
 	m_uiExternalHeight            = a_uiHeight;
 	m_bExternalTargetActive       = TTRUE;
 	m_bExternalPremultipliedAlpha = a_bPremultipliedAlpha;
+	m_bExternalSavedMultisample     = m_CurrentRasterizer.Flags.Parts.bMultisampleEnable;
+	D3D11_TEXTURE2D_DESC targetDesc = {};
+	a_pTexture->GetDesc( &targetDesc );
+	m_CurrentRasterizer.Flags.Parts.bMultisampleEnable = targetDesc.SampleDesc.Count > 1;
 
 	SetRenderTargets( m_pExternalRTView, m_oExternalDepth.pView );
 	m_pDeviceContext->OMSetRenderTargets( 1, &m_pExternalRTView, m_oExternalDepth.pView );
@@ -1911,6 +1915,7 @@ void TRenderD3DInterface::EndExternalTarget()
 		return;
 
 	FlushShaders();
+	m_CurrentRasterizer.Flags.Parts.bMultisampleEnable = m_bExternalSavedMultisample;
 
 	m_pExternalTexture            = TNULL;
 	m_pExternalRTView             = TNULL;

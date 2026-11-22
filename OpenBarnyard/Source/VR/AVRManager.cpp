@@ -4,6 +4,9 @@
 #if !defined( TOSHI_SKU_WASM ) && defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
 
 #include "GUI/AFadeManager.h"
+#include "GUI/AGUI2.h"
+#include "GUI/T2GUIFontManager.h"
+#include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
 
 #include <Input/TInputDeviceController.h>
@@ -21,6 +24,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -62,14 +66,14 @@ static bool IsCommandLineOption( const char* a_szCommandLine, const char* a_szOp
 static TFLOAT ParseVRScale( const char* a_szCommandLine )
 {
 	if ( !a_szCommandLine )
-		return 1.0f;
+		return AVRSettings::GetSingleton().GetResolutionPercent() / 100.0f;
 
 	const char* pOption = std::strstr( a_szCommandLine, "-vrscale" );
 	if ( !pOption )
-		return 1.0f;
+		return AVRSettings::GetSingleton().GetResolutionPercent() / 100.0f;
 	pOption += std::strlen( "-vrscale" );
 	if ( *pOption && *pOption != ' ' && *pOption != '\t' )
-		return 1.0f;
+		return AVRSettings::GetSingleton().GetResolutionPercent() / 100.0f;
 
 	while ( *pOption == ' ' || *pOption == '\t' )
 		++pOption;
@@ -77,7 +81,7 @@ static TFLOAT ParseVRScale( const char* a_szCommandLine )
 	char*  pEnd   = TNULL;
 	TFLOAT fScale = std::strtof( pOption, &pEnd );
 	if ( pEnd == pOption || !std::isfinite( fScale ) || fScale <= 0.0f )
-		return 1.0f;
+		return AVRSettings::GetSingleton().GetResolutionPercent() / 100.0f;
 
 	return std::max( 0.25f, std::min( fScale, 2.0f ) );
 }
@@ -271,6 +275,11 @@ struct AVRManager::Impl
 		ID3D11RenderTargetView* pColorRenderTargetView = TNULL;
 		ID3D11ShaderResourceView* pColorShaderResourceView = TNULL;
 		Toshi::TRenderD3DInterface::DEPTHTARGET oRendererDepth = {};
+		// Per-eye MSAA is resolved into the ordinary single-sample colour
+		// target before colour correction, fades, the mirror and XR submission.
+		ID3D11Texture2D*                        pMSAATexture          = TNULL;
+		ID3D11RenderTargetView*                 pMSAARenderTargetView = TNULL;
+		Toshi::TRenderD3DInterface::DEPTHTARGET oMSAADepth            = {};
 	};
 
 	struct ViewportSnapshot
@@ -304,6 +313,12 @@ struct AVRManager::Impl
 	TUINT32 uiCompletedEyeMask = 0;
 	TUINT32 uiActiveEye = std::numeric_limits<TUINT32>::max();
 	TFLOAT fVRScale = 1.0f;
+	TUINT32 uiRequestedSamples = 2;
+	TUINT32 uiEyeSamples = 1;
+	std::chrono::steady_clock::time_point lastStatsFrame{};
+	double                                fStatsSeconds     = 0.0;
+	TUINT32                               uiStatsFrames     = 0;
+	TFLOAT                                fStatsFPS         = 0.0f;
 	TFLOAT fQuadHeightMeters = 1.0f;
 
 	XrInstance hInstance = XR_NULL_HANDLE;
@@ -937,6 +952,22 @@ static void DestroyTargetColorIntermediate( AVRManager::Impl::Target& a_rTarget 
 	}
 }
 
+static void DestroyTargetMSAA( AVRManager::Impl::Target& a_rTarget )
+{
+	if ( a_rTarget.pMSAARenderTargetView )
+	{
+		a_rTarget.pMSAARenderTargetView->Release();
+		a_rTarget.pMSAARenderTargetView = TNULL;
+	}
+	if ( a_rTarget.pMSAATexture )
+	{
+		a_rTarget.pMSAATexture->Release();
+		a_rTarget.pMSAATexture = TNULL;
+	}
+	if ( a_rTarget.oMSAADepth.pView || a_rTarget.oMSAADepth.pReadOnlyView || a_rTarget.oMSAADepth.pSRV )
+		Toshi::TRenderD3DInterface::Interface()->DestroyCustomDepthTarget( a_rTarget.oMSAADepth );
+}
+
 static void DestroyTargetDX11( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget )
 {
 	for ( ID3D11ShaderResourceView* pSRV : a_rTarget.aShaderResourceViews )
@@ -947,6 +978,7 @@ static void DestroyTargetDX11( AVRManager::Impl& a_rImpl, AVRManager::Impl::Targ
 	a_rTarget.aRenderTargetViews.clear();
 	a_rTarget.aD3D11Images.clear();
 	DestroyTargetColorIntermediate( a_rTarget );
+	DestroyTargetMSAA( a_rTarget );
 
 	if ( a_rImpl.pRenderer && ( a_rTarget.oRendererDepth.pView || a_rTarget.oRendererDepth.pReadOnlyView || a_rTarget.oRendererDepth.pSRV ) )
 	{
@@ -1089,7 +1121,7 @@ static TBOOL CreateDX11TargetImages( AVRManager::Impl& a_rImpl, AVRManager::Impl
 }
 
 
-static TBOOL CreateTarget( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget, TUINT32 a_uiWidth, TUINT32 a_uiHeight )
+static TBOOL CreateTarget( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget, TUINT32 a_uiWidth, TUINT32 a_uiHeight, TBOOL a_bAllowColorFallback = TTRUE )
 {
 	a_rTarget.uiWidth  = a_uiWidth;
 	a_rTarget.uiHeight = a_uiHeight;
@@ -1112,11 +1144,76 @@ static TBOOL CreateTarget( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& 
 
 	if ( a_rImpl.bColorCorrectionAvailable && !CreateTargetColorIntermediate( a_rImpl, a_rTarget ) )
 	{
+		DestroyTargetColorIntermediate( a_rTarget );
+		if ( !a_bAllowColorFallback )
+			return TFALSE;
 		TWARN( "OpenXR: linear color intermediate allocation failed; using the legacy direct render path.\n" );
 		a_rImpl.bColorCorrectionAvailable = TFALSE;
-		DestroyTargetColorIntermediate( a_rTarget );
 	}
 	return TTRUE;
+}
+
+static TBOOL CreateTargetMSAA( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget, DXGI_FORMAT a_eFormat, TUINT32 a_uiSamples )
+{
+	D3D11_TEXTURE2D_DESC desc = {};
+	desc.Width                = a_rTarget.uiWidth;
+	desc.Height               = a_rTarget.uiHeight;
+	desc.MipLevels            = 1;
+	desc.ArraySize            = 1;
+	desc.Format               = a_eFormat;
+	desc.SampleDesc.Count     = a_uiSamples;
+	desc.Usage                = D3D11_USAGE_DEFAULT;
+	desc.BindFlags            = D3D11_BIND_RENDER_TARGET;
+	if ( FAILED( a_rImpl.pD3D11Device->CreateTexture2D( &desc, TNULL, &a_rTarget.pMSAATexture ) ) ||
+	     FAILED( a_rImpl.pD3D11Device->CreateRenderTargetView( a_rTarget.pMSAATexture, TNULL, &a_rTarget.pMSAARenderTargetView ) ) ||
+	     !Toshi::TRenderD3DInterface::Interface()->CreateCustomDepthTarget( desc.Width, desc.Height, DXGI_FORMAT_D24_UNORM_S8_UINT, a_uiSamples, a_rTarget.oMSAADepth ) )
+	{
+		DestroyTargetMSAA( a_rTarget );
+		return TFALSE;
+	}
+	return TTRUE;
+}
+
+static void CreateEyeMSAATargets( AVRManager::Impl& a_rImpl )
+{
+	// Keep XR swapchains single-sampled. Use the same supported sample count
+	// for both eyes, and fall back together on unsupported hardware or allocation failure.
+	a_rImpl.uiEyeSamples = 1;
+	if ( a_rImpl.uiRequestedSamples <= 1 ) return;
+	const DXGI_FORMAT format  = a_rImpl.bColorCorrectionAvailable ? DXGI_FORMAT_R8G8B8A8_UNORM : DXGI_FORMAT( a_rImpl.i64SwapchainFormat );
+	UINT              support = 0;
+	if ( FAILED( a_rImpl.pD3D11Device->CheckFormatSupport( format, &support ) ) || !( support & D3D11_FORMAT_SUPPORT_MULTISAMPLE_RESOLVE ) || !( support & D3D11_FORMAT_SUPPORT_MULTISAMPLE_RENDERTARGET ) )
+	{
+		TWARN( "OpenXR: multisample render/resolve unsupported for the eye format; MSAA disabled.\n" );
+		return;
+	}
+
+	for ( TUINT32 samples = a_rImpl.uiRequestedSamples; samples > 1; samples /= 2 )
+	{
+		UINT colourLevels = 0;
+		UINT depthLevels  = 0;
+		if ( FAILED( a_rImpl.pD3D11Device->CheckMultisampleQualityLevels( format, samples, &colourLevels ) ) || !colourLevels ||
+		     FAILED( a_rImpl.pD3D11Device->CheckMultisampleQualityLevels( DXGI_FORMAT_D24_UNORM_S8_UINT, samples, &depthLevels ) ) || !depthLevels )
+			continue;
+
+		TBOOL ready = TTRUE;
+		for ( auto& eye : a_rImpl.aEyes )
+		{
+			if ( !CreateTargetMSAA( a_rImpl, eye, format, samples ) )
+			{
+				ready = TFALSE;
+				break;
+			}
+		}
+		if ( ready )
+		{
+			a_rImpl.uiEyeSamples = samples;
+			break;
+		}
+		for ( auto& eye : a_rImpl.aEyes ) DestroyTargetMSAA( eye );
+	}
+	if ( a_rImpl.uiEyeSamples != a_rImpl.uiRequestedSamples )
+		TWARN( "OpenXR: requested %ux MSAA; using %ux.\n", a_rImpl.uiRequestedSamples, a_rImpl.uiEyeSamples );
 }
 
 using t_D3DCompile = HRESULT ( WINAPI* )( LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob** );
@@ -1307,6 +1404,7 @@ TBOOL AVRManager::Prepare( Toshi::TRenderInterface* a_pRenderer )
 		return TFALSE;
 
 	rImpl.fVRScale = ParseVRScale( szCommandLine );
+	rImpl.uiRequestedSamples = TUINT32( AVRSettings::GetSingleton().GetMSAASamples() );
 
 	uint32_t uiExtensionCount = 0;
 	if ( XR_FAILED( xrEnumerateInstanceExtensionProperties( TNULL, 0, &uiExtensionCount, TNULL ) ) || uiExtensionCount == 0 )
@@ -1536,6 +1634,10 @@ static TBOOL CreateSessionAndTargets( AVRManager::Impl& a_rImpl )
 		DestroySessionTargets( a_rImpl );
 		return TFALSE;
 	}
+
+	CreateEyeMSAATargets( a_rImpl );
+	for ( TUINT32 eye = 0; eye < kEyeCount; ++eye )
+		TINFO( "OpenXR: eye %u render resolution %ux%u, MSAA %ux.\n", eye, a_rImpl.aEyes[ eye ].uiWidth, a_rImpl.aEyes[ eye ].uiHeight, a_rImpl.uiEyeSamples );
 
 	a_rImpl.fQuadHeightMeters = kUiQuadWidthMeters * TFLOAT( uiUIHeight ) / TFLOAT( uiUIWidth );
 	a_rImpl.oQuadExtent = { kUiQuadWidthMeters, a_rImpl.fQuadHeightMeters };
@@ -1784,6 +1886,32 @@ TBOOL AVRManager::BeginFrame()
 		return TFALSE;
 	}
 
+	// Count successful XR frame waits, not individual eye draws or display refreshes.
+	// Wall time keeps the counter independent of the simulation delta.
+	const auto statsNow = std::chrono::steady_clock::now();
+	if ( rImpl.lastStatsFrame != std::chrono::steady_clock::time_point{} )
+	{
+		const double seconds = std::chrono::duration<double>( statsNow - rImpl.lastStatsFrame ).count();
+		if ( seconds > 0.0 && seconds < 1.0 )
+		{
+			rImpl.fStatsSeconds += seconds;
+			++rImpl.uiStatsFrames;
+			if ( rImpl.fStatsSeconds >= 0.5 )
+			{
+				rImpl.fStatsFPS     = TFLOAT( rImpl.uiStatsFrames / rImpl.fStatsSeconds );
+				rImpl.fStatsSeconds = 0.0;
+				rImpl.uiStatsFrames = 0;
+			}
+		}
+		else
+		{
+			rImpl.fStatsSeconds = 0.0;
+			rImpl.uiStatsFrames = 0;
+			rImpl.fStatsFPS     = 0.0f;
+		}
+	}
+	rImpl.lastStatsFrame = statsNow;
+
 	XrFrameBeginInfo oBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
 	if ( XR_FAILED( xrBeginFrame( rImpl.hSession, &oBeginInfo ) ) )
 	{
@@ -2026,9 +2154,9 @@ TBOOL AVRManager::BeginEye( TUINT32 a_uiEye, const Toshi::TMatrix44& a_rcCenterC
 	ID3D11Texture2D* pRenderTexture = rImpl.bColorCorrectionAvailable ? rTarget.pColorRenderTexture : rTarget.aD3D11Images[ rTarget.uiImageIndex ].texture;
 	ID3D11RenderTargetView* pRenderTargetView = rImpl.bColorCorrectionAvailable ? rTarget.pColorRenderTargetView : rTarget.aRenderTargetViews[ rTarget.uiImageIndex ];
 	Toshi::TRenderD3DInterface::Interface()->BeginExternalTarget(
-	    pRenderTexture,
-	    pRenderTargetView,
-	    rTarget.oRendererDepth,
+	    rImpl.uiEyeSamples > 1 ? rTarget.pMSAATexture : pRenderTexture,
+	    rImpl.uiEyeSamples > 1 ? rTarget.pMSAARenderTargetView : pRenderTargetView,
+	    rImpl.uiEyeSamples > 1 ? rTarget.oMSAADepth : rTarget.oRendererDepth,
 	    rTarget.uiWidth,
 	    rTarget.uiHeight,
 	    TFALSE
@@ -2114,6 +2242,13 @@ void AVRManager::EndEye()
 
 	Toshi::TRenderD3DInterface::Interface()->EndExternalTarget();
 
+	if ( bImageReady && rImpl.uiEyeSamples > 1 )
+	{
+		ID3D11Texture2D*  pResolved = rImpl.bColorCorrectionAvailable ? rTarget.pColorRenderTexture : rTarget.aD3D11Images[ rTarget.uiImageIndex ].texture;
+		const DXGI_FORMAT format    = rImpl.bColorCorrectionAvailable ? DXGI_FORMAT_R8G8B8A8_UNORM : DXGI_FORMAT( rImpl.i64SwapchainFormat );
+		rImpl.pD3D11Context->ResolveSubresource( pResolved, 0, rTarget.pMSAATexture, 0, format );
+	}
+
 	if ( bImageReady && rImpl.bColorCorrectionAvailable )
 		bImageReady = ResolveTargetToOpenXR( rImpl, rTarget, rTarget.uiImageIndex, TFALSE );
 
@@ -2165,6 +2300,67 @@ TBOOL AVRManager::BeginUILayer()
 	const TFLOAT fClearAlpha = rImpl.bWorldRendered ? 0.0f : 1.0f;
 	Toshi::TRenderD3DInterface::Interface()->ClearCurrentTargetRGBA( 0.0f, 0.0f, 0.0f, fClearAlpha, TTRUE, 1.0f );
 	return TTRUE;
+}
+
+void AVRManager::RenderDebugHUD()
+{
+	const Impl& rImpl = *m_pImpl;
+	if ( !rImpl.bUILayerActive || !AVRSettings::GetSingleton().IsDebugHUDEnabled() || !AGUI2::IsSingletonCreated() )
+		return;
+
+	auto* pFont = Toshi::T2GUIFontManager::FindFont( "Rekord18" );
+	if ( !pFont ) return;
+
+	TFLOAT width, height;
+	AGUI2::GetSingleton()->GetDimensions( width, height );
+	const TFLOAT x            = -width * 0.5f + 12.0f;
+	TFLOAT       y            = -height * 0.5f + 12.0f;
+	auto*        pGUIRenderer = AGUI2::GetContext()->GetRenderer();
+	pGUIRenderer->BeginScene();
+	pGUIRenderer->ClearScissor();
+	pGUIRenderer->ResetZCoordinate();
+	auto drawLine = [ & ]( const TWCHAR* text ) {
+		pFont->DrawTextSingleLine( text, x + 1.0f, y + 1.0f, 0xE0000000, 1.0f );
+		pFont->DrawTextSingleLine( text, x, y, 0xFFFFFFFF, 1.0f );
+		y += pFont->GetLineHeight() + 2.0f;
+	};
+	TWCHAR text[ 128 ];
+	if ( rImpl.fStatsFPS > 0.0f )
+		std::swprintf( text, 128, L"XR loop FPS: %.1f", rImpl.fStatsFPS );
+	else
+		std::swprintf( text, 128, L"XR loop FPS: --" );
+	drawLine( text );
+	const auto& left  = rImpl.aEyes[ 0 ];
+	const auto& right = rImpl.aEyes[ 1 ];
+	// Show the scale actually used when creating the targets, not a pending
+	// menu selection. The runtime can cap either dimension independently.
+	const double scalePercent = std::round( double( rImpl.fVRScale ) * 1000.0 ) / 10.0;
+	auto isCapped = [ & ]( TUINT32 eye ) {
+		const auto& config = rImpl.aConfigurationViews[ eye ];
+		const auto& target = rImpl.aEyes[ eye ];
+		return target.uiWidth < TUINT32( std::lround( config.recommendedImageRectWidth * rImpl.fVRScale ) ) ||
+		       target.uiHeight < TUINT32( std::lround( config.recommendedImageRectHeight * rImpl.fVRScale ) );
+	};
+	const bool leftCapped = isCapped( 0 ), rightCapped = isCapped( 1 );
+	if ( left.uiWidth == right.uiWidth && left.uiHeight == right.uiHeight && leftCapped == rightCapped )
+	{
+		std::swprintf( text, 128, L"Resolution: %ux%u (%.4g%%%ls)", left.uiWidth, left.uiHeight, scalePercent, leftCapped ? L" capped" : L"" );
+		drawLine( text );
+	}
+	else
+	{
+		std::swprintf( text, 128, L"Resolution L: %ux%u (%.4g%%%ls)", left.uiWidth, left.uiHeight, scalePercent, leftCapped ? L" capped" : L"" );
+		drawLine( text );
+		std::swprintf( text, 128, L"Resolution R: %ux%u (%.4g%%%ls)", right.uiWidth, right.uiHeight, scalePercent, rightCapped ? L" capped" : L"" );
+		drawLine( text );
+	}
+	if ( rImpl.uiEyeSamples > 1 )
+		std::swprintf( text, 128, L"MSAA: %ux", rImpl.uiEyeSamples );
+	else
+		std::swprintf( text, 128, L"MSAA: Off" );
+	drawLine( text );
+	pGUIRenderer->EndScene();
+	Toshi::T2GUIFontManager::ReleaseFont( pFont );
 }
 
 void AVRManager::EndUILayer()
@@ -2300,9 +2496,15 @@ void AVRManager::OnDisplayChanged()
 		uiHeight = std::max( rImpl.pRenderer->GetCurrentDisplayParams()->uiHeight, 1u );
 	}
 
+	// Existing eye targets (including MSAA) depend on the current color path.
+	// Never switch that path while only replacing the UI target.
 	Impl::Target oNewUI;
-	if ( !CreateTarget( rImpl, oNewUI, uiWidth, uiHeight ) )
+	if ( !CreateTarget( rImpl, oNewUI, uiWidth, uiHeight, TFALSE ) )
+	{
+		DestroyTarget( rImpl, oNewUI );
+		TWARN( "OpenXR: UI target resize failed; keeping the existing target.\n" );
 		return;
+	}
 	DestroyTarget( rImpl, rImpl.oUI );
 	rImpl.oUI = std::move( oNewUI );
 	rImpl.fQuadHeightMeters = kUiQuadWidthMeters * TFLOAT( uiHeight ) / TFLOAT( uiWidth );
@@ -2376,6 +2578,7 @@ TBOOL AVRManager::BeginEye( TUINT32, const Toshi::TMatrix44&, Toshi::TCameraObje
 void AVRManager::ApplyEyeProjection( Toshi::TRenderContext* ) {}
 void AVRManager::EndEye() {}
 TBOOL AVRManager::BeginUILayer() { return TFALSE; }
+void                AVRManager::RenderDebugHUD() {}
 void AVRManager::EndUILayer() {}
 void AVRManager::EndFrame() {}
 void AVRManager::OnDeviceLost() {}

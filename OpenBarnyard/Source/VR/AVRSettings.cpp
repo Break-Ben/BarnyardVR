@@ -58,10 +58,44 @@ void AVRSettings::SetModernControls( TBOOL a_bModern )
 	}
 }
 
+void AVRSettings::SetDebugHUDEnabled( TBOOL a_bEnabled )
+{
+	if ( m_bDebugHUD != a_bEnabled )
+	{
+		m_bDebugHUD = a_bEnabled;
+		m_bDirty    = TTRUE;
+	}
+}
+
+void AVRSettings::SetResolutionPercent( TINT a_iPercent )
+{
+	if ( a_iPercent >= RESOLUTION_MIN && a_iPercent <= RESOLUTION_MAX &&
+	     a_iPercent % RESOLUTION_STEP == 0 && m_iResolutionPercent != a_iPercent )
+	{
+		m_iResolutionPercent = a_iPercent;
+		m_bDirty             = TTRUE;
+	}
+}
+
+void AVRSettings::SetMSAASamples( TINT a_iSamples )
+{
+	for ( TINT samples : MSAA_SAMPLES )
+	{
+		if ( samples == a_iSamples && m_iMSAASamples != samples )
+		{
+			m_iMSAASamples = samples;
+			m_bDirty       = TTRUE;
+		}
+	}
+}
+
 void AVRSettings::RestoreDefaults()
 {
 	SetSnapTurnDegrees( 0 );
 	SetModernControls( TTRUE );
+	SetResolutionPercent( 100 );
+	SetMSAASamples( 2 );
+	SetDebugHUDEnabled( TFALSE );
 }
 
 void AVRSettings::Load()
@@ -92,8 +126,14 @@ void AVRSettings::Load()
 
 		if ( key == "ModernControls" && ( number == 0 || number == 1 ) )
 			SetModernControls( number != 0 );
+		else if ( key == "DebugHUD" && ( number == 0 || number == 1 ) )
+			SetDebugHUDEnabled( number != 0 );
 		else if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
 			SetSnapTurnDegrees( TINT( number ) );
+		else if ( key == "ResolutionPercent" && number >= RESOLUTION_MIN && number <= RESOLUTION_MAX )
+			SetResolutionPercent( TINT( number ) );
+		else if ( key == "MSAASamples" && number >= 1 && number <= 8 )
+			SetMSAASamples( TINT( number ) );
 	}
 	fclose( pFile );
 	m_bDirty = TFALSE;
@@ -117,6 +157,11 @@ TBOOL AVRSettings::Save()
 	if ( !pFile ) return TFALSE;
 	fprintf( pFile, "# BarnyardVR settings. SnapTurnDegrees: 0 (disabled), 15, 30, 45, 60, 90.\n" );
 	fprintf( pFile, "SnapTurnDegrees=%d\nModernControls=%d\n", m_iSnapTurnDegrees, m_bModernControls ? 1 : 0 );
+	fprintf( pFile, "# VR graphics: restart required. ResolutionPercent: 50-200 in steps of 10; 100 is the OpenXR recommendation.\n" );
+	fprintf( pFile, "# The -vrscale command-line option overrides ResolutionPercent.\n" );
+	fprintf( pFile, "# MSAASamples: 1 (off), 2, 4, 8. Unsupported counts fall back to a lower level.\n" );
+	fprintf( pFile, "ResolutionPercent=%d\nMSAASamples=%d\n", m_iResolutionPercent, m_iMSAASamples );
+	fprintf( pFile, "DebugHUD=%d\n", m_bDebugHUD ? 1 : 0 );
 	TBOOL written = fflush( pFile ) == 0 && ferror( pFile ) == 0;
 	if ( fclose( pFile ) != 0 ) written = TFALSE;
 

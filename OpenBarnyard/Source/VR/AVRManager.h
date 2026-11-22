@@ -89,6 +89,8 @@ public:
 
 	// The quad layer is a single transparent 2D render target, composed over both eyes.
 	TBOOL BeginUILayer();
+	// Draw within the GUI viewport, after normal UI; also available in release builds.
+	void  RenderDebugHUD();
 	void  EndUILayer();
 	void  EndFrame();
 
