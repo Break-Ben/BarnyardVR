@@ -16,7 +16,6 @@
 #include <File/TFile.h>
 #include <algorithm>
 #include <cmath>
-#include <string>
 #include <vector>
 
 #include <Core/TMemoryDebugOn.h>
@@ -158,8 +157,7 @@ TWCHAR AInputPrompts::GetToken( const TPString8& map, AInputCommand command )
 	return TWCHAR( FIRST_TOKEN + s_tokens.size() - 1 );
 }
 
-void  AInputPrompts::SetOpenXRActive( TBOOL active ) { s_openXRActive = active; }
-TBOOL AInputPrompts::IsOpenXRActive() { return s_openXRActive; }
+void AInputPrompts::SetOpenXRActive( TBOOL active ) { s_openXRActive = active; }
 
 TBOOL AInputPrompts::ContainsToken( const TWCHAR* text )
 {
@@ -207,9 +205,19 @@ const TWCHAR* AInputPrompts::GetContinueText( const TWCHAR* keyboardText )
 	facePrompt[ 6 ]             = a;
 	facePrompt[ 11 ]            = b;
 	startPrompt[ 6 ]            = start;
-	if ( s_openXRActive &&
-	     ( AVRManager::GetSingleton().GetControllerPrompt( Pad::BUTTON_CONTEXT_3 ).icon == AVRControlIcon::Unavailable ||
-	       AVRManager::GetSingleton().GetControllerPrompt( Pad::BUTTON_CONTEXT_2 ).icon == AVRControlIcon::Unavailable ) )
+	if ( !s_openXRActive ) return facePrompt;
+	const auto available = []( TINT doodad ) {
+		return AVRManager::GetSingleton().GetControllerPrompt( doodad ).icon != AVRControlIcon::Unavailable;
+	};
+	const TBOOL hasA = available( Pad::BUTTON_CONTEXT_3 );
+	const TBOOL hasB = available( Pad::BUTTON_CONTEXT_2 );
+	if ( hasA && hasB ) return facePrompt;
+	// A runtime may leave just one face action bound. Prefer that working
+	// button rather than advertising a potentially unbound Start action.
+	if ( hasA || hasB )
+	{
+		startPrompt[ 6 ] = hasA ? a : b;
 		return startPrompt;
-	return facePrompt;
+	}
+	return available( Pad::BUTTON_START ) ? startPrompt : L"Press a button";
 }

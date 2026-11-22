@@ -131,6 +131,9 @@ void AGUI2TextBox::SetScale( TFLOAT a_fScale )
 {
 	m_fScale           = a_fScale;
 	m_bDimensionsDirty = TTRUE;
+	// Auto-fit token text must also refit when only its scale changes.
+	auto layout = PromptLayouts().find( this );
+	if ( layout != PromptLayouts().end() && layout->second.fit ) layout->second.revision = 0;
 }
 
 void AGUI2TextBox::SetShadow( TBOOL a_bEnabled, TUINT32 a_uiColour )

@@ -5,6 +5,7 @@
 #include "Tasks/ARootTask.h"
 #include "Units/AControlComponentManager.h"
 #include "GUI/AGUI2.h"
+#include "Player/APlayerManager.h"
 #include "AOptions.h"
 #include "Debug/APrimeDebug.h"
 
@@ -394,17 +395,19 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 #endif
 #ifdef TOSHI_SKU_WINDOWS
 			m_bControllerXInput = pInputSource->GetClass()->IsA( &TGetClass( TInputXInputDeviceController ) );
-#endif
+#  endif
 		}
-		// Every connected pad emits idle axes each frame. Do not let an idle
-		// OpenXR pad overwrite the Xbox look vector (or vice versa). Meaningful
-		// motion above already selects the source; its own zero still stops it.
-		if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
+		// In single-player, multiple pads feed the same camera/control channel.
+		// In multiplayer, each assigned pad must deliver its own neutral axes;
+		// the globally last-used pad does not own the other players' channels.
+		auto*       playerManager   = APlayerManager::GetSingleton();
+		auto*       playerSet       = playerManager ? playerManager->GetCurrentPlayerSet() : TNULL;
+		const TBOOL multiplePlayers = playerSet && playerSet->GetHumanPlayerCount() > 1;
+		if ( !multiplePlayers && a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
 		     a_pEvent->GetAxisCount() >= 2 && pInputSource != m_pMainController )
 			return TFALSE;
 	}
-	else if ( a_pEvent->GetEventType() != TInputInterface::EVENT_TYPE_VIRTUAL &&
-	          ( pInputSource == m_pMouseDevice || pInputSource == m_pKeyboardDevice ) )
+	else if ( a_pEvent->GetEventType() != TInputInterface::EVENT_TYPE_VIRTUAL && ( pInputSource == m_pMouseDevice || pInputSource == m_pKeyboardDevice ) )
 		AInputPrompts::SetOpenXRActive( TFALSE );
 
 	// Update whether controller is used or not

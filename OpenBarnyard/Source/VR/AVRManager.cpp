@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -323,6 +324,7 @@ struct AVRManager::Impl
 	AVRManager::ControllerInputState oControllerInputState;
 	std::array<AVRControllerPrompt, 27> aControllerPrompts {};
 	TBOOL bPromptBindingsDirty = TTRUE;
+	std::chrono::steady_clock::time_point nextPromptRefresh {};
 	TUINT32 uiPromptRevision = 0;
 	std::vector<XrPath> aInputSourceScratch = std::vector<XrPath>( 8 );
 	TBOOL bInputActionsReady = TFALSE;
@@ -428,6 +430,7 @@ static void DestroyInputActions( AVRManager::Impl& a_rImpl )
 	a_rImpl.aControllerPrompts = {};
 	++a_rImpl.uiPromptRevision;
 	a_rImpl.bPromptBindingsDirty = TTRUE;
+	a_rImpl.nextPromptRefresh = {};
 	a_rImpl.bInputActionsReady = TFALSE;
 	a_rImpl.bInputActionsAttached = TFALSE;
 	a_rImpl.bLoggedInputSyncFailure = TFALSE;
@@ -683,20 +686,21 @@ static TBOOL HasPinchTriggerSource( AVRManager::Impl& a_rImpl, XrAction a_hTrigg
 
 // Re-query after profile changes, including runtime binding edits. Use actual
 // action sources rather than assuming that a virtual gamepad face button is Y.
-static AVRControllerFamily ReadControllerFamily( AVRManager::Impl& impl, XrPath hand )
+static TBOOL ReadControllerFamily( AVRManager::Impl& impl, XrPath hand, AVRControllerFamily& family )
 {
+	family = AVRControllerFamily::Generic;
 	XrInteractionProfileState state{ XR_TYPE_INTERACTION_PROFILE_STATE };
-	if ( XR_FAILED( xrGetCurrentInteractionProfile( impl.hSession, hand, &state ) ) || state.interactionProfile == XR_NULL_PATH )
-		return AVRControllerFamily::Generic;
+	if ( XR_FAILED( xrGetCurrentInteractionProfile( impl.hSession, hand, &state ) ) ) return TFALSE;
+	// A successful null profile means the hand is disconnected, not a query error.
+	if ( state.interactionProfile == XR_NULL_PATH ) return TTRUE;
 	char     path[ XR_MAX_PATH_LENGTH ]{};
 	uint32_t size = 0;
-	if ( XR_FAILED( xrPathToString( impl.hInstance, state.interactionProfile, sizeof( path ), &size, path ) ) )
-		return AVRControllerFamily::Generic;
-	if ( std::strstr( path, "/oculus/touch_controller" ) || std::strstr( path, "/meta/touch_controller_plus" ) || std::strstr( path, "/facebook/touch_controller_pro" ) ) return AVRControllerFamily::Touch;
-	if ( std::strstr( path, "/valve/index_controller" ) ) return AVRControllerFamily::Index;
-	if ( std::strstr( path, "/htc/vive_controller" ) ) return AVRControllerFamily::Vive;
-	if ( std::strstr( path, "/microsoft/motion_controller" ) ) return AVRControllerFamily::WMR;
-	return AVRControllerFamily::Generic;
+	if ( XR_FAILED( xrPathToString( impl.hInstance, state.interactionProfile, sizeof( path ), &size, path ) ) ) return TFALSE;
+	if ( std::strstr( path, "/oculus/touch_controller" ) || std::strstr( path, "/meta/touch_controller_plus" ) || std::strstr( path, "/facebook/touch_controller_pro" ) ) family = AVRControllerFamily::Touch;
+	else if ( std::strstr( path, "/valve/index_controller" ) ) family = AVRControllerFamily::Index;
+	else if ( std::strstr( path, "/htc/vive_controller" ) ) family = AVRControllerFamily::Vive;
+	else if ( std::strstr( path, "/microsoft/motion_controller" ) ) family = AVRControllerFamily::WMR;
+	return TTRUE;
 }
 
 static AVRControlIcon SourceIcon( const char* path, TBOOL left )
@@ -717,11 +721,14 @@ static AVRControlIcon SourceIcon( const char* path, TBOOL left )
 	return Icon::Unavailable;
 }
 
-static void RefreshControllerPrompts( AVRManager::Impl& impl )
+static TBOOL RefreshControllerPrompts( AVRManager::Impl& impl )
 {
-	impl.aControllerPrompts = {};
-	const auto leftFamily   = ReadControllerFamily( impl, impl.hLeftHandPath );
-	const auto rightFamily  = ReadControllerFamily( impl, impl.hRightHandPath );
+	// Publish only complete snapshots. On any runtime query failure, keep the
+	// last good table and leave the dirty flag set for a throttled retry.
+	decltype( impl.aControllerPrompts ) prompts{};
+	AVRControllerFamily                 leftFamily, rightFamily;
+	if ( !ReadControllerFamily( impl, impl.hLeftHandPath, leftFamily ) ||
+	     !ReadControllerFamily( impl, impl.hRightHandPath, rightFamily ) ) return TFALSE;
 	struct Binding
 	{
 		XrAction action;
@@ -751,36 +758,39 @@ static void RefreshControllerPrompts( AVRManager::Impl& impl )
 		XrBoundSourcesForActionEnumerateInfo info{ XR_TYPE_BOUND_SOURCES_FOR_ACTION_ENUMERATE_INFO };
 		info.action    = binding.action;
 		uint32_t count = 0;
-		if ( XR_FAILED( xrEnumerateBoundSourcesForAction( impl.hSession, &info, 0, &count, nullptr ) ) || count == 0 ) continue;
+		if ( XR_FAILED( xrEnumerateBoundSourcesForAction( impl.hSession, &info, 0, &count, nullptr ) ) ) return TFALSE;
+		if ( count == 0 ) continue;
 		std::vector<XrPath> sources( count );
-		if ( XR_FAILED( xrEnumerateBoundSourcesForAction( impl.hSession, &info, count, &count, sources.data() ) ) ) continue;
-		for ( auto source : sources )
+		if ( XR_FAILED( xrEnumerateBoundSourcesForAction( impl.hSession, &info, count, &count, sources.data() ) ) ) return TFALSE;
+		for ( uint32_t i = 0; i < count; ++i )
 		{
 			char     path[ XR_MAX_PATH_LENGTH ]{};
 			uint32_t size = 0;
-			if ( XR_FAILED( xrPathToString( impl.hInstance, source, sizeof( path ), &size, path ) ) ) continue;
+			if ( XR_FAILED( xrPathToString( impl.hInstance, sources[ i ], sizeof( path ), &size, path ) ) ) return TFALSE;
 			const TBOOL left = std::strstr( path, "/user/hand/left/" ) != nullptr;
 			if ( !left && !std::strstr( path, "/user/hand/right/" ) ) continue;
 			const auto icon = SourceIcon( path, left );
-			if ( icon != AVRControlIcon::Unavailable && impl.aControllerPrompts[ binding.doodad ].icon == AVRControlIcon::Unavailable )
-				impl.aControllerPrompts[ binding.doodad ] = { left ? leftFamily : rightFamily, icon };
+			if ( icon != AVRControlIcon::Unavailable && prompts[ binding.doodad ].icon == AVRControlIcon::Unavailable )
+				prompts[ binding.doodad ] = { left ? leftFamily : rightFamily, icon };
 		}
 	}
 	// Virtual stick directions inherit their hand's physical stick/trackpad.
 	for ( TINT hand = 0; hand < 2; ++hand )
 	{
 		for ( TINT direction = 0; direction < 4; ++direction )
-			impl.aControllerPrompts[ 16 + hand * 4 + direction ] = impl.aControllerPrompts[ 24 + hand ];
+			prompts[ 16 + hand * 4 + direction ] = prompts[ 24 + hand ];
 	}
-	impl.aControllerPrompts[ 26 ] = impl.aControllerPrompts[ 24 ];
+	prompts[ 26 ] = prompts[ 24 ];
 	// The adapter synthesizes Start from both clicks. Only advertise the chord
 	// when both physical click actions actually have runtime bindings.
-	if ( impl.aControllerPrompts[ 5 ].icon == AVRControlIcon::Unavailable &&
-	     impl.aControllerPrompts[ 6 ].icon != AVRControlIcon::Unavailable &&
-	     impl.aControllerPrompts[ 7 ].icon != AVRControlIcon::Unavailable )
-		impl.aControllerPrompts[ 5 ] = { AVRControllerFamily::Generic, AVRControlIcon::PauseChord };
+	if ( prompts[ 5 ].icon == AVRControlIcon::Unavailable &&
+	     prompts[ 6 ].icon != AVRControlIcon::Unavailable &&
+	     prompts[ 7 ].icon != AVRControlIcon::Unavailable )
+		prompts[ 5 ] = { AVRControllerFamily::Generic, AVRControlIcon::PauseChord };
+	impl.aControllerPrompts = prompts;
 	++impl.uiPromptRevision;
 	impl.bPromptBindingsDirty = TFALSE;
+	return TTRUE;
 }
 
 static void SyncControllerInput( AVRManager::Impl& a_rImpl )
@@ -806,12 +816,17 @@ static void SyncControllerInput( AVRManager::Impl& a_rImpl )
 		return;
 	}
 	a_rImpl.bLoggedInputSyncFailure = TFALSE;
-	if ( a_rImpl.bPromptBindingsDirty ) RefreshControllerPrompts( a_rImpl );
+	const auto now                  = std::chrono::steady_clock::now();
+	if ( a_rImpl.bPromptBindingsDirty && now >= a_rImpl.nextPromptRefresh )
+	{
+		RefreshControllerPrompts( a_rImpl );
+		a_rImpl.nextPromptRefresh = now + std::chrono::seconds( 1 );
+	}
 
-	const XrVector2f oLeftStick = ReadVector2Action( a_rImpl, a_rImpl.hLeftStickAction, a_rImpl.hLeftHandPath );
-	const XrVector2f oRightStick = ReadVector2Action( a_rImpl, a_rImpl.hRightStickAction, a_rImpl.hRightHandPath );
-	a_rImpl.oControllerInputState.fLeftStickX = oLeftStick.x;
-	a_rImpl.oControllerInputState.fLeftStickY = oLeftStick.y;
+	const XrVector2f oLeftStick                = ReadVector2Action( a_rImpl, a_rImpl.hLeftStickAction, a_rImpl.hLeftHandPath );
+	const XrVector2f oRightStick               = ReadVector2Action( a_rImpl, a_rImpl.hRightStickAction, a_rImpl.hRightHandPath );
+	a_rImpl.oControllerInputState.fLeftStickX  = oLeftStick.x;
+	a_rImpl.oControllerInputState.fLeftStickY  = oLeftStick.y;
 	a_rImpl.oControllerInputState.fRightStickX = oRightStick.x;
 	a_rImpl.oControllerInputState.fRightStickY = oRightStick.y;
 
@@ -1545,7 +1560,11 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 		switch ( oEvent.type )
 		{
 			case XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED:
-				a_rImpl.bPromptBindingsDirty = TTRUE;
+				if ( reinterpret_cast<const XrEventDataInteractionProfileChanged*>( &oEvent )->session == a_rImpl.hSession )
+				{
+					a_rImpl.bPromptBindingsDirty = TTRUE;
+					a_rImpl.nextPromptRefresh = {};
+				}
 				break;
 			case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED:
 			{
