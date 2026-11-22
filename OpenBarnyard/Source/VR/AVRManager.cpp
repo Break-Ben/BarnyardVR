@@ -1121,7 +1121,7 @@ static TBOOL CreateDX11TargetImages( AVRManager::Impl& a_rImpl, AVRManager::Impl
 }
 
 
-static TBOOL CreateTarget( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget, TUINT32 a_uiWidth, TUINT32 a_uiHeight )
+static TBOOL CreateTarget( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rTarget, TUINT32 a_uiWidth, TUINT32 a_uiHeight, TBOOL a_bAllowColorFallback = TTRUE )
 {
 	a_rTarget.uiWidth  = a_uiWidth;
 	a_rTarget.uiHeight = a_uiHeight;
@@ -1144,9 +1144,11 @@ static TBOOL CreateTarget( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& 
 
 	if ( a_rImpl.bColorCorrectionAvailable && !CreateTargetColorIntermediate( a_rImpl, a_rTarget ) )
 	{
+		DestroyTargetColorIntermediate( a_rTarget );
+		if ( !a_bAllowColorFallback )
+			return TFALSE;
 		TWARN( "OpenXR: linear color intermediate allocation failed; using the legacy direct render path.\n" );
 		a_rImpl.bColorCorrectionAvailable = TFALSE;
-		DestroyTargetColorIntermediate( a_rTarget );
 	}
 	return TTRUE;
 }
@@ -2494,9 +2496,15 @@ void AVRManager::OnDisplayChanged()
 		uiHeight = std::max( rImpl.pRenderer->GetCurrentDisplayParams()->uiHeight, 1u );
 	}
 
+	// Existing eye targets (including MSAA) depend on the current color path.
+	// Never switch that path while only replacing the UI target.
 	Impl::Target oNewUI;
-	if ( !CreateTarget( rImpl, oNewUI, uiWidth, uiHeight ) )
+	if ( !CreateTarget( rImpl, oNewUI, uiWidth, uiHeight, TFALSE ) )
+	{
+		DestroyTarget( rImpl, oNewUI );
+		TWARN( "OpenXR: UI target resize failed; keeping the existing target.\n" );
 		return;
+	}
 	DestroyTarget( rImpl, rImpl.oUI );
 	rImpl.oUI = std::move( oNewUI );
 	rImpl.fQuadHeightMeters = kUiQuadWidthMeters * TFLOAT( uiHeight ) / TFLOAT( uiWidth );
