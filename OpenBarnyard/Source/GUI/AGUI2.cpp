@@ -16,6 +16,7 @@
 
 #include "Render/ABackend.h"
 #include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 
 #ifdef TOSHI_SKU_WASM
 #  include <Platform/WASM/Input/TInputDeviceController_WASM.h>
@@ -111,6 +112,7 @@ TBOOL AGUI2::OnCreate()
 	T2GUIFontManager::Open( "data/gui/fonts.trb" );
 	T2GUITextureSectionManager::Open( "data/gui/texsec.trb", AAssetLoader::GetAssetTRB( AAssetType_Startup ) );
 	T2GUITextureSectionManager::CreateMaterials();
+	AInputPrompts::Initialise();
 
 	auto pDebugCanvas = T2GUI::GetContext()->GetDebugCanvas();
 	auto pFont        = T2GUIFontManager::FindFont( "Rekord18" );
@@ -417,6 +419,7 @@ void AGUI2::OnDestroy()
 	m_pFocusedXUIScene = TNULL;
 #endif // BARNYARD_LATEST
 
+	AInputPrompts::Shutdown();
 	T2GUIFontManager::Close( "data/gui/fonts.trb" );
 	T2GUITextureSectionManager::DestroyMaterials();
 	T2GUITextureSectionManager::Close();

@@ -12,6 +12,7 @@
 #include "GUI/AGUI2.h"
 #include "GUI/AFadeManager.h"
 #include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 #include "Cameras/ACameraManager.h"
 #include "Tasks/ARootTask.h"
 #include "VR/AVRManager.h"
@@ -87,12 +88,8 @@ TBOOL AFrontEndAttractState::ProcessCommand( AInputCommand a_eInputCommand, cons
 // $Barnyard: FUNCTION 00407410
 TBOOL AFrontEndAttractState::OnUpdate( TFLOAT a_fDeltaTime )
 {
-	const TBOOL controllerPrompt = AInputHandler::GetSingleton()->IsControllerUsed();
-	if ( m_bControllerPrompt != controllerPrompt )
-	{
-		m_bControllerPrompt = controllerPrompt;
-		m_oText.SetTextAndFitWidth( controllerPrompt ? L"Press A or B" : g_pLocaleManager->GetString( 290 ) );
-	}
+	const TWCHAR* prompt = AInputPrompts::GetContinueText( g_pLocaleManager->GetString( 290 ) );
+	if ( m_oText.GetText() != prompt ) m_oText.SetTextAndFitWidth( prompt );
 
 	if ( AInputHandler::GetSingleton()->HadInputLastFrame() )
 		m_fIdleTime = 0.0f;
@@ -134,8 +131,7 @@ void AFrontEndAttractState::OnInsertion()
 
 	m_oText.Create( pFont, 300.0f );
 	m_oText.SetScale( 1.5f );
-	m_bControllerPrompt = AInputHandler::GetSingleton()->IsControllerUsed();
-	m_oText.SetTextAndFitWidth( m_bControllerPrompt ? L"Press A or B" : g_pLocaleManager->GetString( 290 ) );
+	m_oText.SetTextAndFitWidth( AInputPrompts::GetContinueText( g_pLocaleManager->GetString( 290 ) ) );
 	m_oText.SetTransform( 0.0f, 2.0f );
 
 	m_oPlank.SetTextureSection( pPlank );

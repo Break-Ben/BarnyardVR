@@ -1,4 +1,5 @@
 #pragma once
+#include "AVRPromptTypes.h"
 
 #include <Toshi/Typedefs.h>
 #include <Math/TMatrix44.h>
@@ -51,6 +52,8 @@ public:
 	// The OpenXR action set is created with the instance and attached to every session.
 	// The game input device reads this frame's action state through the usual Toshi
 	// controller interface.
+	TUINT32 GetControllerPromptRevision() const;
+	AVRControllerPrompt GetControllerPrompt( TINT a_iDoodad ) const;
 	TBOOL HasControllerInput() const;
 	TBOOL GetControllerInputState( ControllerInputState& a_rState ) const;
 

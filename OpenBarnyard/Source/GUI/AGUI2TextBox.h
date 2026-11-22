@@ -15,13 +15,7 @@ public:
 	void SetText( const TWCHAR* a_wszText );
 
 	// Sets the text and makes the box as wide as the text (inlined in the original)
-	void SetTextAndFitWidth( const TWCHAR* a_wszText )
-	{
-		m_wszText          = a_wszText;
-		m_bDimensionsDirty = TTRUE;
-		m_bFixedHeight     = TFALSE;
-		m_fWidth           = m_pFont->GetTextWidth( a_wszText ) * m_fScale;
-	}
+	void SetTextAndFitWidth( const TWCHAR* a_wszText );
 	void SetScale( TFLOAT a_fScale );
 	// Sets the width and, when a_bFixedHeight is set, a height that isn't recalculated from the text
 	void SetSize( TFLOAT a_fWidth, TFLOAT a_fHeight, TBOOL a_bFixedHeight );
@@ -47,8 +41,7 @@ public:
 	void SetDimensionsDirty() { m_bDimensionsDirty = TTRUE; }
 	void SetTextNoResize( const TWCHAR* a_wszText )
 	{
-		m_wszText          = a_wszText;
-		m_bDimensionsDirty = TTRUE;
+		SetText( a_wszText );
 	}
 
 	// Line height of the font, 0 without a font

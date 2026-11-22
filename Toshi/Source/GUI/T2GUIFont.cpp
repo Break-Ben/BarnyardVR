@@ -176,6 +176,38 @@ void T2GUIFont::DrawTextSingleLine( const TWCHAR* a_wszText, TINT a_iTextLength,
 		auto pFontDef = m_pFontDef;
 		auto wChar    = a_wszText[ i ];
 
+		InlineGlyph glyph;
+		const TBOOL resolved = ms_fnInlineGlyph && ms_fnInlineGlyph( this, wChar, glyph );
+		if ( resolved && glyph.text && !glyph.textFont && glyph.text[ 0 ] && !glyph.text[ 1 ] )
+		{
+			// A native alias is still a native character: use the original draw
+			// below, including its material, padding, dimensions and UVs.
+			wChar = glyph.text[ 0 ];
+		}
+		else if ( resolved )
+		{
+			if ( a_fnCallback ) TREINTERPRETCAST( CharCallback, a_fnCallback )( i, &fOffsetX, &fOffsetY );
+			if ( glyph.text )
+			{
+				auto* textFont = glyph.textFont ? glyph.textFont : this;
+				const TFLOAT y = a_fY + fOffsetY +
+				    ( pFontDef->uiLineHeight - textFont->GetFontDef()->uiLineHeight * glyph.textScale ) * a_fScale;
+				textFont->DrawTextSingleLine( glyph.text, a_fX + fOffsetX, y, a_uiColour, a_fScale * glyph.textScale );
+			}
+			else if ( glyph.material )
+			{
+				pRenderer->SetColour( a_uiColour );
+				pRenderer->SetMaterial( glyph.material );
+				const TFLOAT y = a_fY + ( pFontDef->uiLineHeight + glyph.yOffset - glyph.height ) * a_fScale;
+				pRenderer->RenderRectangle( { a_fX + fOffsetX, y + fOffsetY },
+				    { a_fX + fOffsetX + glyph.width * a_fScale, y + fOffsetY + glyph.height * a_fScale }, glyph.uv1, glyph.uv2 );
+			}
+			pRenderer->SetMaterial( pPrevMaterial ? pPrevMaterial : m_ppMaterials[ 0 ] );
+			pRenderer->SetColour( a_uiColour );
+			a_fX += ( pFontDef->iLetterSpacing + glyph.width ) * a_fScale;
+			continue;
+		}
+
 		if ( auto pCharDataPtr = FindCharData( wChar ) )
 		{
 			{
@@ -605,6 +637,37 @@ void T2GUIFont::DrawTextSingleLine( const TWCHAR* a_wszText, TINT a_iTextLength,
 	TFLOAT         fOffsetX  = 0.0f;
 	TFLOAT         fOffsetY  = 0.0f;
 	T2GUIRenderer* pRenderer = T2GUI::GetRenderer();
+
+	// Private application glyphs are not native texture pages. When mixed with
+	// Wii icons, draw this line in order rather than indexing tokens as pages.
+	if ( ms_fnInlineGlyph )
+	{
+		TBOOL hasInline = TFALSE;
+		for ( TINT i = 0; i < a_iTextLength && !hasInline; ++i )
+		{
+			InlineGlyph glyph;
+			hasInline = ms_fnInlineGlyph( this, a_wszText[ i ], glyph );
+		}
+		if ( hasInline )
+		{
+			TFLOAT x = a_fX;
+			for ( TINT i = 0; i < a_iTextLength; ++i )
+			{
+				if ( a_fnCallback ) a_fnCallback( i, &fOffsetX, &fOffsetY );
+				TFLOAT advance = 0.0f;
+				pRenderer->SetColour( a_uiColour );
+				if ( a_fnIconRender && a_fnIconRender( pRenderer, a_wszText[ i ], &advance,
+				        TFLOAT( m_pFontDef->uiLineHeight ), x + fOffsetX, a_fY + fOffsetY + m_pFontDef->uiLineHeight ) )
+					x += ( advance + m_pFontDef->iLetterSpacing ) * a_fScale;
+				else
+				{
+					DrawTextSingleLine( a_wszText + i, 1, x + fOffsetX, a_fY + fOffsetY, a_uiColour, a_fScale );
+					x += GetCharWidth( a_wszText[ i ], a_fScale );
+				}
+			}
+			return;
+		}
+	}
 
 	ResetDrawnMaterials();
 

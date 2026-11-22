@@ -1,9 +1,11 @@
 #include "pch.h"
 #include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 #include "GameInterface/AGameStateController.h"
 #include "Tasks/ARootTask.h"
 #include "Units/AControlComponentManager.h"
 #include "GUI/AGUI2.h"
+#include "Player/APlayerManager.h"
 #include "AOptions.h"
 #include "Debug/APrimeDebug.h"
 
@@ -373,6 +375,41 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 
 
 #ifdef BARNYARD_COMMUNITY_PATCH
+	// Track the pad actually used, including pad-to-pad transitions while the
+	// controller-used flag remains true. Releases/repeats/idle axes cannot steal
+	// the prompt family from a mouse, keyboard or another physical controller.
+	if ( pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
+	{
+		const TBOOL pressed = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN;
+		const TBOOL moved = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL && a_pEvent->GetAxisCount() >= 2 &&
+		    TMath::Abs( a_pEvent->GetMagnitudeFloat( 0 ) ) + TMath::Abs( a_pEvent->GetMagnitudeFloat( 1 ) ) >= 0.1f;
+		if ( pressed || moved )
+		{
+			// Gameplay pause checks IsValidDevice(), not just prompt style. Keep
+			// the primary device in step when switching gamepad <-> OpenXR.
+			m_pMainController = TSTATICCAST( TInputDeviceController, pInputSource );
+#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
+			AInputPrompts::SetOpenXRActive( pInputSource->GetClass()->IsA( &TGetClass( TInputOpenXRDeviceController ) ) );
+#else
+			AInputPrompts::SetOpenXRActive( TFALSE );
+#endif
+#ifdef TOSHI_SKU_WINDOWS
+			m_bControllerXInput = pInputSource->GetClass()->IsA( &TGetClass( TInputXInputDeviceController ) );
+#  endif
+		}
+		// In single-player, multiple pads feed the same camera/control channel.
+		// In multiplayer, each assigned pad must deliver its own neutral axes;
+		// the globally last-used pad does not own the other players' channels.
+		auto*       playerManager   = APlayerManager::GetSingleton();
+		auto*       playerSet       = playerManager ? playerManager->GetCurrentPlayerSet() : TNULL;
+		const TBOOL multiplePlayers = playerSet && playerSet->GetHumanPlayerCount() > 1;
+		if ( !multiplePlayers && a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
+		     a_pEvent->GetAxisCount() >= 2 && pInputSource != m_pMainController )
+			return TFALSE;
+	}
+	else if ( a_pEvent->GetEventType() != TInputInterface::EVENT_TYPE_VIRTUAL && ( pInputSource == m_pMouseDevice || pInputSource == m_pKeyboardDevice ) )
+		AInputPrompts::SetOpenXRActive( TFALSE );
+
 	// Update whether controller is used or not
 	if ( !IsControllerUsed() && pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
 	{
