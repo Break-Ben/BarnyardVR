@@ -726,6 +726,7 @@ void AAimedSquirtProjectileLauncher::EnterAimCamera()
 	const TMatrix44& rcInitialCameraMatrix = pCameraManager->GetCurrentCamera()->GetMatrix();
 	TVector4         vInitialForward( rcInitialCameraMatrix.m_f31, rcInitialCameraMatrix.m_f32, rcInitialCameraMatrix.m_f33, 1.0f );
 
+	const TBOOL bFreeTurningOnFoot = !m_bNPCControlled && AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( GetOwnerUnit() );
 	m_pPrevCameraHelper = pCameraManager->GetCurrentCameraHelper();
 	pCameraManager->DetachCameraHelpers();
 
@@ -733,7 +734,7 @@ void AAimedSquirtProjectileLauncher::EnterAimCamera()
 	{
 		m_vAimCursor.x = m_fScreenWidth * 0.5f;
 		m_vAimCursor.y = m_fScreenHeight * 0.5f;
-		AFirstPersonCamera::EnterAimMode( GetOwnerUnit(), vInitialForward );
+		AFirstPersonCamera::EnterAimMode( GetOwnerUnit(), vInitialForward, bFreeTurningOnFoot );
 		UpdateAimCamera( 0.0f );
 		return;
 	}

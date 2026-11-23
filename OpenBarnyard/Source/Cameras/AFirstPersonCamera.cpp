@@ -133,7 +133,8 @@ TVector2 s_vVehicleKeyLook      = TVector2::VEC_ZERO;
 TFLOAT   s_fVehicleLookIdleTime = 10.0f;
 
 // Aim camera state
-TBOOL            s_bAimActive    = TFALSE;
+TBOOL            s_bAimActive      = TFALSE;
+TBOOL            s_bAimFreeTurning = TFALSE;
 TRef<AUnitProxy> s_pAimUnit;
 TVector4         s_vAimFlatDir   = TVector4( 0.0f, 0.0f, 1.0f, 1.0f );
 TFLOAT           s_fAimPitchDeg  = 0.0f;
@@ -507,6 +508,20 @@ TBOOL AFirstPersonCamera::IsUnitInFirstPerson( const AUnit* a_pUnit )
 		return TTRUE;
 
 	return IsUnitInOnFootFirstPerson( a_pUnit );
+}
+
+TBOOL AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( const AUnit* a_pUnit )
+{
+	if ( !IsOnFootPlayerTarget( a_pUnit ) || !ACameraManager::IsSingletonCreated() )
+		return TFALSE;
+
+	ACameraHelper* pHelper = ACameraManager::GetSingleton()->GetCurrentCameraHelper();
+	if ( IsUnitInOnFootFirstPerson( a_pUnit ) )
+		return !TSTATICCAST( AGTAStyleCameraHelper, pHelper )->HasYawLimits();
+
+	// Aim detaches the on-foot helper; only retain follow if aim was entered
+	// from an unrestricted on-foot camera, not from a fixed minigame view.
+	return !pHelper && s_bAimActive && s_bAimFreeTurning && s_pAimUnit && s_pAimUnit->GetUnit() == a_pUnit;
 }
 
 void AFirstPersonCamera::BuildForwardDirection( const TVector4& a_rcFlatForward, TFLOAT a_fPitchDeg, TVector4& a_rOutForward )
@@ -998,10 +1013,11 @@ void AFirstPersonCamera::UpdateVehicleLook( TFLOAT a_fDeltaTime, TFLOAT a_fVehic
 	}
 }
 
-void AFirstPersonCamera::EnterAimMode( AUnit* a_pOwner, const TVector4& a_rcInitialForward )
+void AFirstPersonCamera::EnterAimMode( AUnit* a_pOwner, const TVector4& a_rcInitialForward, TBOOL a_bFreeTurningOnFoot )
 {
-	s_bAimActive    = TTRUE;
-	s_pAimUnit      = a_pOwner ? a_pOwner->GetSelfProxy() : TRef<AUnitProxy>( TNULL );
+	s_bAimActive      = TTRUE;
+	s_bAimFreeTurning = a_bFreeTurningOnFoot;
+	s_pAimUnit        = a_pOwner ? a_pOwner->GetSelfProxy() : TRef<AUnitProxy>( TNULL );
 	s_vAimMouseTurn = TVector2::VEC_ZERO;
 	s_vAimRateTurn  = TVector2::VEC_ZERO;
 	s_vAimDpadTurn  = TVector2::VEC_ZERO;
@@ -1013,8 +1029,9 @@ void AFirstPersonCamera::EnterAimMode( AUnit* a_pOwner, const TVector4& a_rcInit
 
 void AFirstPersonCamera::LeaveAimMode()
 {
-	s_bAimActive    = TFALSE;
-	s_pAimUnit      = TNULL;
+	s_bAimActive      = TFALSE;
+	s_bAimFreeTurning = TFALSE;
+	s_pAimUnit        = TNULL;
 	s_vAimMouseTurn = TVector2::VEC_ZERO;
 	s_vAimRateTurn  = TVector2::VEC_ZERO;
 	s_vAimDpadTurn  = TVector2::VEC_ZERO;

@@ -8,9 +8,11 @@
 #include "GUI/T2GUIFontManager.h"
 #include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
+#include "GameInterface/ABYardMenuState.h"
 #include "Cameras/AFirstPersonCamera.h"
-#include "MiniGame/AChasingChicksMiniGame.h"
 #include "Player/APlayerManager.h"
+#include "Units/AUnit.h"
+#include "Units/ASimplePlayerControlComponent.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Render/TBackend.h>
@@ -2375,21 +2377,25 @@ void AVRManager::RenderDebugHUD()
 	Toshi::T2GUIFontManager::ReleaseFont( pFont );
 }
 
-// Follow only in explicitly supported, freely turning first-person gameplay.
-// Menus, cutscenes and fixed-view minigames keep the most recent panel anchor.
+// Follow during player-controlled, unrestricted first-person views, regardless
+// of which gameplay state owns them. Menus and fixed cameras keep the anchor.
 static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 {
 	if ( !a_rImpl.bWorldRendered || !AVRSettings::GetSingleton().IsUIFollowingHead() ||
-	     !AGameStateController::IsSingletonCreated() || !APlayerManager::IsSingletonCreated() )
+	     !AGameStateController::IsSingletonCreated() || !APlayerManager::IsSingletonCreated() ||
+	     AGameStateController::ms_bPausedByMenu )
 		return TFALSE;
 
 	auto* pStates = AGameStateController::GetSingleton();
-	if ( pStates->GetNumStates() <= 1 || !pStates->GetCurrentState()->IsA( &TGetClass( AChasingChicksMiniGame ) ) )
+	if ( pStates->GetNumStates() <= 1 || pStates->GetCurrentState()->IsA( &TGetClass( ABYardMenuState ) ) )
 		return TFALSE;
 
-	auto* pGame = TSTATICCAST( AChasingChicksMiniGame, pStates->GetCurrentState() );
-	return pGame->GetGame().ePhase == AChasingChicksMiniGame::PHASE_PLAYING &&
-	    AFirstPersonCamera::IsUnitInFirstPerson( APlayerManager::GetSingleton()->GetPlayer( 0 ) );
+	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayer( 0 );
+	if ( !pPlayer || !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( pPlayer ) )
+		return TFALSE;
+
+	auto* pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
+	return pControl && pControl->IsAIEnabled() && pControl->IsCameraInputEnabled();
 }
 
 void AVRManager::EndUILayer()
