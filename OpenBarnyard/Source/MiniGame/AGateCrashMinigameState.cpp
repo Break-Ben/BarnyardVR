@@ -22,6 +22,8 @@
 #include "Player/APlayerSet.h"
 #include "Player/APlayerProfileManager.h"
 #include "Render/AShadowManager.h"
+#include "Render/AWorldSpaceGUI.h"
+#include "Physics/ACollisionObject.h"
 #include "Sound/ASoundManager.h"
 #include "FX/AParticleEffectManager.h"
 #include "FX/AGameTimeFXManager.h"
@@ -45,6 +47,25 @@
 #include <Core/TMemoryDebugOn.h>
 
 TOSHI_NAMESPACE_USING
+
+namespace
+{
+void UpdateLifeHudAnchor( AGUI2LifeHud& a_rHud, const TVector4& a_rcPosition, AAnimatedUnit* a_pUnit )
+{
+	// GUI dimensions are in pixels; leave room below the centred billboard as
+	// well as above the animal. The collision height varies with the character.
+	constexpr TFLOAT fScale = 0.01f;
+	TFLOAT fHeight = 2.0f;
+	if ( a_pUnit && a_pUnit->GetCollisionObject() && a_pUnit->GetCollisionObject()->GetHeightScale() > fHeight )
+		fHeight = a_pUnit->GetCollisionObject()->GetHeightScale();
+
+	TVector4 vPosition = a_rcPosition;
+	vPosition.y -= fHeight + 0.4f + a_rHud.GetHeight() * fScale * 0.5f;
+	// Ignore the corner-specific root pivot/translation, but keep the subtree
+	// and its animated children unchanged. The registration only filters in VR.
+	AWorldSpaceGUI::SetAnchor( a_rHud, vPosition, fScale );
+}
+}
 
 #ifdef BARNYARD_LATEST
 // Base of the maximum gate speed (latest version, 806af0dc), set by OnInsertion from the difficulty
@@ -338,6 +359,7 @@ void AGateCrashMinigameState::OnInsertion()
 		m_aLifeHuds[ i ].SetVisible( TFALSE );
 
 		m_aLifeHuds[ i ].SetLives( rSlot.iLives );
+		UpdateLifeHudAnchor( m_aLifeHuds[ i ], rSlot.vPosition, pUnit );
 	}
 
 	if ( m_bCharityVariant == TTRUE )
@@ -466,6 +488,7 @@ void AGateCrashMinigameState::OnRemoval()
 
 	for ( TINT i = 0; i < m_iNumPlayers; i++ )
 	{
+		AWorldSpaceGUI::Remove( &m_aLifeHuds[ i ] );
 		AUnit* pUnit = m_oGame.aSlots[ i ].GetUnit();
 
 		if ( pUnit )
@@ -553,6 +576,12 @@ TBOOL AGateCrashMinigameState::IsGameOver()
 // $Barnyard: FUNCTION 0046f480
 void AGateCrashMinigameState::UpdateAlways( TFLOAT a_fDeltaTime )
 {
+	for ( TINT i = 0; i < m_iNumPlayers; i++ )
+	{
+		PlayerSlot& rSlot = m_oGame.aSlots[ i ];
+		UpdateLifeHudAnchor( m_aLifeHuds[ i ], rSlot.vPosition, TSTATICCAST( AAnimatedUnit, rSlot.GetUnit() ) );
+	}
+
 	UpdateGatePosition( m_vPipePos, m_oGame.fGateAngle );
 
 	// NOTE: the result isn't used
@@ -879,6 +908,9 @@ void AGateCrashMinigameState::UpdateGame( TFLOAT a_fDeltaTime )
 		{
 			m_aLifeHuds[ i ].SetVisible( TFALSE );
 		}
+
+		// Update after the jump movement so the label follows in the same frame.
+		UpdateLifeHudAnchor( m_aLifeHuds[ i ], rSlot.vPosition, pUnit );
 	}
 
 	// Slow the gate down, but not below the minimum speed that grows over time
