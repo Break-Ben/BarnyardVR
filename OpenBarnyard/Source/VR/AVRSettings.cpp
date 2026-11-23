@@ -111,8 +111,8 @@ void AVRSettings::RestoreDefaults()
 {
 	SetSnapTurnDegrees( 0 );
 	SetModernControls( TTRUE );
-	SetHeadRelativeMovement( TFALSE );
-	SetUIFollowingHead( TFALSE );
+	SetHeadRelativeMovement( TTRUE );
+	SetUIFollowingHead( TTRUE );
 	SetResolutionPercent( 100 );
 	SetMSAASamples( 2 );
 	SetDebugHUDEnabled( TFALSE );

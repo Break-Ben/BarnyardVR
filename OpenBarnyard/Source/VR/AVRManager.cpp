@@ -8,6 +8,9 @@
 #include "GUI/T2GUIFontManager.h"
 #include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
+#include "Cameras/AFirstPersonCamera.h"
+#include "MiniGame/AChasingChicksMiniGame.h"
+#include "Player/APlayerManager.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Render/TBackend.h>
@@ -367,6 +370,8 @@ struct AVRManager::Impl
 	XrSwapchainSubImage oQuadSubImage = {};
 	XrVector3f vNeutralPosition = { 0.0f, 0.0f, 0.0f };
 	XrQuaternionf qReferenceYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
+	XrVector3f vFixedUICenter = { 0.0f, 0.0f, 0.0f };
+	XrQuaternionf qFixedUIYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XrPosef oQuadPose = {};
 	XrExtent2Df oQuadExtent = {};
 	int64_t i64SwapchainFormat = 0;
@@ -1989,6 +1994,8 @@ TBOOL AVRManager::BeginFrame()
 		const XrVector3f vForward = RotateVector( qHead, { 0.0f, 0.0f, -1.0f } );
 		const TFLOAT fYaw = std::atan2( -vForward.x, -vForward.z );
 		rImpl.qReferenceYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
+		rImpl.vFixedUICenter = rImpl.vNeutralPosition;
+		rImpl.qFixedUIYaw = rImpl.qReferenceYaw;
 		rImpl.bHasNeutralPose = TTRUE;
 		rImpl.bRecenterPending = TFALSE;
 		rImpl.bUIFollowInitialized = TFALSE;
@@ -2368,6 +2375,23 @@ void AVRManager::RenderDebugHUD()
 	Toshi::T2GUIFontManager::ReleaseFont( pFont );
 }
 
+// Follow only in explicitly supported, freely turning first-person gameplay.
+// Menus, cutscenes and fixed-view minigames keep the most recent panel anchor.
+static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
+{
+	if ( !a_rImpl.bWorldRendered || !AVRSettings::GetSingleton().IsUIFollowingHead() ||
+	     !AGameStateController::IsSingletonCreated() || !APlayerManager::IsSingletonCreated() )
+		return TFALSE;
+
+	auto* pStates = AGameStateController::GetSingleton();
+	if ( pStates->GetNumStates() <= 1 || !pStates->GetCurrentState()->IsA( &TGetClass( AChasingChicksMiniGame ) ) )
+		return TFALSE;
+
+	auto* pGame = TSTATICCAST( AChasingChicksMiniGame, pStates->GetCurrentState() );
+	return pGame->GetGame().ePhase == AChasingChicksMiniGame::PHASE_PLAYING &&
+	    AFirstPersonCamera::IsUnitInFirstPerson( APlayerManager::GetSingleton()->GetPlayer( 0 ) );
+}
+
 void AVRManager::EndUILayer()
 {
 	Impl& rImpl = *m_pImpl;
@@ -2403,9 +2427,9 @@ void AVRManager::EndUILayer()
 	if ( rImpl.bHasNeutralPose )
 	{
 		const TFLOAT fDistance = rImpl.bWorldRendered ? kUiWorldDistance : kUiMenuDistance;
-		XrVector3f vCenter = rImpl.vNeutralPosition;
-		XrQuaternionf qYaw = rImpl.qReferenceYaw;
-		if ( AVRSettings::GetSingleton().IsUIFollowingHead() && rImpl.bViewsValid )
+		XrVector3f vCenter = rImpl.vFixedUICenter;
+		XrQuaternionf qYaw = rImpl.qFixedUIYaw;
+		if ( CanFollowHeadUI( rImpl ) && rImpl.bViewsValid )
 		{
 			const auto& left = rImpl.aLocatedViews[ 0 ].pose;
 			const auto& right = rImpl.aLocatedViews[ 1 ].pose;
@@ -2442,6 +2466,10 @@ void AVRManager::EndUILayer()
 				            0.5f * ( left.position.y + right.position.y ),
 				            0.5f * ( left.position.z + right.position.z ) };
 			}
+			// Freeze the last follow pose when entering a menu or fixed-view state,
+			// rather than snapping the panel back to the startup direction.
+			rImpl.vFixedUICenter = vCenter;
+			rImpl.qFixedUIYaw = qYaw;
 		}
 		else
 		{

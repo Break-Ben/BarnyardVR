@@ -16,8 +16,8 @@ Open **Options → VR Settings** using the normal menu controls. This native men
 
 - **Control Layout:** Modern (default) or Classic. Left/right switches layouts for gamepads and OpenXR controllers in gameplay and minigames. Keyboard/mouse bindings are unchanged. Classic keeps the original controller bindings.
 - **Snap Turning:** Disabled (default), 15°, 30°, 45°, 60° or 90°. Left/right cycles the choices. Changes take effect in VR and are saved when confirmed.
-- **Movement:** Fixed (default) or Head Relative. Head Relative uses the headset's horizontal heading for ordinary on-foot movement in VR, including strafing; it does not change vehicle controls or specialized minigame input.
-- **UI Position:** Fixed (default) or Follow Head. Follow Head moves the UI panel with the headset and gently follows horizontal turns, with a small dead zone. This can be selected independently of movement direction.
+- **Movement:** Head Relative (default) or Fixed. Head Relative uses the headset's horizontal heading for ordinary on-foot movement in VR, including strafing; it does not change vehicle controls or specialized minigame input.
+- **UI Position:** Head Relative (default) or Fixed. Head Relative gently follows horizontal turns with a small dead zone during supported freely turning first-person minigames (currently Chasing Chicks). The panel remains fixed in other situations, including menus and fixed-view minigames. This can be selected independently of movement direction.
 - **Restore Defaults:** asks for confirmation, with No selected by default.
 - **Confirm / Cancel:** use the same device-aware prompts as the other options pages (Enter confirms, Escape cancels on keyboard). Confirm on a setting saves and returns; Cancel discards all edits, including Restore Defaults, and restores the values from when the page opened.
 
@@ -30,10 +30,10 @@ Settings load on first access from `BarnyardVR.cfg` in the save directory chosen
 SnapTurnDegrees=0
 # 1 = Modern (default), 0 = Classic
 ModernControls=1
-# 1 = head-relative walking, 0 = fixed (default)
-HeadRelativeMovement=0
-# 1 = follow headset, 0 = fixed UI (default)
-UIFollowsHead=0
+# 1 = head-relative walking (default), 0 = fixed
+HeadRelativeMovement=1
+# 1 = head-relative UI in supported minigames (default), 0 = fixed
+UIFollowsHead=1
 ```
 
 ### Controller layouts
