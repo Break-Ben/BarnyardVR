@@ -1020,6 +1020,33 @@ void* ACowTippingMiniGameState::FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2
 	return pFound;
 }
 
+// Restrict the shooting ray, not the tracked view. The legacy aiming code
+// clamps its camera yaw and the slingshot's start-pitch parameter per stage.
+TVector4 CowTippingClampHeadAimDirection( const TVector4& direction, const TVector4& cameraForward,
+    TFLOAT maxYaw, TFLOAT locatorY, const ACowTippingMiniGameState::CameraSettings& settings )
+{
+	const TFLOAT limit = TMath::HALF_PI - 0.05f;
+	maxYaw = TMath::Min( TMath::Abs( maxYaw ), limit );
+	const TFLOAT baseYaw = TMath::ATan2( cameraForward.x, cameraForward.z );
+	const TFLOAT horizontal = TMath::Sqrt( direction.x * direction.x + direction.z * direction.z );
+	TFLOAT yaw = horizontal > 0.0001f ? TMath::ATan2( direction.x, direction.z ) - baseYaw : 0.0f;
+	while ( yaw > TMath::PI ) yaw -= TMath::TWO_PI;
+	while ( yaw < -TMath::PI ) yaw += TMath::TWO_PI;
+	TMath::Clip( yaw, -maxYaw, maxYaw );
+
+	const TFLOAT pitchA = TMath::ATan2( locatorY - settings.fUnk58 - settings.fMinStartPitch, 1.0f );
+	const TFLOAT pitchB = TMath::ATan2( locatorY - settings.fUnk58 - settings.fMaxStartPitch, 1.0f );
+	const TFLOAT minPitch = TMath::Max( -limit, TMath::Min( pitchA, pitchB ) );
+	const TFLOAT maxPitch = TMath::Min( limit, TMath::Max( pitchA, pitchB ) );
+	TFLOAT pitch = TMath::ATan2( direction.y, horizontal );
+	TMath::Clip( pitch, minPitch, maxPitch );
+
+	TFLOAT sinYaw, cosYaw, sinPitch, cosPitch;
+	TMath::SinCos( baseYaw + yaw, sinYaw, cosYaw );
+	TMath::SinCos( pitch, sinPitch, cosPitch );
+	return TVector4( sinYaw * cosPitch, sinPitch, cosYaw * cosPitch, 0.0f );
+}
+
 // $Barnyard: FUNCTION 004b6170
 void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 {
@@ -1054,8 +1081,10 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 	if ( bHeadAim )
 	{
 		vCameraPosition = head.AsBasisVector4( BASISVECTOR_TRANSLATION );
-		vDirection = head.AsBasisVector4( BASISVECTOR_FORWARD );
-		vDirection.Normalise();
+		vDirection = CowTippingClampHeadAimDirection( head.AsBasisVector4( BASISVECTOR_FORWARD ), m_vCameraDir,
+		    rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+		// GetSlingshotBone uses the negative of this direction.
+		m_vAimDirection.Set( -vDirection.x, -vDirection.y, -vDirection.z, 1.0f );
 		vTargetOffset = TVector4( 0.0f, 0.0f, 0.0f, 1.0f );
 	}
 	CowTippingSetVRAimOrigin( bHeadAim ? &vCameraPosition : TNULL );
@@ -1348,8 +1377,8 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 
 	if ( m_fThrowCooldown <= 0.0f )
 	{
-		if ( !a_iUnk2 && m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 1 ].fTime > 0.0f &&
-		     ( ( bHeadAim ? bHeadTerrainHit : fRayLength < 1000.0f ) || bLocked ) )
+		if ( !bHeadAim && !a_iUnk2 && m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 1 ].fTime > 0.0f &&
+		     ( fRayLength < 1000.0f || bLocked ) )
 		{
 			TVector4 vStep;
 			vStep.Multiply( vDirection, 0.1f );
@@ -1380,10 +1409,41 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 
 	if ( bHeadAim && !a_iUnk2 )
 	{
-		// Place the world reticle at the same assisted/ground-adjusted point
-		// that the launcher and the released projectile actually target.
+		// Target assist must not pull the projectile outside the same stage limits
+		// that constrain the free-aim ray.
+		TVector4 toTarget;
+		toTarget.Substract( rvTarget, vCameraPosition );
+		const TFLOAT distance = toTarget.NormaliseMag();
+		if ( distance > 0.0001f )
+		{
+			const TVector4 limited = CowTippingClampHeadAimDirection( toTarget, m_vCameraDir,
+			    rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+			vOffset.Multiply( limited, distance );
+			rvTarget.Add( vCameraPosition, vOffset );
+		}
+		// The head can be beside or ahead of the muzzle. Also constrain the
+		// muzzle-to-target direction so an otherwise valid head ray cannot turn
+		// the launcher backwards or place its ballistic target at zero distance.
+		TVector4 fromMuzzle;
+		fromMuzzle.Substract( rvTarget, vBonePosition );
+		const TFLOAT muzzleRange = fromMuzzle.NormaliseMag();
+		const TVector4 limitedMuzzle = CowTippingClampHeadAimDirection( muzzleRange > 0.0001f ? fromMuzzle : vDirection,
+		    m_vCameraDir, rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+		vOffset.Multiply( limitedMuzzle, TMath::Max( muzzleRange, 5.0f ) );
+		rvTarget.Add( vBonePosition, vOffset );
+		// Place the world reticle at the point the launcher and shot target.
 		m_vReticleTarget = rvTarget;
-		pReticle->SetWorldPosition( rvTarget );
+		// Pull the indicator slightly toward the viewer so a terrain impact
+		// does not put the world-space ring inside the collision surface.
+		TVector4 reticlePosition = rvTarget;
+		TVector4 towardView;
+		towardView.Substract( vCameraPosition, rvTarget );
+		if ( towardView.NormaliseMag() > 0.25f )
+		{
+			vOffset.Multiply( towardView, 0.25f );
+			reticlePosition.Add( rvTarget, vOffset );
+		}
+		pReticle->SetWorldPosition( reticlePosition );
 	}
 	CowTippingSetVRAimOrigin( TNULL );
 }
@@ -1464,13 +1524,6 @@ void ACowTippingMiniGameState::UpdatePlayerTransform( TFLOAT a_fUnk1, TINT a_iUn
 
 	UpdateAiming( a_fUnk1, a_iUnk2 );
 
-	TMatrix44 head;
-	if ( AVRManager::GetSingleton().GetHeadWorldMatrix( ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head ) )
-	{
-		const TVector4& forward = head.AsBasisVector4( BASISVECTOR_FORWARD );
-		rvUnk_010FC.Set( -forward.x, -forward.y, -forward.z, 1.0f );
-	}
-
 	// Smooths the movement of the target
 	TFLOAT fProgress = a_fUnk1 * 10.0f;
 
@@ -1534,6 +1587,14 @@ void ACowTippingMiniGameState::UpdatePlayerTransform( TFLOAT a_fUnk1, TINT a_iUn
 
 	vAim.AsVector3().RotateX( m_fRecoilX );
 	vAim.AsVector3().RotateY( m_fRecoilY );
+	if ( AVRManager::GetSingleton().IsActive() )
+	{
+		// The launcher's model faces opposite its shooting direction. Its
+		// ballistic/recoil orientation must not flip past the aim limits either.
+		TVector4 forward( -vAim.x, -vAim.y, -vAim.z, 0.0f );
+		forward = CowTippingClampHeadAimDirection( forward, m_vCameraDir, rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+		vAim.Set( -forward.x, -forward.y, -forward.z, 1.0f );
+	}
 	m_pLauncher->GetModelInstance()->SetDirection( vAim );
 }
 

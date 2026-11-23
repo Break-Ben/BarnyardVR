@@ -599,6 +599,13 @@ TBOOL ACowTippingMiniGameState::ProcessCommand( AInputCommand a_eInputCommand, c
 		switch ( a_eInputCommand )
 		{
 			case AInputCommand_Move:
+				// In VR neither a mouse nor a stick should steer the camera rig.
+				// Physical head tracking still controls the view independently.
+				if ( AVRManager::GetSingleton().IsActive() )
+				{
+					m_fInputX = m_fMoveY = m_fMouseX = m_fMouseY = 0.0f;
+					break;
+				}
 				if ( a_pInputEvent->GetSource()->IsA( &TGetClass( TInputDeviceMouse ) ) )
 				{
 					TFLOAT fSensitivity = AOptions::GetSingleton()->GetSensitivity();
@@ -667,11 +674,6 @@ TBOOL ACowTippingMiniGameState::ProcessCommand( AInputCommand a_eInputCommand, c
 				}
 				else
 				{
-					if ( AVRManager::GetSingleton().IsActive() )
-					{
-						m_fInputX = m_fMoveY = 0.0f;
-						break;
-					}
 					TFLOAT fX = a_pInputEvent->GetMagnitudeFloat( 0 );
 					TFLOAT fY = a_pInputEvent->GetMagnitudeFloat( 1 );
 

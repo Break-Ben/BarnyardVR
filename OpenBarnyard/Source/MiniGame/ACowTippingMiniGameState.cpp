@@ -35,6 +35,7 @@
 #include "Units/AUnitPlayer.h"
 #include "Units/AUnitTransform.h"
 #include "Units/Projectiles/AAimedSquirtProjectileLauncher.h"
+#include "Units/Projectiles/AProjectile.h"
 #include "Units/Projectiles/ASimpleProjectileManager.h"
 #include "ARandom.h"
 
@@ -52,6 +53,9 @@
 #include <Core/TMemoryDebugOn.h>
 
 TOSHI_NAMESPACE_USING
+
+TVector4 CowTippingClampHeadAimDirection( const TVector4& direction, const TVector4& cameraForward,
+    TFLOAT maxYaw, TFLOAT locatorY, const ACowTippingMiniGameState::CameraSettings& settings );
 
 TPSTRING8_DECLARE( ACowTippingMiniGameState );
 TPSTRING8_DECLARE( Tomatoes );
@@ -1038,7 +1042,45 @@ void ACowTippingMiniGameState::OnAnimationEvent( void* a_pUnk1 )
 	}
 
 	TVector4 vUnk;
-	pProjectile->vVelocity = *TREINTERPRETCAST( TVector4*, CalculateThrowVelocityToTarget( &vUnk, &vPosition ) );
+	TMatrix44 head;
+	if ( IsPowerUpActive( 1 ) && AVRManager::GetSingleton().GetHeadWorldMatrix(
+	         ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head ) )
+	{
+		// The explosive tomato's ground adjustment belongs to the shot, not
+		// the live aiming target used to orient the launcher and reticle.
+		TVector4 shotTarget = m_vAimTarget;
+		TVector4 ray;
+		ray.Substract( shotTarget, head.AsBasisVector4( BASISVECTOR_TRANSLATION ) );
+		TFLOAT rayLength = ray.NormaliseMag();
+		TFLOAT hitLength = rayLength;
+		const TBOOL hit = rayLength > 0.0001f && ATerrainInterface::GetSingleton()->CollideRay(
+		    head.AsBasisVector4( BASISVECTOR_TRANSLATION ), ray, hitLength, 0, TTRUE );
+		TVector4 toMuzzle;
+		toMuzzle.Substract( vPosition, head.AsBasisVector4( BASISVECTOR_TRANSLATION ) );
+		if ( m_pThrowEnemy || m_pThrowRaccoon ||
+		     ( hit && hitLength > TMath::Max( 0.0f, TVector4::DotProduct3( toMuzzle, ray ) ) + 0.5f ) )
+		{
+			shotTarget.x += ray.x * 0.1f;
+			shotTarget.y += ray.y * 0.1f;
+			shotTarget.z += ray.z * 0.1f;
+			ATerrainInterface::GetSingleton()->SetToGroundHeightTop( shotTarget, 0 );
+			shotTarget.y -= 0.2f;
+		}
+		// Ground adjustment must not allow this power-up to bypass the same
+		// muzzle-relative limits as the visible aim.
+		TVector4 shotDirection;
+		shotDirection.Substract( shotTarget, vPosition );
+		const TFLOAT shotDistance = shotDirection.NormaliseMag();
+		const CameraSettings& camera = m_aCameraSettings[ m_aStages[ m_iStage ].iCameraSettings ];
+		shotDirection = CowTippingClampHeadAimDirection( shotDirection, m_vCameraDir,
+		    camera.fMaxYaw, m_vCameraLocatorDir.y, camera );
+		TVector4 shotOffset;
+		shotOffset.Multiply( shotDirection, TMath::Max( shotDistance, 5.0f ) );
+		shotTarget.Add( vPosition, shotOffset );
+		AProjectile::CalculateThrowVelocity( shotTarget, vPosition, GetThrowSpeed(), pProjectile->vVelocity );
+	}
+	else
+		pProjectile->vVelocity = *TREINTERPRETCAST( TVector4*, CalculateThrowVelocityToTarget( &vUnk, &vPosition ) );
 
 	pProjectile->pObject->GetModelInstance()->SetTranslation( vPosition.AsVector3() );
 

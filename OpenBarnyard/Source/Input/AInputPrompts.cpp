@@ -71,9 +71,14 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	                                                                  -1;
 	const TBOOL vrControl = AInputHandler::GetSingleton()->IsControllerUsed() && s_openXRActive && doodad >= Pad::BUTTON_DPAD_UP && doodad <= Pad::VIRTSTK_DPAD;
 	auto prompt = vrControl ? AVRManager::GetSingleton().GetControllerPrompt( doodad ) : AVRControllerPrompt{};
-	const TBOOL gamepadStick = token.stickGlyph && AInputHandler::GetSingleton()->IsControllerUsed() && !s_openXRActive;
-	if ( gamepadStick ) prompt.icon = AVRControlIcon::LeftStick;
-	if ( ( vrControl && s_material ) || ( gamepadStick && s_gamepadStickMaterial ) )
+	// The Touch and Vive rows have actual device artwork. For generic/Index/WMR
+	// sticks (or missing XR metadata), use the standalone stick illustration,
+	// not the atlas's text-only STICK L or N/A cells.
+	const TBOOL stickArtwork = token.stickGlyph && AInputHandler::GetSingleton()->IsControllerUsed() &&
+	    ( !s_openXRActive || prompt.icon == AVRControlIcon::Unavailable ||
+	      ( prompt.icon == AVRControlIcon::LeftStick && prompt.family != AVRControllerFamily::Touch ) );
+	if ( stickArtwork ) prompt.icon = AVRControlIcon::LeftStick;
+	if ( ( vrControl && !stickArtwork && s_material ) || ( stickArtwork && s_gamepadStickMaterial ) )
 	{
 		const TINT column = TINT( prompt.icon );
 		const TINT row    = TINT( prompt.family );
@@ -81,7 +86,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 		const auto* reference = font->GetNativeCharData( L'B' );
 		glyph.width = glyph.height = reference ? reference->ui8CharHeight : font->GetFontDef()->uiLineHeight;
 		glyph.yOffset              = reference ? reference->iYOffset : 0.0f;
-		if ( gamepadStick )
+		if ( stickArtwork )
 		{
 			glyph.material = s_gamepadStickMaterial;
 			glyph.uv1 = { 0.5f / CELL_SIZE, 0.5f / CELL_SIZE };
@@ -101,7 +106,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	if ( doodad != -1 && !manager->GetDoodadCustomName( doodad, name ) )
 		manager->GetDoodadLocalisedName( doodad, name );
 	// Do not fall back to a PS2 icon for missing OpenXR artwork/metadata.
-	if ( vrControl || gamepadStick ) name = ControlLabel( prompt.icon );
+	if ( vrControl || stickArtwork ) name = ControlLabel( prompt.icon );
 	glyph.text = name ? name : L"?";
 	// Rekord18 is used by interaction/instruction prompts; the same Xbox
 	// icons render correctly in the menu's Rekord26 page. Borrow that native
