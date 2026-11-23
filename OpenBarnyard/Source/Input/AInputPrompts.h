@@ -11,6 +11,8 @@ TBOOL         SetOpenXRRectangle( Toshi::T2GUIRectangle& a_rRectangle, const Tos
 void          Initialise();
 void          Shutdown();
 TWCHAR        GetToken( const Toshi::TPString8& a_rMapName, AInputCommand a_eCommand );
+TWCHAR        GetLeftStickToken();
+AInputCommand GetTokenCommand( TWCHAR a_wcToken );
 const TWCHAR* GetContinueText( const TWCHAR* a_wszKeyboardText );
 void          SetOpenXRActive( TBOOL a_bActive );
 TUINT32       GetRevision();

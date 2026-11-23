@@ -1124,7 +1124,17 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 	if ( m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 2 ].fTime > 0.0f )
 		fRadiusScale = m_fAimLockRadiusScale;
 
-	ATerrainInterface::GetSingleton()->CollideRay( vRayOrigin, vRayDirection, fRayLength, 0, TTRUE );
+	const TBOOL bTerrainHit = ATerrainInterface::GetSingleton()->CollideRay( vRayOrigin, vRayDirection, fRayLength, 0, TTRUE );
+
+	// The camera is behind the launcher. A lock-on tolerance is not a ray
+	// length: clamping to it can put the free-aim target between the camera
+	// and the muzzle, turning the cow around. Reject terrain hits in that
+	// interval too, then use the original reticle's ten-unit forward distance.
+	TVector4 vToMuzzle;
+	vToMuzzle.Substract( vBonePosition, vRayOrigin );
+	const TFLOAT fMuzzleDistance = TMath::Max( 0.0f, TVector4::DotProduct3( vToMuzzle, vRayDirection ) );
+	const TBOOL bHeadTerrainHit = bTerrainHit && fRayLength > fMuzzleDistance + 0.5f;
+	const TFLOAT fHeadAimDistance = bHeadTerrainHit ? fRayLength : TMath::Max( 10.0f, fMuzzleDistance + 10.0f );
 
 	if ( !a_iUnk2 )
 	{
@@ -1316,7 +1326,7 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 					}
 				}
 			}
-			vOffset.Multiply( vRayDirection, bHeadAim ? TMath::Min( fRayLength, m_fAimLockDistance ) : fRayLength );
+			vOffset.Multiply( vRayDirection, bHeadAim ? fHeadAimDistance : fRayLength );
 			rvTarget.Add( vRayOrigin, vOffset );
 
 			if ( m_iUnk_13400 != 0 )
@@ -1338,7 +1348,8 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 
 	if ( m_fThrowCooldown <= 0.0f )
 	{
-		if ( !a_iUnk2 && m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 1 ].fTime > 0.0f && ( fRayLength < 1000.0f || bLocked ) )
+		if ( !a_iUnk2 && m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 1 ].fTime > 0.0f &&
+		     ( ( bHeadAim ? bHeadTerrainHit : fRayLength < 1000.0f ) || bLocked ) )
 		{
 			TVector4 vStep;
 			vStep.Multiply( vDirection, 0.1f );

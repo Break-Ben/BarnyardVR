@@ -35,10 +35,13 @@ struct Token
 	TPString8     map;
 	AInputCommand command;
 	TINT          doodad = -1; // Fixed physical controls for the title/instruction screen.
+	TBOOL         stickGlyph = TFALSE; // Explicit stick artwork, also for ordinary gamepads.
 };
 std::vector<Token> s_tokens;
 T2GUIMaterial*     s_material        = TNULL;
 TTexture*          s_texture         = TNULL;
+T2GUIMaterial*     s_gamepadStickMaterial = TNULL;
+TTexture*          s_gamepadStickTexture  = TNULL;
 T2GUIFont*         s_smallPromptFont = TNULL;
 T2GUIFont*         s_menuGlyphFont   = TNULL;
 TBOOL              s_initialised     = TFALSE;
@@ -67,8 +70,10 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	const auto  doodad    = token.doodad != -1 ? token.doodad : map ? map->GetCommandDoodad( token.command, !AInputHandler::GetSingleton()->IsControllerUsed() ) :
 	                                                                  -1;
 	const TBOOL vrControl = AInputHandler::GetSingleton()->IsControllerUsed() && s_openXRActive && doodad >= Pad::BUTTON_DPAD_UP && doodad <= Pad::VIRTSTK_DPAD;
-	const auto  prompt    = vrControl ? AVRManager::GetSingleton().GetControllerPrompt( doodad ) : AVRControllerPrompt{};
-	if ( vrControl && s_material )
+	auto prompt = vrControl ? AVRManager::GetSingleton().GetControllerPrompt( doodad ) : AVRControllerPrompt{};
+	const TBOOL gamepadStick = token.stickGlyph && AInputHandler::GetSingleton()->IsControllerUsed() && !s_openXRActive;
+	if ( gamepadStick ) prompt.icon = AVRControlIcon::LeftStick;
+	if ( ( vrControl && s_material ) || ( gamepadStick && s_gamepadStickMaterial ) )
 	{
 		const TINT column = TINT( prompt.icon );
 		const TINT row    = TINT( prompt.family );
@@ -76,6 +81,13 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 		const auto* reference = font->GetNativeCharData( L'B' );
 		glyph.width = glyph.height = reference ? reference->ui8CharHeight : font->GetFontDef()->uiLineHeight;
 		glyph.yOffset              = reference ? reference->iYOffset : 0.0f;
+		if ( gamepadStick )
+		{
+			glyph.material = s_gamepadStickMaterial;
+			glyph.uv1 = { 0.5f / CELL_SIZE, 0.5f / CELL_SIZE };
+			glyph.uv2 = { ( CELL_SIZE - 0.5f ) / CELL_SIZE, ( CELL_SIZE - 0.5f ) / CELL_SIZE };
+			return TTRUE;
+		}
 		glyph.material             = s_material;
 		const TFLOAT width         = TFLOAT( CELL_SIZE * TINT( AVRControlIcon::Count ) );
 		const TFLOAT height        = TFLOAT( CELL_SIZE * FAMILY_COUNT );
@@ -89,7 +101,7 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	if ( doodad != -1 && !manager->GetDoodadCustomName( doodad, name ) )
 		manager->GetDoodadLocalisedName( doodad, name );
 	// Do not fall back to a PS2 icon for missing OpenXR artwork/metadata.
-	if ( vrControl ) name = ControlLabel( prompt.icon );
+	if ( vrControl || gamepadStick ) name = ControlLabel( prompt.icon );
 	glyph.text = name ? name : L"?";
 	// Rekord18 is used by interaction/instruction prompts; the same Xbox
 	// icons render correctly in the menu's Rekord26 page. Borrow that native
@@ -147,6 +159,17 @@ void AInputPrompts::Initialise()
 		if ( s_texture && s_texture->GetWidth() == CELL_SIZE * TINT( AVRControlIcon::Count ) && s_texture->GetHeight() == CELL_SIZE * FAMILY_COUNT )
 			s_material = T2GUI::GetRenderer()->CreateMaterial( s_texture );
 	}
+	// Xelu's CC0 Xbox Series left-stick glyph, used only for the dedicated
+	// honey-collection prompt; all existing native gamepad glyphs stay intact.
+	constexpr const char* stickPath = "Data/VR/GamepadLeftStick.dds";
+	if ( auto* file = TFile::Create( stickPath, TFILEMODE_READ ) )
+	{
+		delete file;
+		auto* factory = TRenderInterface::GetSingleton()->GetSystemResource<TTextureFactory>( SYSRESOURCE_TEXTUREFACTORY );
+		s_gamepadStickTexture = factory->CreateTextureFromFile( stickPath, 0 );
+		if ( s_gamepadStickTexture && s_gamepadStickTexture->GetWidth() == CELL_SIZE && s_gamepadStickTexture->GetHeight() == CELL_SIZE )
+			s_gamepadStickMaterial = T2GUI::GetRenderer()->CreateMaterial( s_gamepadStickTexture );
+	}
 	if ( !s_material ) TWARN( "OpenXR prompt atlas unavailable; using neutral VR labels.\n" );
 #endif
 	T2GUIFont::ms_fnInlineGlyph = Resolve;
@@ -158,6 +181,10 @@ void AInputPrompts::Shutdown()
 	if ( s_smallPromptFont ) T2GUIFontManager::ReleaseFont( s_smallPromptFont );
 	if ( s_menuGlyphFont ) T2GUIFontManager::ReleaseFont( s_menuGlyphFont );
 	s_smallPromptFont = s_menuGlyphFont = TNULL;
+	if ( s_gamepadStickMaterial ) T2GUI::GetRenderer()->DestroyMaterial( s_gamepadStickMaterial );
+	if ( s_gamepadStickTexture ) s_gamepadStickTexture->DestroyResource();
+	s_gamepadStickMaterial = TNULL;
+	s_gamepadStickTexture = TNULL;
 	if ( s_material ) T2GUI::GetRenderer()->DestroyMaterial( s_material );
 	if ( s_texture ) s_texture->DestroyResource();
 	s_material = TNULL;
@@ -175,6 +202,23 @@ TWCHAR AInputPrompts::GetToken( const TPString8& map, AInputCommand command )
 	if ( s_tokens.size() >= MAX_TOKENS ) return 0;
 	s_tokens.push_back( { map, command } );
 	return TWCHAR( FIRST_TOKEN + s_tokens.size() - 1 );
+}
+
+TWCHAR AInputPrompts::GetLeftStickToken()
+{
+	if ( !s_initialised ) return 0;
+	for ( TINT i = 0; i < TINT( s_tokens.size() ); ++i )
+		if ( s_tokens[ i ].stickGlyph ) return TWCHAR( FIRST_TOKEN + i );
+	if ( s_tokens.size() >= MAX_TOKENS ) return 0;
+	s_tokens.push_back( { TPString8(), AInputCommand_Unknown, Pad::STICK_LEFT, TTRUE } );
+	return TWCHAR( FIRST_TOKEN + s_tokens.size() - 1 );
+}
+
+AInputCommand AInputPrompts::GetTokenCommand( TWCHAR token )
+{
+	const TINT index = TINT( token ) - FIRST_TOKEN;
+	return index >= 0 && index < TINT( s_tokens.size() ) && s_tokens[ index ].doodad == -1
+	    ? s_tokens[ index ].command : AInputCommand_Unknown;
 }
 
 void AInputPrompts::SetOpenXRActive( TBOOL active ) { s_openXRActive = active; }

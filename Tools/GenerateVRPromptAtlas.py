@@ -66,3 +66,11 @@ if __name__ == "__main__":
     OUTPUT.mkdir(parents=True, exist_ok=True)
     atlas.save(OUTPUT / "ControllerPrompts.dds")  # Uncompressed RGBA DDS; no platform tool required.
     atlas.save(ROOT / "Assets/VRPrompts/ControllerPrompts.png")
+
+    # Standalone Xbox stick art for the honey collection prompt; do not
+    # replace any existing gamepad font glyphs or OpenXR atlas cells.
+    stick = Image.open(SOURCE / "XboxSeriesX_Left_Stick.png").convert("RGBA")
+    stick = stick.resize((58, 58), Image.Resampling.LANCZOS)
+    stick_image = Image.new("RGBA", (CELL, CELL))
+    stick_image.alpha_composite(stick, (3, 3))
+    stick_image.save(OUTPUT / "GamepadLeftStick.dds")
