@@ -12,6 +12,7 @@
 #include "Cameras/AFirstPersonCamera.h"
 #include "Player/APlayerManager.h"
 #include "Units/AUnit.h"
+#include "Units/APlayerControlComponent.h"
 #include "Units/ASimplePlayerControlComponent.h"
 
 #include <Input/TInputDeviceController.h>
@@ -2394,7 +2395,12 @@ static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 	if ( !pPlayer || !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( pPlayer ) )
 		return TFALSE;
 
-	auto* pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
+	// APlayerControlComponent derives from ASimplePlayerControlComponent in C++,
+	// but its TClass parent is AControlComponent, so the simple-class lookup
+	// alone misses the ordinary Barnyard player controller.
+	auto* pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( APlayerControlComponent ) ) );
+	if ( !pControl )
+		pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
 	return pControl && pControl->IsAIEnabled() && pControl->IsCameraInputEnabled();
 }
 
