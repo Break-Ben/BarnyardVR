@@ -68,6 +68,10 @@
 #include <Math/TQuaternion.h>
 #include <Render/TSkeleton.h>
 
+#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
+#  include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
+#endif
+
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
 // Note: Should be the last include!
@@ -690,6 +694,19 @@ TBOOL AHoneyCollectingGame::ProcessCommand( AInputCommand a_eInputCommand, const
 		// The stick turns around the comb
 		TFLOAT fX = a_pInputEvent->GetMagnitudeFloat( 0 );
 		TFLOAT fY = a_pInputEvent->GetMagnitudeFloat( 1 );
+
+#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
+		// The circular collection gesture needs the previous radial VR stick
+		// response; per-axis gamepad normalization shrinks diagonals.
+		TInputDevice* pSource = a_pInputEvent->GetSource();
+		const TINT iDoodad = a_pInputEvent->GetDoodad();
+		if ( a_pInputEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
+		     pSource->IsA( &TGetClass( TInputOpenXRDeviceController ) ) &&
+		     ( iDoodad == TInputDeviceController::STICK_LEFT || iDoodad == TInputDeviceController::STICK_RIGHT ) )
+		{
+			TSTATICCAST( TInputOpenXRDeviceController, pSource )->GetRadialStick( iDoodad, fX, fY );
+		}
+#endif
 
 		if ( !s_bStickXInitialised )
 		{

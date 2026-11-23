@@ -61,11 +61,10 @@ public:
 
 	static Doodad TranslateDXButtonToDoodad( TINT a_iButton );
 	static TINT   TranslateDoodadToDXButton( Doodad a_iDoodad );
+	static TFLOAT NormaliseStick( TINT a_iValue );
 
 private:
 	friend class TInputXInputDeviceController;
-
-	static TFLOAT        NormaliseStick( TINT a_iValue );
 	static BOOL CALLBACK EnumerateObjectCallback( LPCDIDEVICEOBJECTINSTANCEA a_poDeviceInstance, LPVOID a_pData );
 
 #ifdef BARNYARD_COMMUNITY_PATCH

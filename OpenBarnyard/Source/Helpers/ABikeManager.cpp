@@ -209,7 +209,31 @@ TBOOL ABikeManager::OnUpdate( TFLOAT a_fDeltaTime )
 			AAnimatableObject* pPlayerBikeObject = TSTATICCAST( AAnimatedUnit, GetPlayerBike() )->GetAnimatableObject();
 			ABikeSteer*        pSteer            = TSTATICCAST( ABikeSteer, GetPlayerBike()->GetSteer() );
 
-			if ( !pPlayerBikeObject->IsAnimPlaying( TPS8( bk_gton_rack_right ), 0.0f ) && !pPlayerBikeObject->IsAnimPlaying( TPS8( bk_gton_rack_left ), 0.0f ) )
+			const TBOOL bRackAnimationPlaying = pPlayerBikeObject->IsAnimPlaying( TPS8( bk_gton_rack_right ), 0.0f ) ||
+			    pPlayerBikeObject->IsAnimPlaying( TPS8( bk_gton_rack_left ), 0.0f );
+
+			// In first person the last rendered pose can be newer than the last
+			// manager update. Transfer that same pose when the animation ends.
+			if ( bRackAnimationPlaying || AFirstPersonCamera::IsEnabled() )
+			{
+				AAnimatableObject* pBikeObject = pPlayerBikeObject->GetAttachedObjects().Begin().Get();
+				AModelInstance*    pBikeModel  = pBikeObject->GetModelInstance();
+				TINT               iBone       = pBikeModel->GetBoneIndex( TPS8( bike_origin ) );
+
+				TMatrix44 mBone;
+				mBone.Identity();
+				pBikeModel->GetBoneTransform( iBone, mBone );
+
+				TVector4 vecUp = mBone.AsBasisVector4( BASISVECTOR_UP );
+
+				m_vecRackPosition    = mBone.AsBasisVector4( BASISVECTOR_TRANSLATION );
+				m_vecRackDirection.x = -vecUp.x;
+				m_vecRackDirection.y = -vecUp.y;
+				m_vecRackDirection.z = -vecUp.z;
+				m_vecRackDirection.w = 1.0f;
+			}
+
+			if ( !bRackAnimationPlaying )
 			{
 				// Got on the bike, take it from the rack
 				pPlayerBikeObject = TSTATICCAST( AAnimatedUnit, GetPlayerBike() )->GetAnimatableObject();
@@ -234,22 +258,6 @@ TBOOL ABikeManager::OnUpdate( TFLOAT a_fDeltaTime )
 				GetRider()->GetSteer()->SetPosition( TVector4::VEC_ZERO );
 				break;
 			}
-
-			// Remember where the bike model is while getting on it
-			AAnimatableObject* pBikeObject = pPlayerBikeObject->GetAttachedObjects().Begin().Get();
-			AModelInstance*    pBikeModel  = pBikeObject->GetModelInstance();
-			TINT               iBone       = pBikeModel->GetBoneIndex( TPS8( bike_origin ) );
-
-			TMatrix44 mBone;
-			pBikeObject->GetModelInstance()->GetBoneTransform( iBone, mBone );
-
-			TVector4 vecUp = mBone.AsBasisVector4( BASISVECTOR_UP );
-
-			m_vecRackPosition    = mBone.AsBasisVector4( BASISVECTOR_TRANSLATION );
-			m_vecRackDirection.x = -vecUp.x;
-			m_vecRackDirection.y = -vecUp.y;
-			m_vecRackDirection.z = -vecUp.z;
-			m_vecRackDirection.w = 1.0f;
 
 			return TTRUE;
 		}
