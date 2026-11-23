@@ -110,6 +110,7 @@ VIEW_MODE                 s_eViewMode      = VIEW_NONE;
 AGTAStyleCameraHelper*    s_pOnFootHelper  = TNULL;
 ABikePhysicsCameraHelper* s_pVehicleHelper = TNULL;
 TRef<AUnitProxy>          s_pActiveUnit;
+TRef<AUnitProxy>          s_pRackLerpUnit;
 TVector4                  s_vOnFootForward   = TVector4( 0.0f, 0.0f, 1.0f, 1.0f );
 TFLOAT                    s_fOnFootEyeHeight = AFirstPersonCamera::DEFAULT_EYE_HEIGHT;
 TBOOL                     s_bOnFootOverride  = TFALSE;
@@ -603,9 +604,9 @@ static void PrepareRackBikePose( AUnit* a_pRider, TFLOAT a_fDeltaTime )
 	pBikeObject->UpdateAttachmentTransform();
 }
 
-// The body is frozen until the animation ends; follow the bike_origin yaw that
-// ABikeManager will transfer to physics, without inheriting animated pitch/roll.
-static TBOOL GetRackBikeForward( AUnit* a_pRider, TVector4& a_rOutForward )
+// Reconstruct the body pose ABikeSteer will use at the end of unracking, so
+// both the cockpit offset and the heading follow the animated bike_origin.
+static TBOOL GetRackBikeTransform( AUnit* a_pRider, TMatrix44& a_rOutTransform )
 {
 	AAnimatableObject* pBikeObject = GetRackBikeObject( a_pRider );
 	if ( !pBikeObject )
@@ -626,25 +627,33 @@ static TBOOL GetRackBikeForward( AUnit* a_pRider, TVector4& a_rOutForward )
 	if ( rcUp.x * rcUp.x + rcUp.z * rcUp.z <= 0.000001f )
 		return TFALSE;
 
-	a_rOutForward.Set( -rcUp.x, 0.0f, -rcUp.z, 1.0f );
+	TVector4 vDirection( -rcUp.x, -rcUp.y, -rcUp.z, 1.0f );
+	TMatrix44 mRotation;
+	mRotation.LookAtDirection( vDirection, TVector4::VEC_NEGY );
+	TQuaternion qRotation;
+	TMatrix44::MatToQuat( qRotation, mRotation );
+	a_rOutTransform.SetFromQuaternion( qRotation );
+	a_rOutTransform.GetTranslation() = mBone.AsBasisVector4( BASISVECTOR_TRANSLATION );
 	return TTRUE;
 }
 
 void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a_rcVehicleTransform, TVector4& a_rOutEyePos, TVector4& a_rOutForward )
 {
-	const TVector4& rcVehiclePos = a_rcVehicleTransform.AsBasisVector4( BASISVECTOR_TRANSLATION );
-	const TVector4& rcVehicleUp  = a_rcVehicleTransform.AsBasisVector4( BASISVECTOR_UP );
-	const TVector4& rcVehicleFwd = a_rcVehicleTransform.AsBasisVector4( BASISVECTOR_FORWARD );
+	TMatrix44 matRack;
+	const TMatrix44& rcTransform = GetRackBikeTransform( a_pRider, matRack ) ? matRack : a_rcVehicleTransform;
+	const TVector4& rcVehiclePos = rcTransform.AsBasisVector4( BASISVECTOR_TRANSLATION );
+	const TVector4& rcVehicleUp  = rcTransform.AsBasisVector4( BASISVECTOR_UP );
+	const TVector4& rcVehicleFwd = rcTransform.AsBasisVector4( BASISVECTOR_FORWARD );
 
 	TVector4 vSafeStart;
 
 	// Follow the bike's natural lean and pitch while upright; fall back to world-up if tipped over
 	if ( rcVehicleUp.y > 0.35f )
 	{
-		TMatrix44::TransformVector( a_rOutEyePos, a_rcVehicleTransform, BIKE_EYE_OFFSET );
+		TMatrix44::TransformVector( a_rOutEyePos, rcTransform, BIKE_EYE_OFFSET );
 		a_rOutEyePos.w = 1.0f;
 
-		TMatrix44::TransformVector( vSafeStart, a_rcVehicleTransform, TVector4( BIKE_EYE_OFFSET.x, -0.95f, BIKE_EYE_OFFSET.z, 1.0f ) );
+		TMatrix44::TransformVector( vSafeStart, rcTransform, TVector4( BIKE_EYE_OFFSET.x, -0.95f, BIKE_EYE_OFFSET.z, 1.0f ) );
 		vSafeStart.w = 1.0f;
 	}
 	else
@@ -656,10 +665,7 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	SweepCeilingClearance( vSafeStart, a_rOutEyePos );
 
 	TVector4 vFlatFwd;
-	if ( GetRackBikeForward( a_pRider, vFlatFwd ) )
-		NormaliseFlatSafe( vFlatFwd, vFlatFwd );
-	else
-		NormaliseFlatSafe( rcVehicleFwd, vFlatFwd );
+	NormaliseFlatSafe( rcVehicleFwd, vFlatFwd );
 
 	const TFLOAT fYaw = s_fVehicleLookYaw + s_fVehicleSnapYaw;
 	if ( fYaw != 0.0f )
@@ -1229,7 +1235,8 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 
 	if ( !IsEnabled() )
 	{
-		s_eViewMode = VIEW_NONE;
+		s_eViewMode     = VIEW_NONE;
+		s_pRackLerpUnit = TNULL;
 		RestoreHiddenUnitImmediate();
 		RestoreNearClip();
 		return;
@@ -1238,6 +1245,10 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 	ACameraManager* pCamMgr        = ACameraManager::GetSingleton();
 	ACameraHelper*  pCurrentHelper = pCamMgr->GetCurrentCameraHelper();
 	AUnit*          pUnit          = s_pActiveUnit ? s_pActiveUnit->GetUnit() : TNULL;
+
+	if ( !pCamMgr->m_bIsPosLerping || s_eViewMode != VIEW_BIKE || !pUnit ||
+	     ( s_pRackLerpUnit && s_pRackLerpUnit->GetUnit() != pUnit ) )
+		s_pRackLerpUnit = TNULL;
 
 	// Sync visual bike/car meshes, passengers, wheels, lights and shadows to the same interpolated step once camera is placed
 	ScopedVehicleVisualSync oVehicleVisualSync;
@@ -1307,14 +1318,22 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 				ApplyFirstPersonNearClip();
 				ApplyUnitHidden( pUnit, HIDE_RIDER, vEyePos );
 
-				if ( pCamMgr->m_bIsPosLerping && TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) > 0.25f )
+				if ( pCamMgr->m_bIsPosLerping && pCamMgr->m_fLerpDuration > 0.0f )
 				{
-					// Keep the existing position blend, but include the freshly
-					// evaluated rack heading in its orientation blend as well.
-					if ( GetRackBikeObject( pUnit ) && pCamMgr->m_fLerpDuration > 0.0f )
+					if ( GetRackBikeObject( pUnit ) )
+						s_pRackLerpUnit = pUnit->GetSelfProxy();
+
+					if ( s_pRackLerpUnit && s_pRackLerpUnit->GetUnit() == pUnit )
 					{
+						// Blend toward the current animated cockpit, not the frozen
+						// body or the previous frame's pose. Keep blending if the
+						// animation ends before the camera transition does.
 						TFLOAT fProgress = pCamMgr->m_fLerpTime / pCamMgr->m_fLerpDuration;
 						TMath::Clip( fProgress, 0.0f, 1.0f );
+						TVector4 vPosition;
+						vPosition.Lerp4( pCamMgr->m_vLerpPosFrom, vEyePos, fProgress );
+						a_pCamera->GetMatrix().GetTranslation() = vPosition;
+
 						TVector4 vBlended;
 						vBlended.Lerp4( pCamMgr->m_vInitialLookDirection, vForward, fProgress );
 						if ( vBlended.MagnitudeSq() > 0.000001f )
@@ -1322,9 +1341,16 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 							vBlended.Normalise();
 							a_pCamera->LookAtDirection( vBlended );
 						}
+						else
+						{
+							a_pCamera->LookAtDirection( vForward );
+						}
+						return;
 					}
-					return;
 				}
+
+				if ( pCamMgr->m_bIsPosLerping && TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) > 0.25f )
+					return;
 
 				a_pCamera->GetMatrix().GetTranslation() = vEyePos;
 				a_pCamera->LookAtDirection( vForward );
@@ -1397,6 +1423,7 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 void AFirstPersonCamera::RestoreAll()
 {
 	s_eViewMode        = VIEW_NONE;
+	s_pRackLerpUnit    = TNULL;
 	s_bFlightThisFrame = TFALSE;
 	RestoreHiddenUnitImmediate();
 	RestoreNearClip();
