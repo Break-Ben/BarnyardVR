@@ -15,6 +15,8 @@
 #include "Input/AInputHandler.h"
 #include "FX/AParticleEffectManager.h"
 #include "Cameras/ACameraManager.h"
+#include "Cameras/ACamera.h"
+#include "VR/AVRManager.h"
 #include "Render/ARenderer.h"
 #include "Terrain/ATerrainInterface.h"
 
@@ -28,6 +30,8 @@
 #include <Core/TMemoryDebugOn.h>
 
 TOSHI_NAMESPACE_USING
+
+void CowTippingSetVRAimOrigin( const TVector4* origin );
 
 // NOTE: same as the static LerpClamped3 of APhysics.cpp (006b6700)
 static TVector4 LerpClamped3( TVector4 a_vStart, TVector4 a_vEnd, TFLOAT a_fProgress )
@@ -1042,6 +1046,20 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 	vDirection.y = CT_FLOAT( m_vCameraLocatorDir.y ) - ( rCamera.fUnk58 + m_fCameraStartPitch );
 	vDirection.Normalise();
 
+	// In VR the rendered view includes the headset pose. Use that same world
+	// ray for targeting rather than projecting through the untracked camera.
+	TMatrix44 head;
+	const TBOOL bHeadAim = AVRManager::GetSingleton().GetHeadWorldMatrix(
+	    ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head );
+	if ( bHeadAim )
+	{
+		vCameraPosition = head.AsBasisVector4( BASISVECTOR_TRANSLATION );
+		vDirection = head.AsBasisVector4( BASISVECTOR_FORWARD );
+		vDirection.Normalise();
+		vTargetOffset = TVector4( 0.0f, 0.0f, 0.0f, 1.0f );
+	}
+	CowTippingSetVRAimOrigin( bHeadAim ? &vCameraPosition : TNULL );
+
 	// The reticle is 10 units in front of the slingshot
 	TVector4 vOffset;
 	vOffset.Multiply( vDirection, 10.0f );
@@ -1081,7 +1099,13 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 
 	TVector4 vRayOrigin;
 	TVector4 vRayDirection;
-	ARenderer::GetSingleton()->GetScreenRay( ACameraManager::GetSingleton()->GetCurrentCamera(), vScreenPosition, vRayOrigin, vRayDirection );
+	if ( bHeadAim )
+	{
+		vRayOrigin = vCameraPosition;
+		vRayDirection = vDirection;
+	}
+	else
+		ARenderer::GetSingleton()->GetScreenRay( ACameraManager::GetSingleton()->GetCurrentCamera(), vScreenPosition, vRayOrigin, vRayDirection );
 
 	vOffset.Multiply( vRayDirection, 0.5f );
 	vRayOrigin.x = vOffset.x + vRayOrigin.x;
@@ -1228,7 +1252,7 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 			// Moves the target towards the locked position
 			TVector4 vDelta;
 			vDelta.Substract( rvTarget, vOldTarget );
-			vOffset.Multiply( vDelta, m_fAimLockFollowSpeed );
+			vOffset.Multiply( vDelta, bHeadAim ? 1.0f : m_fAimLockFollowSpeed );
 			rvTarget.Add( vOffset, vOldTarget );
 
 			if ( m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 2 ].fTime > 0.0f )
@@ -1248,48 +1272,51 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 		}
 		else
 		{
-			// Not locked, find the closest thing to the aiming ray
-			TFLOAT   fClosest = 0.0f;
-			TINT     iEnemy   = FindEnemyNearRay( &vRayOrigin.x, &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
-			TVector4 vPosition;
-
-			if ( iEnemy )
+			// The legacy proximity helpers reconstruct their ray from the untracked camera.
+			if ( !bHeadAim )
 			{
-				GetUnitTargetPos( &vPosition, iEnemy );
-				fRayLength = TVector4::Distance( vRayOrigin, vPosition );
-			}
-			else
-			{
-				TINT iKid = FindKidNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
+				// Not locked, find the closest thing to the aiming ray
+				TFLOAT   fClosest = 0.0f;
+				TINT     iEnemy   = FindEnemyNearRay( &vRayOrigin.x, &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
+				TVector4 vPosition;
 
-				if ( iKid )
+				if ( iEnemy )
 				{
-					GetUnit13268TargetPos( TREINTERPRETCAST( TINT, &vPosition ), TREINTERPRETCAST( void**, iKid ) );
+					GetUnitTargetPos( &vPosition, iEnemy );
 					fRayLength = TVector4::Distance( vRayOrigin, vPosition );
 				}
 				else
 				{
-					void* pRecord = FindCrateNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
+					TINT iKid = FindKidNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
 
-					if ( pRecord )
+					if ( iKid )
 					{
-						GetCratePos( &vPosition, TREINTERPRETCAST( TINT, pRecord ) );
+						GetUnit13268TargetPos( TREINTERPRETCAST( TINT, &vPosition ), TREINTERPRETCAST( void**, iKid ) );
 						fRayLength = TVector4::Distance( vRayOrigin, vPosition );
 					}
 					else
 					{
-						Coin* pObjectRecord = TSTATICCAST( Coin, FindObjectNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fCoinNearRayRadius ) );
+						void* pRecord = FindCrateNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
 
-						if ( pObjectRecord )
+						if ( pRecord )
 						{
-							pObjectRecord->pObject->GetModelInstance()->GetPosition( vPosition );
+							GetCratePos( &vPosition, TREINTERPRETCAST( TINT, pRecord ) );
 							fRayLength = TVector4::Distance( vRayOrigin, vPosition );
+						}
+						else
+						{
+							Coin* pObjectRecord = TSTATICCAST( Coin, FindObjectNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fCoinNearRayRadius ) );
+
+							if ( pObjectRecord )
+							{
+								pObjectRecord->pObject->GetModelInstance()->GetPosition( vPosition );
+								fRayLength = TVector4::Distance( vRayOrigin, vPosition );
+							}
 						}
 					}
 				}
 			}
-
-			vOffset.Multiply( vRayDirection, fRayLength );
+			vOffset.Multiply( vRayDirection, bHeadAim ? TMath::Min( fRayLength, m_fAimLockDistance ) : fRayLength );
 			rvTarget.Add( vRayOrigin, vOffset );
 
 			if ( m_iUnk_13400 != 0 )
@@ -1339,6 +1366,15 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 			pReticle->SetMode( ATargetReticle::MODE_IDLE );
 		}
 	}
+
+	if ( bHeadAim && !a_iUnk2 )
+	{
+		// Place the world reticle at the same assisted/ground-adjusted point
+		// that the launcher and the released projectile actually target.
+		m_vReticleTarget = rvTarget;
+		pReticle->SetWorldPosition( rvTarget );
+	}
+	CowTippingSetVRAimOrigin( TNULL );
 }
 
 // $Barnyard: FUNCTION 004b87a0
@@ -1417,10 +1453,17 @@ void ACowTippingMiniGameState::UpdatePlayerTransform( TFLOAT a_fUnk1, TINT a_iUn
 
 	UpdateAiming( a_fUnk1, a_iUnk2 );
 
+	TMatrix44 head;
+	if ( AVRManager::GetSingleton().GetHeadWorldMatrix( ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head ) )
+	{
+		const TVector4& forward = head.AsBasisVector4( BASISVECTOR_FORWARD );
+		rvUnk_010FC.Set( -forward.x, -forward.y, -forward.z, 1.0f );
+	}
+
 	// Smooths the movement of the target
 	TFLOAT fProgress = a_fUnk1 * 10.0f;
 
-	if ( m_bUnk_1340A )
+	if ( m_bUnk_1340A || AVRManager::GetSingleton().IsActive() )
 		fProgress = 1.0f;
 
 	rvTarget    = LerpClamped3( vOldTarget, rvTarget, fProgress );
@@ -1724,7 +1767,11 @@ void ACowTippingMiniGameState::UpdatePlayerControls( TFLOAT a_fUnk1 )
 	}
 
 	if ( m_pCameraTarget != 0 )
+	{
+		if ( AVRManager::GetSingleton().IsActive() )
+			UpdatePlayerTransform( a_fUnk1, TFALSE );
 		return;
+	}
 
 	TFLOAT&   rfTimerX   = m_fAccelTimerX;
 	TFLOAT&   rfTimerY   = m_fAccelTimerY;

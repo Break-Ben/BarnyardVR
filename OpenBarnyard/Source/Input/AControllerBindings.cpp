@@ -157,10 +157,18 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 		preferences.push_back( { AInputCommand_ForwardWithUp, Pad::BUTTON_SHOULDER_RIGHT_2 } );
 		preferences.push_back( { AInputCommand_BackwardWithUp, Pad::BUTTON_SHOULDER_LEFT_2 } );
 		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } ); // handbrake
+		preferences.push_back( { AInputCommand_Trick1, Pad::BUTTON_CONTEXT_2 } ); // look back
 	}
 	// Simple activities use A for their primary action, not the
 	// combat trigger layout. These overrides precede the generic preferences.
-	if ( std::strcmp( mapName, "AGolfMinigameState" ) == 0 )
+	if ( std::strcmp( mapName, "AHoneyCollectingGame" ) == 0 )
+	{
+		preferences.push_back( { AInputCommand_Jump, Pad::BUTTON_CONTEXT_4 } ); // swat
+		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } );
+	}
+	else if ( std::strcmp( mapName, "AGateCrashMiniGameState" ) == 0 || std::strcmp( mapName, "AGateCrashMinigameState" ) == 0 )
+		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_2 } ); // swing
+	else if ( std::strcmp( mapName, "AGolfMinigameState" ) == 0 )
 	{
 		preferences.push_back( { AInputCommand_Shoot, Pad::BUTTON_CONTEXT_3 } );
 		preferences.push_back( { AInputCommand_ZoomOut, Pad::BUTTON_SHOULDER_LEFT_2 } );

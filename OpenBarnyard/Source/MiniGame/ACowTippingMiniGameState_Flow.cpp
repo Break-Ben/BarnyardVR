@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <Render/TCameraObject.h> // before the Physics headers (Opcode #defines PI)
 #include "ACowTippingMiniGameState.h"
+#include "VR/AVRManager.h"
 #include "GameInterface/ACreditsState.h"
 #include "Units/Projectiles/AProjectile.h"
 #include "AMiniGameManager.h"
@@ -666,6 +667,11 @@ TBOOL ACowTippingMiniGameState::ProcessCommand( AInputCommand a_eInputCommand, c
 				}
 				else
 				{
+					if ( AVRManager::GetSingleton().IsActive() )
+					{
+						m_fInputX = m_fMoveY = 0.0f;
+						break;
+					}
 					TFLOAT fX = a_pInputEvent->GetMagnitudeFloat( 0 );
 					TFLOAT fY = a_pInputEvent->GetMagnitudeFloat( 1 );
 

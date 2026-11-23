@@ -3,6 +3,7 @@
 #include "Locale/ALocaleManager.h"
 #include "Locale/ALocale.h"
 #include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 
 #include <GUI/T2GUITextureSectionManager.h>
 #include <GUI/T2GUIFontManager.h>
@@ -16,6 +17,9 @@
 TOSHI_NAMESPACE_USING
 
 // NOTE: these are globals in the original (never written)
+TPSTRING8_DECLARE( AStatuesMiniGameState );
+static TUINT32 s_uiPromptRevision = 0;
+
 static TFLOAT s_fKeySize    = 24.0f; // 0x007738b0, size of a key icon and height of the pose names
 static TFLOAT s_fKeyOffsetX = 96.0f; // 0x007738b4
 static TFLOAT s_fKeySpacing = 32.0f; // 0x007738b8
@@ -38,6 +42,7 @@ AStatuesHud::~AStatuesHud()
 // $Barnyard: FUNCTION 00484af0
 void AStatuesHud::Create( T2GUIElement* a_pParent )
 {
+	s_uiPromptRevision = 0;
 	m_iNumStars   = 0;
 	m_iCurrentRow = -1;
 	m_iCurrentKey = 0;
@@ -207,6 +212,19 @@ void AStatuesHud::Destroy()
 // $Barnyard: FUNCTION 00485220
 void AStatuesHud::Update( TFLOAT a_fDeltaTime )
 {
+	const TUINT32 revision = AInputPrompts::GetRevision();
+	if ( revision != s_uiPromptRevision )
+	{
+		s_uiPromptRevision = revision;
+		for ( TINT row = 0; row < NUM_ROWS; ++row )
+			for ( TINT key = 0; key < MAX_KEYS; ++key )
+			{
+				T2GUIRectangle& icon = m_aKeyRows[ row ].aKeys[ key ];
+				const TBOOL pressed = icon.GetWidth() > s_fKeySize * 1.25f;
+				SetKeyIcon( row, key, m_apRowPoses[ row ]->aKeys[ key ], pressed );
+			}
+	}
+
 	TFLOAT fStarWidth  = T2GUITextureSectionManager::GetTextureSection( "Statue_GoldStar" )->GetWidth() * 0.8f;
 	TFLOAT fStarHeight = T2GUITextureSectionManager::GetTextureSection( "Statue_GoldStar" )->GetHeight() * 0.8f;
 	TFLOAT fInvWidth   = 1.0f / fStarWidth;
@@ -432,7 +450,9 @@ void AStatuesHud::SetKeyIcon( TINT a_iRow, TINT a_iIndex, STATUESKEY a_eKey, TBO
 
 	TFLOAT fSize = fHeight * 0.25f;
 	rKey.SetDimensions( fSize, fSize );
-	rKey.SetTextureSection( T2GUITextureSectionManager::GetTextureSection( strTexSection ) );
+	static constexpr AInputCommand commands[] = { AInputCommand_Up, AInputCommand_Left, AInputCommand_Right, AInputCommand_Down };
+	if ( !AInputPrompts::SetOpenXRRectangle( rKey, TPS8( AStatuesMiniGameState ), commands[ a_eKey ] ) )
+		rKey.SetTextureSection( T2GUITextureSectionManager::GetTextureSection( strTexSection ) );
 }
 
 // $Barnyard: FUNCTION 004859f0

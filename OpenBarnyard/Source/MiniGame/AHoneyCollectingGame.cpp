@@ -169,8 +169,25 @@ static const TVector4 s_avHiveCameraPositions[ AHoneyCollectingGame::MAX_HIVES ]
 // Sets the text and the hint
 static void ShowHint( AGUI2TextBox& a_rHint, AHoneyCollectingGame::HINT& a_reHint, TINT a_iLocale, AHoneyCollectingGame::HINT a_eHint )
 {
-	ALocale::FormatInputTags( s_wszHint, TARRAYSIZE( s_wszHint ), ALocaleManager::Interface()->GetString( a_iLocale ) );
-	a_rHint.SetText( s_wszHint );
+	if ( a_eHint == AHoneyCollectingGame::HINT_COLLECT && AInputHandler::GetSingleton()->IsControllerUsed() )
+	{
+		const TWCHAR* text = L"Rotate the left stick to collect honey";
+		switch ( ALocaleManager::Interface()->GetLanguage() )
+		{
+			case ALocaleManager::Lang_German: text = L"Drehe den linken Stick, um Honig zu sammeln"; break;
+			case ALocaleManager::Lang_Italian: text = L"Ruota la levetta sinistra per raccogliere il miele"; break;
+			case ALocaleManager::Lang_Spanish: text = L"Gira el joystick izquierdo para recoger miel"; break;
+			case ALocaleManager::Lang_French: text = L"Tourne le stick gauche pour ramasser le miel"; break;
+			case ALocaleManager::Lang_Netherlandic: text = L"Draai de linker stick om honing te verzamelen"; break;
+			default: break;
+		}
+		a_rHint.SetText( text );
+	}
+	else
+	{
+		ALocale::FormatInputTags( s_wszHint, TARRAYSIZE( s_wszHint ), ALocaleManager::Interface()->GetString( a_iLocale ) );
+		a_rHint.SetText( s_wszHint );
+	}
 	a_reHint = a_eHint;
 }
 

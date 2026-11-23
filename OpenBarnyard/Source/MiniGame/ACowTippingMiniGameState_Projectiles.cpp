@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ACowTippingMiniGameState.h"
+#include "VR/AVRManager.h"
 #include "Units/Projectiles/AProjectile.h"
 #include "ARandom.h"
 #include "Animation/AAnimatableObject.h"
@@ -1130,7 +1131,7 @@ TBOOL ACowTippingMiniGameState::UpdateProjectile( Projectile* a_pProjectile, TFL
 		if ( a_pProjectile->pTarget && !a_pProjectile->pTarget->IsVisible() )
 			a_pProjectile->pTarget = TNULL;
 
-		if ( TVector4::Distance( vDestination, vPosition ) >= 1.5f )
+		if ( AVRManager::GetSingleton().IsActive() || TVector4::Distance( vDestination, vPosition ) >= 1.5f )
 		{
 			AAnimatedUnit* pTarget = a_pProjectile->pTarget;
 

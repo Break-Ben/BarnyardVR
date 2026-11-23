@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AChickenFireMinigameState.h"
+#include "Cameras/AFirstPersonCamera.h"
 #include "Animation/AAnimatableObject.h"
 #include "Animation/AModel.h"
 #include "Cameras/ACamera.h"
@@ -197,6 +198,8 @@ TBOOL AChickenFireMinigameState::OnUpdate( TFLOAT a_fDeltaTime )
 			if ( m_iCue_C3C == -1 )
 				m_iCue_C3C = ASoundManager::GetSingleton()->PlayCueEx( soundbank::LAUNCH_FLY, 0.5f, TFALSE, 0.0f, -1 );
 
+			if ( AFirstPersonCamera::IsEnabled() )
+				UpdateFlightCamera( a_fDeltaTime );
 			break;
 		}
 		case STATE_UNK_7:
@@ -511,33 +514,38 @@ void AChickenFireMinigameState::UpdateTumble( TFLOAT a_fDeltaTime )
 	if ( CheckFlight( a_fDeltaTime ) == TTRUE )
 		return;
 
-	ACamera* pCamera    = ACameraManager::GetSingleton()->GetCurrentCamera();
-	TVector4 vCameraPos = pCamera->GetMatrix().GetTranslation();
-
-	TurnCamera( pCamera, m_vPeckDir, a_fDeltaTime * 5.0f );
-
-	// Follow Peck at a distance of 3
-	TVector4 vToPeck;
-	vToPeck.Substract( m_vPeckPos, vCameraPos );
-
-	TFLOAT fDistance = vToPeck.Magnitude();
-	vToPeck.Normalise();
-
-	if ( fDistance > 3.0f )
+	if ( AFirstPersonCamera::IsEnabled() )
+		UpdateFlightCamera( a_fDeltaTime );
+	else
 	{
-		TVector4 vUp;
-		vUp.Multiply( TVector4::VEC_NEGY, 1.5f );
-		vUp.Multiply( 0.1f );
+		ACamera* pCamera    = ACameraManager::GetSingleton()->GetCurrentCamera();
+		TVector4 vCameraPos = pCamera->GetMatrix().GetTranslation();
 
-		TVector4 vOffset;
-		vOffset.Multiply( vToPeck, fDistance - 3.0f );
-		vOffset.Add( vOffset, vUp );
+		TurnCamera( pCamera, m_vPeckDir, a_fDeltaTime * 5.0f );
 
-		vCameraPos.Add( vOffset );
+		// Follow Peck at a distance of 3
+		TVector4 vToPeck;
+		vToPeck.Substract( m_vPeckPos, vCameraPos );
+
+		TFLOAT fDistance = vToPeck.Magnitude();
+		vToPeck.Normalise();
+
+		if ( fDistance > 3.0f )
+		{
+			TVector4 vUp;
+			vUp.Multiply( TVector4::VEC_NEGY, 1.5f );
+			vUp.Multiply( 0.1f );
+
+			TVector4 vOffset;
+			vOffset.Multiply( vToPeck, fDistance - 3.0f );
+			vOffset.Add( vOffset, vUp );
+
+			vCameraPos.Add( vOffset );
+		}
+
+		pCamera->GetMatrix().GetTranslation() = vCameraPos;
+		pCamera->SetFOV( 1.3089969f );
 	}
-
-	pCamera->GetMatrix().GetTranslation() = vCameraPos;
-	pCamera->SetFOV( 1.3089969f );
 
 	if ( GetPeckObject()->IsAnimationFinished( TPS8( flightTumble ) ) || m_fTimer <= 0.0f )
 	{

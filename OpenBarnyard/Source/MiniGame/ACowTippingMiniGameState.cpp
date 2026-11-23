@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <Render/TCameraObject.h>
 #include "ACowTippingMiniGameState.h"
+#include "VR/AVRManager.h"
 #include "Animation/AAnimatableObjectManager.h"
 #include "Animation/AAnimationBreakpointUnitAction.h"
 #include "Assets/AAssetLoader.h"
@@ -1041,7 +1042,9 @@ void ACowTippingMiniGameState::OnAnimationEvent( void* a_pUnk1 )
 
 	pProjectile->pObject->GetModelInstance()->SetTranslation( vPosition.AsVector3() );
 
-	pProjectile->bRecalcVelocity = TTRUE;
+	// Ordinary VR shots keep the aim captured at release. Homing powerups
+	// retain their normal target tracking.
+	pProjectile->bRecalcVelocity = !AVRManager::GetSingleton().IsActive() || pProjectile->pTarget != TNULL;
 	pProjectile->pEnemy          = 0;
 	pProjectile->bHit            = TFALSE;
 	pProjectile->iGrowType       = 6;

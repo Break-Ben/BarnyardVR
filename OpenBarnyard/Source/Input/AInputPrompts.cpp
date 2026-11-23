@@ -9,6 +9,7 @@
 #include <Input/TInputDeviceController.h>
 #include <GUI/T2GUI.h>
 #include <GUI/T2GUIFont.h>
+#include <GUI/T2GUIRectangle.h>
 #include <GUI/T2GUIFontManager.h>
 #include <GUI/T2GUIRenderer.h>
 #include <Render/TRenderInterface.h>
@@ -108,6 +109,25 @@ TBOOL Resolve( const T2GUIFont* font, TWCHAR character, T2GUIFont::InlineGlyph& 
 	return TTRUE;
 }
 } // namespace
+
+TBOOL AInputPrompts::SetOpenXRRectangle( T2GUIRectangle& rectangle, const TPString8& mapName, AInputCommand command )
+{
+	if ( !s_openXRActive || !s_material || !AInputHandler::GetSingleton()->IsControllerUsed() ) return TFALSE;
+	auto* map = AInputMapManager::GetSingleton()->FindMap( mapName );
+	if ( !map ) return TFALSE;
+	const auto doodad = map->GetCommandDoodad( command, TFALSE );
+	if ( doodad < Pad::BUTTON_DPAD_UP || doodad > Pad::VIRTSTK_DPAD ) return TFALSE;
+	const auto prompt = AVRManager::GetSingleton().GetControllerPrompt( doodad );
+	const TFLOAT width = TFLOAT( CELL_SIZE * TINT( AVRControlIcon::Count ) );
+	const TFLOAT height = TFLOAT( CELL_SIZE * FAMILY_COUNT );
+	const TFLOAT x = TFLOAT( TINT( prompt.icon ) * CELL_SIZE );
+	const TFLOAT y = TFLOAT( TINT( prompt.family ) * CELL_SIZE );
+	const TFLOAT u1 = ( x + 0.5f ) / width, u2 = ( x + CELL_SIZE - 0.5f ) / width;
+	const TFLOAT v1 = ( y + 0.5f ) / height, v2 = ( y + CELL_SIZE - 0.5f ) / height;
+	rectangle.SetMaterial( s_material );
+	rectangle.SetUVs( { u1, v1 }, { u2, v1 }, { u2, v2 }, { u1, v2 } );
+	return TTRUE;
+}
 
 void AInputPrompts::Initialise()
 {
