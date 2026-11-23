@@ -831,7 +831,10 @@ TBOOL ACowTippingMiniGameState::ProcessCommand( AInputCommand a_eInputCommand, c
 		}
 	}
 
-	if ( m_fInputX == 0.0f && m_fMoveY == 0.0f )
+	// VR aiming follows the headset while analog movement is deliberately
+	// zeroed. Idle stick events must not erase a homing target between the
+	// aim update and the player's shoot command.
+	if ( !AVRManager::GetSingleton().IsActive() && m_fInputX == 0.0f && m_fMoveY == 0.0f )
 		m_pLockUnit = 0;
 
 	return AMiniGameState::ProcessCommand( a_eInputCommand, a_pInputEvent, a_rStopEvents );

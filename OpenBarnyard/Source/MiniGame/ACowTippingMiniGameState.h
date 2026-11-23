@@ -634,10 +634,10 @@ public:
 	void        UpdateReload();                                     // also called by Flow
 	void        LoadKidSlingshot( void** a_pUnk1 );                 // also called by Flow
 	void        GetSlingshotBone( void* a_pUnk1, TFLOAT* a_pUnk2 ); // also called by Setup
-	TINT        FindEnemyNearRay( TFLOAT* a_pUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 );
-	TINT        FindKidNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 );
-	void*       FindCrateNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 );
-	void*       FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 );
+	TINT        FindEnemyNearRay( TFLOAT* a_pUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const Toshi::TVector4* a_pCamera );
+	TINT        FindKidNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const Toshi::TVector4* a_pCamera );
+	void*       FindCrateNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const Toshi::TVector4* a_pCamera );
+	void*       FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const Toshi::TVector4* a_pCamera );
 	void        UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 );
 	void        UpdatePlayerTransform( TFLOAT a_fUnk1, TINT a_iUnk2 ); // also called by Flow,Game
 	void        KidStartShooting( TINT a_iUnk1 );

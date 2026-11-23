@@ -1155,9 +1155,9 @@ TBOOL ACowTippingMiniGameState::UpdateProjectile( Projectile* a_pProjectile, TFL
 					vTarget.y -= 0.3f;
 				}
 
-				// NOTE: in retail vSteerVelocity stays uninitialised when the steer is an AInteriorSteer in MODE_STILL,
-				// but it's still passed to AimAtMovingTarget below
-				TVector4 vSteerVelocity;
+				// A stationary target has no lead velocity; the homing path below
+				// may still use this value when its steer is in MODE_STILL.
+				TVector4 vSteerVelocity = TVector4::VEC_ZERO;
 				TVector4 vTargetVelocity;
 				ASteer*  pSteer = pTarget->GetSteer();
 

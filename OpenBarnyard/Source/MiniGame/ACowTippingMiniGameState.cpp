@@ -54,8 +54,7 @@
 
 TOSHI_NAMESPACE_USING
 
-TVector4 CowTippingClampHeadAimDirection( const TVector4& direction, const TVector4& cameraForward,
-    TFLOAT maxYaw, TFLOAT locatorY, const ACowTippingMiniGameState::CameraSettings& settings );
+TVector4 CowTippingClampHeadAimDirection( const TVector4& direction, const ACowTippingMiniGameState& state );
 
 TPSTRING8_DECLARE( ACowTippingMiniGameState );
 TPSTRING8_DECLARE( Tomatoes );
@@ -1071,9 +1070,7 @@ void ACowTippingMiniGameState::OnAnimationEvent( void* a_pUnk1 )
 		TVector4 shotDirection;
 		shotDirection.Substract( shotTarget, vPosition );
 		const TFLOAT shotDistance = shotDirection.NormaliseMag();
-		const CameraSettings& camera = m_aCameraSettings[ m_aStages[ m_iStage ].iCameraSettings ];
-		shotDirection = CowTippingClampHeadAimDirection( shotDirection, m_vCameraDir,
-		    camera.fMaxYaw, m_vCameraLocatorDir.y, camera );
+		shotDirection = CowTippingClampHeadAimDirection( shotDirection, *this );
 		TVector4 shotOffset;
 		shotOffset.Multiply( shotDirection, TMath::Max( shotDistance, 5.0f ) );
 		shotTarget.Add( vPosition, shotOffset );
@@ -1084,9 +1081,10 @@ void ACowTippingMiniGameState::OnAnimationEvent( void* a_pUnk1 )
 
 	pProjectile->pObject->GetModelInstance()->SetTranslation( vPosition.AsVector3() );
 
-	// Ordinary VR shots keep the aim captured at release. Homing powerups
-	// retain their normal target tracking.
-	pProjectile->bRecalcVelocity = !AVRManager::GetSingleton().IsActive() || pProjectile->pTarget != TNULL;
+	// Preserve the captured VR free-aim shot, but retain the original one-shot
+	// leading calculation when an enemy was locked at the start of the throw.
+	pProjectile->bRecalcVelocity = !AVRManager::GetSingleton().IsActive() ||
+	    pProjectile->pTarget != TNULL || m_pThrowEnemy != TNULL;
 	pProjectile->pEnemy          = 0;
 	pProjectile->bHit            = TFALSE;
 	pProjectile->iGrowType       = 6;

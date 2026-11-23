@@ -20,6 +20,8 @@
 #include "Render/ARenderer.h"
 #include "Terrain/ATerrainInterface.h"
 
+#include <Render/TCameraObject.h>
+#include <Render/TRenderInterface.h>
 #include <Math/TMathInline.h>
 #include <Math/TMath.h>
 
@@ -750,10 +752,11 @@ void ACowTippingMiniGameState::GetSlingshotBone( void* a_pUnk1, TFLOAT* a_pUnk2 
 }
 
 // $Barnyard: FUNCTION 004b33e0
-TINT ACowTippingMiniGameState::FindEnemyNearRay( TFLOAT* a_pUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 )
+TINT ACowTippingMiniGameState::FindEnemyNearRay( TFLOAT* a_pUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const TVector4* a_pCamera )
 {
 	// Finds the enemy (Enemy) that is the closest to the aiming ray
 	const TVector4& rcOrigin = *TREINTERPRETCAST( TVector4*, a_pUnk1 );
+	const TVector4& rcCamera = a_pCamera ? *a_pCamera : m_vCameraPos;
 	TFLOAT          fClosest = a_fUnk4;
 	Enemy*          pFound   = TNULL;
 	T2GenericSList& rList    = CT_LIST( m_llActiveEnemies );
@@ -769,9 +772,9 @@ TINT ACowTippingMiniGameState::FindEnemyNearRay( TFLOAT* a_pUnk1, TFLOAT* a_pUnk
 		GetUnitTargetPos( &vPosition, TREINTERPRETCAST( TINT, pNode ) );
 
 		TVector4 vDirection;
-		vDirection.x = rcOrigin.x - m_vCameraPos.x;
-		vDirection.y = rcOrigin.y - CT_FLOAT( m_vCameraPos.y );
-		vDirection.z = rcOrigin.z - CT_FLOAT( m_vCameraPos.z );
+		vDirection.x = rcOrigin.x - rcCamera.x;
+		vDirection.y = rcOrigin.y - rcCamera.y;
+		vDirection.z = rcOrigin.z - rcCamera.z;
 		vDirection.w = rcOrigin.w;
 		vDirection.Normalise();
 
@@ -833,10 +836,11 @@ TINT ACowTippingMiniGameState::FindEnemyNearRay( TFLOAT* a_pUnk1, TFLOAT* a_pUnk
 }
 
 // $Barnyard: FUNCTION 004b37e0
-TINT ACowTippingMiniGameState::FindKidNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 )
+TINT ACowTippingMiniGameState::FindKidNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const TVector4* a_pCamera )
 {
 	// Finds the slingshot kid (Raccoon) that is the closest to the aiming ray
 	const TVector4& rcOrigin = *TREINTERPRETCAST( TVector4*, a_iUnk1 );
+	const TVector4& rcCamera = a_pCamera ? *a_pCamera : m_vCameraPos;
 	TFLOAT          fClosest = a_fUnk4;
 	Raccoon*        pFound   = TNULL;
 	T2GenericSList& rList    = CT_LIST( m_llActiveRaccoons );
@@ -849,9 +853,9 @@ TINT ACowTippingMiniGameState::FindKidNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TI
 		GetUnit13268TargetPos( TREINTERPRETCAST( TINT, &vPosition ), TREINTERPRETCAST( void**, pNode ) );
 
 		TVector4 vDirection;
-		vDirection.x = rcOrigin.x - m_vCameraPos.x;
-		vDirection.y = rcOrigin.y - CT_FLOAT( m_vCameraPos.y );
-		vDirection.z = rcOrigin.z - CT_FLOAT( m_vCameraPos.z );
+		vDirection.x = rcOrigin.x - rcCamera.x;
+		vDirection.y = rcOrigin.y - rcCamera.y;
+		vDirection.z = rcOrigin.z - rcCamera.z;
 		vDirection.w = 1.0f;
 		vDirection.Normalise();
 
@@ -902,12 +906,13 @@ TINT ACowTippingMiniGameState::FindKidNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TI
 }
 
 // $Barnyard: FUNCTION 004b3ad0
-void* ACowTippingMiniGameState::FindCrateNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 )
+void* ACowTippingMiniGameState::FindCrateNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const TVector4* a_pCamera )
 {
 	if ( CT_IsStageType23( this ) )
 		return TNULL;
 
 	const TVector4& rcOrigin = *TREINTERPRETCAST( TVector4*, a_iUnk1 );
+	const TVector4& rcCamera = a_pCamera ? *a_pCamera : m_vCameraPos;
 	Crate*          pFound   = TNULL;
 
 	Crate( *aRecords )[ NUM_CRATES_PER_GROUP ] = m_aCrates;
@@ -925,9 +930,9 @@ void* ACowTippingMiniGameState::FindCrateNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2,
 				GetCratePos( &vPosition, TREINTERPRETCAST( TINT, pRecord ) );
 
 				TVector4 vDirection;
-				vDirection.x = rcOrigin.x - m_vCameraPos.x;
-				vDirection.y = rcOrigin.y - CT_FLOAT( m_vCameraPos.y );
-				vDirection.z = rcOrigin.z - CT_FLOAT( m_vCameraPos.z );
+				vDirection.x = rcOrigin.x - rcCamera.x;
+				vDirection.y = rcOrigin.y - rcCamera.y;
+				vDirection.z = rcOrigin.z - rcCamera.z;
 				vDirection.w = 1.0f;
 				vDirection.Normalise();
 
@@ -963,12 +968,13 @@ void* ACowTippingMiniGameState::FindCrateNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2,
 }
 
 // $Barnyard: FUNCTION 004b3d70
-void* ACowTippingMiniGameState::FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4 )
+void* ACowTippingMiniGameState::FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2, TINT a_iUnk3, TFLOAT a_fUnk4, const TVector4* a_pCamera )
 {
 	if ( CT_IsStageType23( this ) )
 		return TNULL;
 
 	const TVector4& rcOrigin = *TREINTERPRETCAST( TVector4*, a_iUnk1 );
+	const TVector4& rcCamera = a_pCamera ? *a_pCamera : m_vCameraPos;
 	TFLOAT          fClosest = a_fUnk4;
 	Coin*           pFound   = TNULL;
 	Coin*           aRecords = m_aCoins;
@@ -984,9 +990,9 @@ void* ACowTippingMiniGameState::FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2
 			pRecord->pObject->GetModelInstance()->GetPosition( vPosition );
 
 			TVector4 vDirection;
-			vDirection.x = rcOrigin.x - m_vCameraPos.x;
-			vDirection.y = rcOrigin.y - CT_FLOAT( m_vCameraPos.y );
-			vDirection.z = rcOrigin.z - CT_FLOAT( m_vCameraPos.z );
+			vDirection.x = rcOrigin.x - rcCamera.x;
+			vDirection.y = rcOrigin.y - rcCamera.y;
+			vDirection.z = rcOrigin.z - rcCamera.z;
 			vDirection.w = 1.0f;
 			vDirection.Normalise();
 
@@ -1020,31 +1026,126 @@ void* ACowTippingMiniGameState::FindObjectNearRay( TINT a_iUnk1, TFLOAT* a_pUnk2
 	return pFound;
 }
 
-// Restrict the shooting ray, not the tracked view. The legacy aiming code
-// clamps its camera yaw and the slingshot's start-pitch parameter per stage.
-TVector4 CowTippingClampHeadAimDirection( const TVector4& direction, const TVector4& cameraForward,
-    TFLOAT maxYaw, TFLOAT locatorY, const ACowTippingMiniGameState::CameraSettings& settings )
+// Bounds of the legacy reticle ray, sampled over the stage's rail and pitch
+// controls. fMaxYaw limits the orbit CAMERA, not the cow's whole aim range.
+// The original also offsets the 10-unit reticle before projecting it, so the
+// bare start-pitch values alone are not the final shooting angles.
+struct CowTippingAimLimits
 {
-	const TFLOAT limit = TMath::HALF_PI - 0.05f;
-	maxYaw = TMath::Min( TMath::Abs( maxYaw ), limit );
-	const TFLOAT baseYaw = TMath::ATan2( cameraForward.x, cameraForward.z );
+	TFLOAT baseYaw, minYaw, maxYaw, minPitch, maxPitch;
+};
+
+static CowTippingAimLimits GetVRAimLimits( const ACowTippingMiniGameState& state )
+{
+	const auto& camera = state.m_aCameraSettings[ state.m_aStages[ state.m_iStage ].iCameraSettings ];
+	const TVector4& centre = state.m_vPlayerCentre;
+	const TVector4& rail = state.m_vRailDirection;
+	TVector4 base;
+	base.Substract( centre, state.m_vCameraBasePos );
+	const TFLOAT baseYaw = TMath::ATan2( base.x, base.z );
+	const TFLOAT safeLimit = TMath::HALF_PI - 0.01f;
+	CowTippingAimLimits result{ baseYaw, safeLimit, -safeLimit, safeLimit, -safeLimit };
+
+	// Use the renderer's desktop reference projection, not an OpenXR eye's
+	// asymmetric projection. The screen-space offset belongs to the original
+	// game reticle and is measured in desktop pixels.
+	TFLOAT offsetScale = 0.0f;
+	auto* renderer = ARenderer::GetSingleton();
+	auto* display = TRenderInterface::GetSingleton()->GetCurrentDisplayParams();
+	if ( renderer->GetCameraObject() && display->uiWidth && display->uiHeight )
+	{
+		const auto projection = renderer->GetCameraObject()->GetProjectionParams( TFLOAT( display->uiWidth ), TFLOAT( display->uiHeight ) );
+		if ( projection.m_Proj.y != 0.0f ) offsetScale = state.m_fReticleOffsetY / projection.m_Proj.y;
+	}
+
+	const TFLOAT pitches[] = { camera.fMinStartPitch, camera.fMaxStartPitch, camera.fStartPitch };
+	for ( TINT i = 0; i <= 8; ++i )
+	{
+		const TFLOAT railX = camera.fRailCentre - camera.fRailHalfWidth + camera.fRailHalfWidth * ( TFLOAT( i ) * 0.25f );
+		TVector4 railPosition = centre;
+		if ( TMath::Abs( rail.x ) > 0.0001f )
+		{
+			TVector4 offset;
+			offset.Multiply( rail, railX / rail.x );
+			railPosition.Add( centre, offset );
+		}
+		TFLOAT orbitYaw = railX * camera.fRailYawScale;
+		TMath::Clip( orbitYaw, -camera.fMaxYaw, camera.fMaxYaw );
+		for ( TFLOAT startPitch : pitches )
+		{
+			TMath::Clip( startPitch, camera.fMinStartPitch, camera.fMaxStartPitch );
+			TFLOAT orbitPitch = startPitch * camera.fTargetPitchScale;
+			TMath::Clip( orbitPitch, -camera.fMaxPitch, -camera.fMinPitch );
+			TVector4 orbit;
+			orbit.Substract( state.m_vCameraBasePos, centre );
+			orbit.AsVector3().RotateY( camera.fYawOffset + orbitYaw );
+			orbit.RotateAroundAxis( state.m_vCameraPitchAxis, -orbitPitch - camera.fPitchOffset );
+			TVector4 cameraPosition;
+			cameraPosition.Add( centre, orbit );
+
+			TVector4 cameraDirection( orbit.x, 0.0f, orbit.z, 0.0f );
+			cameraDirection.Normalise();
+			cameraDirection.y = -camera.fLookDownY;
+			cameraDirection.AsVector3().RotateX( orbitPitch );
+			cameraDirection.Normalise();
+			cameraDirection.Multiply( -1.0f );
+
+			TVector4 aim;
+			aim.Substract( railPosition, cameraPosition );
+			aim.y = 0.0f;
+			TVector4 offset;
+			offset.Multiply( cameraDirection, 0.5f );
+			aim.Add( offset );
+			aim.Normalise();
+			aim.y = state.m_vCameraLocatorDir.y - ( camera.fUnk58 + startPitch );
+			aim.Normalise();
+			aim.Multiply( 10.0f );
+			aim.y += state.m_vCameraLocatorPos.y - cameraPosition.y - state.m_fTargetHeight;
+
+			if ( offsetScale != 0.0f )
+			{
+				TMatrix44 matrix;
+				matrix.Identity();
+				matrix.LookAtDirection( cameraDirection, ACamera::sm_vWorldUp );
+				TVector4 screenOffset;
+				screenOffset.Multiply( matrix.AsBasisVector4( BASISVECTOR_UP ),
+				    TVector4::DotProduct3( aim, cameraDirection ) * offsetScale );
+				aim.Add( screenOffset );
+			}
+			TFLOAT yaw = TMath::ATan2( aim.x, aim.z ) - baseYaw;
+			while ( yaw > TMath::PI ) yaw -= TMath::TWO_PI;
+			while ( yaw < -TMath::PI ) yaw += TMath::TWO_PI;
+			TFLOAT pitch = TMath::ATan2( aim.y, TMath::Sqrt( aim.x * aim.x + aim.z * aim.z ) );
+			TMath::Clip( yaw, -safeLimit, safeLimit );
+			TMath::Clip( pitch, -safeLimit, safeLimit );
+			result.minYaw = TMath::Min( result.minYaw, yaw );
+			result.maxYaw = TMath::Max( result.maxYaw, yaw );
+			result.minPitch = TMath::Min( result.minPitch, pitch );
+			result.maxPitch = TMath::Max( result.maxPitch, pitch );
+		}
+	}
+	return result;
+}
+
+static TVector4 ClampHeadAimDirection( const TVector4& direction, const CowTippingAimLimits& limits )
+{
 	const TFLOAT horizontal = TMath::Sqrt( direction.x * direction.x + direction.z * direction.z );
-	TFLOAT yaw = horizontal > 0.0001f ? TMath::ATan2( direction.x, direction.z ) - baseYaw : 0.0f;
+	TFLOAT yaw = horizontal > 0.0001f ? TMath::ATan2( direction.x, direction.z ) - limits.baseYaw : 0.0f;
 	while ( yaw > TMath::PI ) yaw -= TMath::TWO_PI;
 	while ( yaw < -TMath::PI ) yaw += TMath::TWO_PI;
-	TMath::Clip( yaw, -maxYaw, maxYaw );
-
-	const TFLOAT pitchA = TMath::ATan2( locatorY - settings.fUnk58 - settings.fMinStartPitch, 1.0f );
-	const TFLOAT pitchB = TMath::ATan2( locatorY - settings.fUnk58 - settings.fMaxStartPitch, 1.0f );
-	const TFLOAT minPitch = TMath::Max( -limit, TMath::Min( pitchA, pitchB ) );
-	const TFLOAT maxPitch = TMath::Min( limit, TMath::Max( pitchA, pitchB ) );
+	TMath::Clip( yaw, limits.minYaw, limits.maxYaw );
 	TFLOAT pitch = TMath::ATan2( direction.y, horizontal );
-	TMath::Clip( pitch, minPitch, maxPitch );
-
+	TMath::Clip( pitch, limits.minPitch, limits.maxPitch );
 	TFLOAT sinYaw, cosYaw, sinPitch, cosPitch;
-	TMath::SinCos( baseYaw + yaw, sinYaw, cosYaw );
+	TMath::SinCos( limits.baseYaw + yaw, sinYaw, cosYaw );
 	TMath::SinCos( pitch, sinPitch, cosPitch );
 	return TVector4( sinYaw * cosPitch, sinPitch, cosYaw * cosPitch, 0.0f );
+}
+
+// Used by the explosive-tomato release path as well as the live aim.
+TVector4 CowTippingClampHeadAimDirection( const TVector4& direction, const ACowTippingMiniGameState& state )
+{
+	return ClampHeadAimDirection( direction, GetVRAimLimits( state ) );
 }
 
 // $Barnyard: FUNCTION 004b6170
@@ -1078,11 +1179,11 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 	TMatrix44 head;
 	const TBOOL bHeadAim = AVRManager::GetSingleton().GetHeadWorldMatrix(
 	    ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head );
+	const CowTippingAimLimits aimLimits = bHeadAim ? GetVRAimLimits( *this ) : CowTippingAimLimits{};
 	if ( bHeadAim )
 	{
 		vCameraPosition = head.AsBasisVector4( BASISVECTOR_TRANSLATION );
-		vDirection = CowTippingClampHeadAimDirection( head.AsBasisVector4( BASISVECTOR_FORWARD ), m_vCameraDir,
-		    rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+		vDirection = ClampHeadAimDirection( head.AsBasisVector4( BASISVECTOR_FORWARD ), aimLimits );
 		// GetSlingshotBone uses the negative of this direction.
 		m_vAimDirection.Set( -vDirection.x, -vDirection.y, -vDirection.z, 1.0f );
 		vTargetOffset = TVector4( 0.0f, 0.0f, 0.0f, 1.0f );
@@ -1294,6 +1395,15 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 			vOffset.Multiply( vDelta, bHeadAim ? 1.0f : m_fAimLockFollowSpeed );
 			rvTarget.Add( vOffset, vOldTarget );
 
+			// Power-up 2 picks a target automatically, even when it is nowhere
+			// near the aim ray. Keep that target for the homing shot and target
+			// indicators, but don't turn the cow toward it before firing.
+			if ( bHeadAim && m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 2 ].fTime > 0.0f && !m_bUnk_13408 )
+			{
+				vOffset.Multiply( vRayDirection, fHeadAimDistance );
+				rvTarget.Add( vRayOrigin, vOffset );
+			}
+
 			if ( m_aPlayers[ m_iCurrentPlayer ].aPowerUps[ 2 ].fTime > 0.0f )
 			{
 				m_pLockUnit       = TREINTERPRETCAST( AAnimatedUnit*, iLockUnit );
@@ -1311,51 +1421,62 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 		}
 		else
 		{
-			// The legacy proximity helpers reconstruct their ray from the untracked camera.
-			if ( !bHeadAim )
+			// Restore the original near-ray depth assist, reconstructing its ray
+			// from the tracked head when VR is active.
+			TBOOL bNearTarget = TFALSE;
 			{
 				// Not locked, find the closest thing to the aiming ray
 				TFLOAT   fClosest = 0.0f;
-				TINT     iEnemy   = FindEnemyNearRay( &vRayOrigin.x, &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
+				TINT     iEnemy   = FindEnemyNearRay( &vRayOrigin.x, &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance, bHeadAim ? &vCameraPosition : TNULL );
 				TVector4 vPosition;
 
 				if ( iEnemy )
 				{
 					GetUnitTargetPos( &vPosition, iEnemy );
 					fRayLength = TVector4::Distance( vRayOrigin, vPosition );
+					bNearTarget = TTRUE;
 				}
 				else
 				{
-					TINT iKid = FindKidNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
+					TINT iKid = FindKidNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance, bHeadAim ? &vCameraPosition : TNULL );
 
 					if ( iKid )
 					{
 						GetUnit13268TargetPos( TREINTERPRETCAST( TINT, &vPosition ), TREINTERPRETCAST( void**, iKid ) );
 						fRayLength = TVector4::Distance( vRayOrigin, vPosition );
+						bNearTarget = TTRUE;
 					}
 					else
 					{
-						void* pRecord = FindCrateNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance );
+						void* pRecord = FindCrateNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fAimLockDistance, bHeadAim ? &vCameraPosition : TNULL );
 
 						if ( pRecord )
 						{
 							GetCratePos( &vPosition, TREINTERPRETCAST( TINT, pRecord ) );
 							fRayLength = TVector4::Distance( vRayOrigin, vPosition );
+							bNearTarget = TTRUE;
 						}
 						else
 						{
-							Coin* pObjectRecord = TSTATICCAST( Coin, FindObjectNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fCoinNearRayRadius ) );
+							Coin* pObjectRecord = TSTATICCAST( Coin, FindObjectNearRay( TREINTERPRETCAST( TINT, &vRayOrigin ), &fClosest, CT_FLOAT_BITS( m_fNearRayRadius ), m_fCoinNearRayRadius, bHeadAim ? &vCameraPosition : TNULL ) );
 
 							if ( pObjectRecord )
 							{
 								pObjectRecord->pObject->GetModelInstance()->GetPosition( vPosition );
 								fRayLength = TVector4::Distance( vRayOrigin, vPosition );
+								bNearTarget = TTRUE;
 							}
 						}
 					}
 				}
 			}
-			vOffset.Multiply( vRayDirection, bHeadAim ? fHeadAimDistance : fRayLength );
+			TFLOAT aimDistance = fRayLength;
+			if ( bHeadAim )
+			{
+				aimDistance = bNearTarget && fRayLength > fMuzzleDistance + 0.5f ? fRayLength : fHeadAimDistance;
+				if ( bHeadTerrainHit ) aimDistance = TMath::Min( aimDistance, fHeadAimDistance );
+			}
+			vOffset.Multiply( vRayDirection, aimDistance );
 			rvTarget.Add( vRayOrigin, vOffset );
 
 			if ( m_iUnk_13400 != 0 )
@@ -1416,8 +1537,7 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 		const TFLOAT distance = toTarget.NormaliseMag();
 		if ( distance > 0.0001f )
 		{
-			const TVector4 limited = CowTippingClampHeadAimDirection( toTarget, m_vCameraDir,
-			    rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+			const TVector4 limited = ClampHeadAimDirection( toTarget, aimLimits );
 			vOffset.Multiply( limited, distance );
 			rvTarget.Add( vCameraPosition, vOffset );
 		}
@@ -1427,23 +1547,12 @@ void ACowTippingMiniGameState::UpdateAiming( TFLOAT a_fUnk1, TINT a_iUnk2 )
 		TVector4 fromMuzzle;
 		fromMuzzle.Substract( rvTarget, vBonePosition );
 		const TFLOAT muzzleRange = fromMuzzle.NormaliseMag();
-		const TVector4 limitedMuzzle = CowTippingClampHeadAimDirection( muzzleRange > 0.0001f ? fromMuzzle : vDirection,
-		    m_vCameraDir, rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+		const TVector4 limitedMuzzle = ClampHeadAimDirection( muzzleRange > 0.0001f ? fromMuzzle : vDirection, aimLimits );
 		vOffset.Multiply( limitedMuzzle, TMath::Max( muzzleRange, 5.0f ) );
 		rvTarget.Add( vBonePosition, vOffset );
 		// Place the world reticle at the point the launcher and shot target.
 		m_vReticleTarget = rvTarget;
-		// Pull the indicator slightly toward the viewer so a terrain impact
-		// does not put the world-space ring inside the collision surface.
-		TVector4 reticlePosition = rvTarget;
-		TVector4 towardView;
-		towardView.Substract( vCameraPosition, rvTarget );
-		if ( towardView.NormaliseMag() > 0.25f )
-		{
-			vOffset.Multiply( towardView, 0.25f );
-			reticlePosition.Add( rvTarget, vOffset );
-		}
-		pReticle->SetWorldPosition( reticlePosition );
+		pReticle->SetWorldPosition( rvTarget );
 	}
 	CowTippingSetVRAimOrigin( TNULL );
 }
@@ -1592,7 +1701,7 @@ void ACowTippingMiniGameState::UpdatePlayerTransform( TFLOAT a_fUnk1, TINT a_iUn
 		// The launcher's model faces opposite its shooting direction. Its
 		// ballistic/recoil orientation must not flip past the aim limits either.
 		TVector4 forward( -vAim.x, -vAim.y, -vAim.z, 0.0f );
-		forward = CowTippingClampHeadAimDirection( forward, m_vCameraDir, rCamera.fMaxYaw, m_vCameraLocatorDir.y, rCamera );
+		forward = CowTippingClampHeadAimDirection( forward, *this );
 		vAim.Set( -forward.x, -forward.y, -forward.z, 1.0f );
 	}
 	m_pLauncher->GetModelInstance()->SetDirection( vAim );
