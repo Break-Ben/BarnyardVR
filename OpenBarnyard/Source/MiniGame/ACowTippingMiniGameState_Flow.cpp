@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <Render/TCameraObject.h> // before the Physics headers (Opcode #defines PI)
 #include "ACowTippingMiniGameState.h"
+#include "VR/AVRManager.h"
 #include "GameInterface/ACreditsState.h"
 #include "Units/Projectiles/AProjectile.h"
 #include "AMiniGameManager.h"
@@ -598,6 +599,13 @@ TBOOL ACowTippingMiniGameState::ProcessCommand( AInputCommand a_eInputCommand, c
 		switch ( a_eInputCommand )
 		{
 			case AInputCommand_Move:
+				// In VR neither a mouse nor a stick should steer the camera rig.
+				// Physical head tracking still controls the view independently.
+				if ( AVRManager::GetSingleton().IsActive() )
+				{
+					m_fInputX = m_fMoveY = m_fMouseX = m_fMouseY = 0.0f;
+					break;
+				}
 				if ( a_pInputEvent->GetSource()->IsA( &TGetClass( TInputDeviceMouse ) ) )
 				{
 					TFLOAT fSensitivity = AOptions::GetSingleton()->GetSensitivity();
@@ -823,7 +831,10 @@ TBOOL ACowTippingMiniGameState::ProcessCommand( AInputCommand a_eInputCommand, c
 		}
 	}
 
-	if ( m_fInputX == 0.0f && m_fMoveY == 0.0f )
+	// VR aiming follows the headset while analog movement is deliberately
+	// zeroed. Idle stick events must not erase a homing target between the
+	// aim update and the player's shoot command.
+	if ( !AVRManager::GetSingleton().IsActive() && m_fInputX == 0.0f && m_fMoveY == 0.0f )
 		m_pLockUnit = 0;
 
 	return AMiniGameState::ProcessCommand( a_eInputCommand, a_pInputEvent, a_rStopEvents );

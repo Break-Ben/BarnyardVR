@@ -48,6 +48,7 @@ public:
 
 	// $Barnyard: FUNCTION 006c3960
 	T2GUIMaterial* GetMaterial() const { return m_pMaterial; }
+	void SetMaterial( T2GUIMaterial* a_pMaterial ) { m_pMaterial = a_pMaterial; }
 
 protected:
 	T2GUIMaterial* m_pMaterial;

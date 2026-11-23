@@ -26,6 +26,7 @@
 #include "HUD/AInteractionHudElement.h"
 #include "Input/AInputMapManager.h"
 #include "Input/AInputHandler.h"
+#include "Input/AInputPrompts.h"
 #include "Locale/ALocale.h"
 #include "Locale/ALocaleManager.h"
 #include "Player/APlayerManager.h"
@@ -166,10 +167,75 @@ static const TVector4 s_avHiveCameraPositions[ AHoneyCollectingGame::MAX_HIVES ]
 	TVector4( 2.37f, -3.34f, -9.05f, 1.0f ),
 };
 
+// Replace the four directional controls in the collecting instruction, not
+// the separate interaction hint shown before the player starts collecting.
+static TBOOL CollapseCollectDirections( TWCHAR* text, TWCHAR stick )
+{
+	TINT start = -1, mask = 0;
+	for ( TINT i = 0; text[ i ]; ++i )
+	{
+		const AInputCommand command = AInputPrompts::GetTokenCommand( text[ i ] );
+		TINT direction = 0;
+		switch ( command )
+		{
+			case AInputCommand_Up: case AInputCommand_Forward: case AInputCommand_ForwardWithUp:
+			case AInputCommand_LookUp: case AInputCommand_LookUpWithUp: direction = 1; break;
+			case AInputCommand_Down: case AInputCommand_Backward: case AInputCommand_BackwardWithUp:
+			case AInputCommand_LookDown: case AInputCommand_LookDownWithUp: direction = 2; break;
+			case AInputCommand_Left: case AInputCommand_LeftWithUp:
+			case AInputCommand_LookLeft: case AInputCommand_LookLeftWithUp: direction = 4; break;
+			case AInputCommand_Right: case AInputCommand_RightWithUp:
+			case AInputCommand_LookRight: case AInputCommand_LookRightWithUp: direction = 8; break;
+			default: break;
+		}
+		if ( direction )
+		{
+			if ( start < 0 ) start = i;
+			mask |= direction;
+			if ( mask == 15 )
+			{
+				text[ start ] = stick;
+				TINT dst = start + 1, src = i + 1;
+				do { text[ dst++ ] = text[ src ]; } while ( text[ src++ ] );
+				return TTRUE;
+			}
+		}
+		else if ( command != AInputCommand_Unknown || text[ i ] == L'\n' )
+		{
+			start = -1;
+			mask = 0;
+		}
+	}
+	return TFALSE;
+}
+
 // Sets the text and the hint
 static void ShowHint( AGUI2TextBox& a_rHint, AHoneyCollectingGame::HINT& a_reHint, TINT a_iLocale, AHoneyCollectingGame::HINT a_eHint )
 {
 	ALocale::FormatInputTags( s_wszHint, TARRAYSIZE( s_wszHint ), ALocaleManager::Interface()->GetString( a_iLocale ) );
+	if ( a_eHint == AHoneyCollectingGame::HINT_STOP && AInputHandler::GetSingleton()->IsControllerUsed() )
+	{
+		const TWCHAR stick = AInputPrompts::GetLeftStickToken();
+		if ( stick && !CollapseCollectDirections( s_wszHint, stick ) )
+		{
+			// If a locale uses a different tag layout, still show the actual stick
+			// rather than a list of unrelated or unavailable directional controls.
+			const TWCHAR* prefix = L"Rotate ";
+			switch ( ALocaleManager::Interface()->GetLanguage() )
+			{
+				case ALocaleManager::Lang_German: prefix = L"Drehe "; break;
+				case ALocaleManager::Lang_Italian: prefix = L"Ruota "; break;
+				case ALocaleManager::Lang_Spanish: prefix = L"Gira "; break;
+				case ALocaleManager::Lang_French: prefix = L"Tourne "; break;
+				case ALocaleManager::Lang_Netherlandic: prefix = L"Draai "; break;
+				default: break;
+			}
+			TStringManager::String16CopySafe( s_wszHint, prefix, TARRAYSIZE( s_wszHint ) );
+			const TSIZE length = TStringManager::String16Length( s_wszHint );
+			s_wszHint[ length ] = stick;
+			s_wszHint[ length + 1 ] = 0;
+		}
+	}
 	a_rHint.SetText( s_wszHint );
 	a_reHint = a_eHint;
 }
@@ -2523,11 +2589,15 @@ void AHoneyCollectingGame::UpdateHint()
 
 	if ( m_bCollecting == TTRUE )
 	{
-		if ( m_eHint != HINT_STOP )
+		static TUINT32 s_uiCollectPromptRevision = 0;
+		const TUINT32 revision = AInputPrompts::GetRevision();
+		if ( m_eHint != HINT_STOP || revision != s_uiCollectPromptRevision )
 		{
-			m_oHint.Show();
+			s_uiCollectPromptRevision = revision;
 			ShowHint( m_oHint, m_eHint, LOCALE_HINT_STOP, HINT_STOP );
 		}
+		// An interaction prompt may have temporarily hidden the same hint.
+		m_oHint.Show();
 
 		return;
 	}

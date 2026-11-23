@@ -36,6 +36,11 @@
 
 TOSHI_NAMESPACE_USING
 
+// Scoped to the player's aim calculation. Projectile collision checks continue
+// to use the original camera/position rules and do not query OpenXR per target.
+static thread_local const TVector4* s_pVRAimOrigin = TNULL;
+void CowTippingSetVRAimOrigin( const TVector4* origin ) { s_pVRAimOrigin = origin; }
+
 TPSTRING8_DECLARE( yuk );
 TPSTRING8_DECLARE( midyuk );
 TPSTRING8_DECLARE( endyuk );
@@ -333,8 +338,9 @@ TBOOL ACowTippingMiniGameState::IsTargetInAim( void* a_pUnk1, TFLOAT* a_pUnk2, T
 	const TVector4& rcDirection = *TSTATICCAST( const TVector4, a_pUnk1 );
 	const TVector4& rcPosition  = *TREINTERPRETCAST( const TVector4*, a_pUnk2 );
 	const TVector4& rcTarget    = *TREINTERPRETCAST( const TVector4*, a_pUnk3 );
-	const TVector4& rcCamera    = m_vCameraPos;
-	TBOOL           bXZOnly     = *TREINTERPRETCAST( TUINT8*, &a_fUnk7 ) != 0;
+	TBOOL           bXZOnly  = *TREINTERPRETCAST( TUINT8*, &a_fUnk7 ) != 0;
+	const TBOOL     bHeadAim = s_pVRAimOrigin != TNULL && !bXZOnly;
+	const TVector4& rcCamera = bHeadAim ? *s_pVRAimOrigin : m_vCameraPos;
 
 	TVector4 vecToTarget;
 	vecToTarget.Substract( rcTarget, rcCamera );
@@ -384,7 +390,7 @@ TBOOL ACowTippingMiniGameState::IsTargetInAim( void* a_pUnk1, TFLOAT* a_pUnk2, T
 		{
 			TFLOAT fDist = TMath::Sqrt( fDistSq );
 
-			if ( IsPowerUpActive( 2 ) )
+			if ( IsPowerUpActive( 2 ) && !bHeadAim )
 			{
 				// Has to be visible
 				TRenderContext* pRenderContext = TRenderInterface::GetSingleton()->GetCurrentContext();
@@ -403,7 +409,7 @@ TBOOL ACowTippingMiniGameState::IsTargetInAim( void* a_pUnk1, TFLOAT* a_pUnk2, T
 			TFLOAT fRayLength = vecRay.NormaliseMag();
 
 			TVector4 vecOrigin = rcCamera;
-			vecOrigin.y -= 0.7f;
+			if ( !bHeadAim ) vecOrigin.y -= 0.7f;
 
 			if ( !ATerrainInterface::GetSingleton()->CollideRay( vecOrigin, vecRay, fRayLength, TCollisionCommon::TOSHICGROUPFLAG_NONE, TTRUE ) )
 			{

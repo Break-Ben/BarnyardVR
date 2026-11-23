@@ -234,7 +234,7 @@ void AChickenFireMinigameState::UpdateFlightCamera( TFLOAT a_fDeltaTime )
 {
 	ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
 
-	if ( AFirstPersonCamera::IsEnabled() && ( m_eState == STATE_FLYING || m_eState == STATE_DIVE ) )
+	if ( AFirstPersonCamera::IsEnabled() && ( m_eState == STATE_TUMBLE || m_eState == STATE_FLYING || m_eState == STATE_DIVE ) )
 	{
 		AUnit*   pPeck = GetPeckUnit();
 		TVector4 vForward( m_vPeckDir.x, m_vPeckDir.y, m_vPeckDir.z, 1.0f );

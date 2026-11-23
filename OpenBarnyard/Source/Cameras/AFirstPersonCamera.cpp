@@ -794,12 +794,14 @@ void AFirstPersonCamera::ComputeCarCockpit( AUnitCarChaseCar* a_pCar, TBOOL a_bL
 
 	if ( rcBodyUp.y > 0.25f )
 	{
-		TMatrix44::TransformVector( a_rOutEyePos, matBody, s_vCarEyeOffset );
+		TVector4 vRaisedEyeOffset = s_vCarEyeOffset;
+		vRaisedEyeOffset.y -= 0.12f;
+		TMatrix44::TransformVector( a_rOutEyePos, matBody, vRaisedEyeOffset );
 		a_rOutEyePos.w = 1.0f;
 	}
 	else
 	{
-		a_rOutEyePos.Set( rcBodyPos.x, rcBodyPos.y + s_vCarEyeOffset.y, rcBodyPos.z, 1.0f );
+		a_rOutEyePos.Set( rcBodyPos.x, rcBodyPos.y + s_vCarEyeOffset.y - 0.12f, rcBodyPos.z, 1.0f );
 	}
 
 	TVector4 vFlatFwd;
