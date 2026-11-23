@@ -11,11 +11,6 @@
 #include "GameInterface/AGameStateController.h"
 #include "UnitMovement/Steering/ABikeSteer.h"
 #include "UnitMovement/Steering/AThrowItemSteer.h"
-#include "Physics/APhysicsBike.h"
-
-#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
-#  include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
-#endif
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -26,32 +21,6 @@
 TOSHI_NAMESPACE_USING
 
 TPSTRING8_DECLARE( ASimState );
-
-namespace
-{
-constexpr TUINT32 VR_PEDAL_ACCELERATOR = 1u << 0;
-constexpr TUINT32 VR_PEDAL_BRAKE       = 1u << 1;
-
-TBOOL IsOpenXRPedalEvent( const TInputInterface::InputEvent* a_pEvent )
-{
-#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
-	return a_pEvent->GetSource()->IsA( &TGetClass( TInputOpenXRDeviceController ) );
-#else
-	(void)a_pEvent;
-	return TFALSE;
-#endif
-}
-
-void AccumulateVRPedal( TUINT32& a_rPedals, TUINT32 a_uiPedal )
-{
-	// Updates can be skipped while input is still processed. Never combine
-	// presses from different input frames into a simultaneous press.
-	const TUINT32 uiFrame = g_oSystemManager.GetFrameCount() << 2;
-	if ( ( a_rPedals & ~3u ) != uiFrame )
-		a_rPedals = uiFrame;
-	a_rPedals |= a_uiPedal;
-}
-}
 
 // NOTE: GetClass 0058b490, CreateObject 0058b4c0, CreateObjectInPlace 0058b560
 TDEFINE_CLASS( ABikeControlComponent );
@@ -68,7 +37,7 @@ ABikeControlComponent::ABikeControlComponent()
 	m_bTrickLeft   = TFALSE;
 	m_bTrickRight  = TFALSE;
 	m_bTrick       = TFALSE;
-	m_uiVRPedals   = 0;
+	m_iUnk34       = 0;
 	m_bBoost       = TFALSE;
 	m_iUnk3C       = 0;
 	m_fPickUpTimer = 5.0f;
@@ -85,13 +54,6 @@ void ABikeControlComponent::UpdateAI( TFLOAT a_fDeltaTime )
 {
 	ABikeSteer* pSteer = TSTATICCAST( ABikeSteer, GetOwner()->GetSteer() );
 
-	// The legacy signed z input can express throttle OR brake, not both.
-	// Preserve the two OpenXR pedal commands independently when both arrive in
-	// this frame, regardless of their event order.
-	const TBOOL bBothVRPedals = ( m_uiVRPedals & ( VR_PEDAL_ACCELERATOR | VR_PEDAL_BRAKE ) ) == ( VR_PEDAL_ACCELERATOR | VR_PEDAL_BRAKE );
-	if ( bBothVRPedals )
-		m_vecInput.z = 1.0f;
-
 	if ( m_bBoost == TTRUE && m_vecInput.z > 0.0f )
 		m_vecInput.z = 2.0f;
 
@@ -99,10 +61,7 @@ void ABikeControlComponent::UpdateAI( TFLOAT a_fDeltaTime )
 	TMath::Clip( m_vecInput.y, -1.0f, 1.0f );
 
 	pSteer->SetDesiredVelocity( m_vecInput );
-	if ( bBothVRPedals && !pSteer->IsStopped() )
-		pSteer->GetPhysics()->SetBrake( 1.0f );
 
-	m_uiVRPedals = 0;
 	m_vecInput   = TVector4::VEC_ZERO;
 	m_vecInput.w = 0.0f;
 
@@ -173,14 +132,10 @@ TBOOL ABikeControlComponent::ProcessCommand( AInputCommand a_eCommand, const TIn
 			return TTRUE;
 		case AInputCommand_Brake:
 			a_pEvent->StartRepeat( 0.0f, 0.0f );
-			if ( IsOpenXRPedalEvent( a_pEvent ) )
-				AccumulateVRPedal( m_uiVRPedals, VR_PEDAL_BRAKE );
 			m_vecInput.z = -1.0f;
 			return TTRUE;
 		case AInputCommand_Accelerator:
 			a_pEvent->StartRepeat( 0.0f, 0.0f );
-			if ( IsOpenXRPedalEvent( a_pEvent ) )
-				AccumulateVRPedal( m_uiVRPedals, VR_PEDAL_ACCELERATOR );
 			m_vecInput.z = 1.0f;
 			return TTRUE;
 		case AInputCommand_Bell:
@@ -252,7 +207,6 @@ TBOOL ABikeControlComponent::ProcessCommand( AInputCommand a_eCommand, const TIn
 // $Barnyard: FUNCTION 0058b4b0
 void ABikeControlComponent::OnDisable()
 {
-	m_uiVRPedals = 0;
 	m_bBoost = TFALSE;
 	AControlComponent::OnDisable();
 }
