@@ -172,6 +172,26 @@ TFLOAT TInputOpenXRDeviceController::GetAxisFloat( Doodad a_iDoodad, TINT a_iAxi
 	return 0.0f;
 }
 
+void TInputOpenXRDeviceController::GetRadialStick( Doodad a_iDoodad, TFLOAT& a_rfX, TFLOAT& a_rfY ) const
+{
+	constexpr TFLOAT kStickDeadzone = 7500.0f / 32000.0f;
+	a_rfX = GetAxisFloat2( a_iDoodad, 0 );
+	a_rfY = GetAxisFloat2( a_iDoodad, 1 );
+
+	const TFLOAT fMagnitude = std::sqrt( a_rfX * a_rfX + a_rfY * a_rfY );
+	if ( fMagnitude <= kStickDeadzone )
+	{
+		a_rfX = 0.0f;
+		a_rfY = 0.0f;
+		return;
+	}
+
+	const TFLOAT fAdjustedMagnitude = std::min( ( fMagnitude - kStickDeadzone ) / ( 1.0f - kStickDeadzone ), 1.0f );
+	const TFLOAT fScale = fAdjustedMagnitude / fMagnitude;
+	a_rfX *= fScale;
+	a_rfY *= fScale;
+}
+
 TFLOAT TInputOpenXRDeviceController::GetAxisFloat2( Doodad a_iDoodad, TINT a_iAxis ) const
 {
 	if ( a_iAxis < 0 || a_iAxis > 1 )
