@@ -42,7 +42,7 @@ private:
 	TBOOL           m_bTrickLeft;   // 0x2e
 	TBOOL           m_bTrickRight;  // 0x2f
 	TBOOL           m_bTrick;       // 0x30
-	TINT            m_iUnk34;       // 0x34
+	TUINT32         m_uiVRPedals;   // 0x34, frame stamp and accumulated OpenXR accelerator/brake events
 	TBOOL           m_bBoost;       // 0x38
 	TINT            m_iUnk3C;       // 0x3c
 	TFLOAT          m_fPickUpTimer; // 0x40
