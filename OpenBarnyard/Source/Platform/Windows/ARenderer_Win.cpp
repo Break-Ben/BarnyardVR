@@ -823,7 +823,7 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 			if ( bWorldRendered )
 			{
 				ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
-				AFirstPersonCamera::SyncBeforeRender( pCamera );
+				AFirstPersonCamera::SyncBeforeRender( pCamera, a_fDeltaTime );
 
 				oCenterCamera = pCamera->GetMatrix();
 				oCenterCamera.SetTranslation( pCamera->GetMatrix().GetTranslation() );
@@ -877,7 +877,7 @@ TBOOL ARenderer::OnUpdate( TFLOAT a_fDeltaTime )
 			else if ( pRootTask->IsRenderWorld() )
 			{
 				ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
-				AFirstPersonCamera::SyncBeforeRender( pCamera );
+				AFirstPersonCamera::SyncBeforeRender( pCamera, a_fDeltaTime );
 
 				TMatrix44 oCamMatrix = pCamera->GetMatrix();
 				oCamMatrix.SetTranslation( pCamera->GetMatrix().GetTranslation() );

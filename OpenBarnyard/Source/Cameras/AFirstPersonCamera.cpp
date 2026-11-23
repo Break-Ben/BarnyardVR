@@ -6,6 +6,7 @@
 #include "AGTAStyleCameraHelper.h"
 #include "ABikePhysicsCameraHelper.h"
 #include "AOptions.h"
+#include "Helpers/ABikeManager.h"
 #include "Render/ARenderer.h"
 #include "Render/AShadowManager.h"
 #include "Animation/AAnimatableObject.h"
@@ -26,7 +27,9 @@
 #include "Physics/APhysicsCar.h"
 #include "Physics/AVehicleManager.h"
 #include "Terrain/ATerrainInterface.h"
+#include "Tasks/ARootTask.h"
 
+#include <Render/TSkeleton.h>
 #include <cmath>
 
 #ifdef TOSHI_SKU_WINDOWS
@@ -42,6 +45,7 @@
 TOSHI_NAMESPACE_USING
 
 TPSTRING8_DECLARE( base_bone );
+TPSTRING8_DECLARE( bike_origin );
 TPSTRING8_DECLARE( body_loc );
 TPSTRING8_DECLARE( c_head );
 TPSTRING8_DECLARE( cb_rlocator );
@@ -550,6 +554,82 @@ void AFirstPersonCamera::ComputePlayerEyePosition( AUnit* a_pUnit, const TVector
 	SweepCeilingClearance( vSafeStart, a_rOutEyePos );
 }
 
+// Use the same attached bike that ABikeManager samples for the final rack pose.
+static AAnimatableObject* GetRackBikeObject( AUnit* a_pRider, AAnimatableObject** a_ppRiderObject = TNULL )
+{
+	if ( !ABikeManager::IsSingletonCreated() )
+		return TNULL;
+
+	ABikeManager* pManager = ABikeManager::GetSingleton();
+	if ( !a_pRider || !pManager->IsPlayerOnBike() || pManager->GetState() != ABikeManager::STATE_GETON_RACK ||
+	     pManager->GetPlayerBike() != a_pRider || !a_pRider->IsA( &TGetClass( AAnimatedUnit ) ) )
+		return TNULL;
+
+	AAnimatableObject* pRiderObject = TSTATICCAST( AAnimatedUnit, a_pRider )->GetAnimatableObject();
+	if ( !pRiderObject || pRiderObject->GetAttachedObjects().IsEmpty() )
+		return TNULL;
+
+	if ( a_ppRiderObject )
+		*a_ppRiderObject = pRiderObject;
+	return pRiderObject->GetAttachedObjects().Begin().Get();
+}
+
+// The normal render pass updates the skeleton and attachments after the VR
+// camera has already been captured, and may cull the hidden rider. Update only
+// the rack pose before computing the camera. UpdateTime is frame-stamped, so
+// the later model update will not advance either skeleton a second time.
+static void PrepareRackBikePose( AUnit* a_pRider, TFLOAT a_fDeltaTime )
+{
+	AAnimatableObject* pRiderObject = TNULL;
+	AAnimatableObject* pBikeObject  = GetRackBikeObject( a_pRider, &pRiderObject );
+	if ( !pBikeObject )
+		return;
+
+	AAnimatableObject* apObjects[] = { pRiderObject, pBikeObject };
+	for ( AAnimatableObject* pObject : apObjects )
+	{
+		AModelInstanceRef pModel = pObject->GetModelInstance();
+		if ( !pModel || !pModel->IsUpdatingSkeleton() )
+			continue;
+
+		TSkeletonInstance* pSkeleton = pModel->GetSkeletonInstance();
+		if ( !pSkeleton )
+			continue;
+
+		pSkeleton->UpdateTime( a_fDeltaTime );
+		pSkeleton->UpdateState( TTRUE );
+	}
+
+	pBikeObject->UpdateAttachmentTransform();
+}
+
+// The body is frozen until the animation ends; follow the bike_origin yaw that
+// ABikeManager will transfer to physics, without inheriting animated pitch/roll.
+static TBOOL GetRackBikeForward( AUnit* a_pRider, TVector4& a_rOutForward )
+{
+	AAnimatableObject* pBikeObject = GetRackBikeObject( a_pRider );
+	if ( !pBikeObject )
+		return TFALSE;
+
+	AModelInstanceRef pBikeModel = pBikeObject->GetModelInstance();
+	if ( !pBikeModel )
+		return TFALSE;
+
+	const TINT iBone = pBikeModel->GetBoneIndex( TPS8( bike_origin ) );
+	if ( iBone < 0 )
+		return TFALSE;
+
+	TMatrix44 mBone;
+	mBone.Identity();
+	pBikeModel->GetBoneTransform( iBone, mBone );
+	const TVector4& rcUp = mBone.AsBasisVector4( BASISVECTOR_UP );
+	if ( rcUp.x * rcUp.x + rcUp.z * rcUp.z <= 0.000001f )
+		return TFALSE;
+
+	a_rOutForward.Set( -rcUp.x, 0.0f, -rcUp.z, 1.0f );
+	return TTRUE;
+}
+
 void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a_rcVehicleTransform, TVector4& a_rOutEyePos, TVector4& a_rOutForward )
 {
 	const TVector4& rcVehiclePos = a_rcVehicleTransform.AsBasisVector4( BASISVECTOR_TRANSLATION );
@@ -576,7 +656,10 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	SweepCeilingClearance( vSafeStart, a_rOutEyePos );
 
 	TVector4 vFlatFwd;
-	NormaliseFlatSafe( rcVehicleFwd, vFlatFwd );
+	if ( GetRackBikeForward( a_pRider, vFlatFwd ) )
+		NormaliseFlatSafe( vFlatFwd, vFlatFwd );
+	else
+		NormaliseFlatSafe( rcVehicleFwd, vFlatFwd );
 
 	const TFLOAT fYaw = s_fVehicleLookYaw + s_fVehicleSnapYaw;
 	if ( fYaw != 0.0f )
@@ -1136,7 +1219,7 @@ void AFirstPersonCamera::RegisterFlightView( AUnit* a_pFlightUnit, const TVector
 	}
 }
 
-void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera )
+void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTime )
 {
 	if ( !a_pCamera || !ACameraManager::IsSingletonCreated() )
 		return;
@@ -1207,6 +1290,9 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera )
 			     TSTATICCAST( ABikeSteer, pUnit->GetSteer() )->GetPhysics() &&
 			     pCurrentHelper == s_pVehicleHelper && GetHelperTargetUnit( s_pVehicleHelper ) == pUnit )
 			{
+				if ( !ARootTask::GetSingleton()->IsPaused() && !ARootTask::GetSingleton()->IsTransitioning() )
+					PrepareRackBikePose( pUnit, a_fDeltaTime );
+
 				TMatrix44 matTransform;
 				AVehicleManager::GetInterpolatedBodyTransform(
 				    TSTATICCAST( ABikeSteer, pUnit->GetSteer() )->GetPhysics()->GetBody(),
@@ -1222,7 +1308,23 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera )
 				ApplyUnitHidden( pUnit, HIDE_RIDER, vEyePos );
 
 				if ( pCamMgr->m_bIsPosLerping && TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) > 0.25f )
+				{
+					// Keep the existing position blend, but include the freshly
+					// evaluated rack heading in its orientation blend as well.
+					if ( GetRackBikeObject( pUnit ) && pCamMgr->m_fLerpDuration > 0.0f )
+					{
+						TFLOAT fProgress = pCamMgr->m_fLerpTime / pCamMgr->m_fLerpDuration;
+						TMath::Clip( fProgress, 0.0f, 1.0f );
+						TVector4 vBlended;
+						vBlended.Lerp4( pCamMgr->m_vInitialLookDirection, vForward, fProgress );
+						if ( vBlended.MagnitudeSq() > 0.000001f )
+						{
+							vBlended.Normalise();
+							a_pCamera->LookAtDirection( vBlended );
+						}
+					}
 					return;
+				}
 
 				a_pCamera->GetMatrix().GetTranslation() = vEyePos;
 				a_pCamera->LookAtDirection( vForward );

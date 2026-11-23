@@ -120,7 +120,7 @@ public:
 	static TBOOL ShouldOverrideNearClip();
 
 	// Synchronizes the camera with post-physics unit transforms and enforces opacity / near-clip state
-	static void SyncBeforeRender( ACamera* a_pCamera );
+	static void SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTime );
 
 	// Immediately restores any unit hidden for first-person and resets the near clip
 	static void RestoreAll();
