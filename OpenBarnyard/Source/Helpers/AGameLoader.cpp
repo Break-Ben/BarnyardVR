@@ -28,6 +28,9 @@
 #include "Assets/AMaterialLibraryManager.h"
 #include "MiniGame/AMiniGameManager.h"
 #include "MiniGame/ABikeRaceMicroGame.h"
+#include "MiniGame/AStatuesMiniGameState.h"
+#include "MiniGame/ADartMiniGame.h"
+#include "VR/AVRManager.h"
 #include "Render/AShadowManager.h"
 #include "UnitMovement/PathfindingNetworks/AInteriorNetworkManager.h"
 #include "GameInterface/AFrontEndMainMenuState2.h"
@@ -1869,6 +1872,15 @@ void AGameLoader::SetTransitionToMiniGame( TPString8 a_strName, TBOOL a_bStartLo
 		SetTransitionToMiniGame( iMiniGame, a_bStartLoading );
 }
 
+// These minigames have fixed camera directions, unlike free-turning missions.
+// Align during the loading transition, without rebasing unrelated gameplay.
+static void AlignFixedMiniGameEntry( TINT a_iMiniGame )
+{
+	const TClass* pStateClass = AMiniGameManager::GetSingleton()->GetStateClass( a_iMiniGame );
+	if ( pStateClass == &TGetClass( AStatuesMiniGameState ) || pStateClass == &TGetClass( ADartMiniGame ) )
+		AVRManager::GetSingleton().AlignEntryHeading();
+}
+
 // $Barnyard: FUNCTION 004239d0
 void AGameLoader::SetTransitionToMiniGame( TINT a_iMiniGame, TBOOL a_bStartLoading )
 {
@@ -1877,6 +1889,7 @@ void AGameLoader::SetTransitionToMiniGame( TINT a_iMiniGame, TBOOL a_bStartLoadi
 	if ( a_bStartLoading )
 	{
 		g_oLoadScreen.StartLoading( 100, TTRUE );
+		AlignFixedMiniGameEntry( a_iMiniGame );
 
 		s_pPrevGameStateClass = pController->GetCurrentState()->GetClass();
 		ACameraManager::GetSingleton()->DetachCameraHelpers();
@@ -1937,6 +1950,7 @@ void AGameLoader::RestartMiniGame( TBOOL a_bImmediately )
 	}
 
 	g_oLoadScreen.StartLoading( 100, TTRUE );
+	AlignFixedMiniGameEntry( s_iCurrMiniGame );
 
 	AMiniGameManager* pMiniGameManager = AMiniGameManager::GetSingleton();
 

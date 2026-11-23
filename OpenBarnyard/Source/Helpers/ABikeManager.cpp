@@ -26,6 +26,7 @@
 #include "Cameras/ACameraManager.h"
 #include "Cameras/AGTAStyleCameraHelper.h"
 #include "Cameras/AFirstPersonCamera.h"
+#include "VR/AVRManager.h"
 #include "Animation/AModel.h"
 #include "Physics/ACollisionObjectUnit.h"
 #include "Physics/AVehicleManager.h"
@@ -1116,6 +1117,8 @@ void ABikeManager::AttachRideCamera( TFLOAT a_fTransitionTime )
 	if ( m_pPlayerBikeProxy && m_pPlayerBikeProxy->GetUnit() )
 	{
 		ACameraManager* pCameraManager = ACameraManager::GetSingleton();
+		if ( AFirstPersonCamera::IsEnabled() && pCameraManager->GetCurrentCameraHelper() != pCameraManager->GetCameraHelper( ACameraManager::CAMERAHELPER_BIKE ) )
+			AVRManager::GetSingleton().AlignEntryHeading( a_fTransitionTime );
 		pCameraManager->GetCameraHelper( ACameraManager::CAMERAHELPER_BIKE )->SetTarget( m_pPlayerBikeProxy );
 
 		if ( a_fTransitionTime > 0.0f )

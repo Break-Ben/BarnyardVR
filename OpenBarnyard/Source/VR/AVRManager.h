@@ -74,6 +74,10 @@ public:
 	// recentering, coordinate conversion and yaw-only rig as the rendered views.
 	TBOOL GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TMatrix44& a_rOutHead ) const;
 
+	// Align the rig's forward and fixed UI with the current physical heading.
+	// A nonzero duration blends the world yaw during a visible camera handoff.
+	void AlignEntryHeading( TFLOAT a_fBlendSeconds = 0.0f );
+
 	// The camera matrix is the ordinary, gravity-locked game camera pose for this frame.
 	TBOOL BeginEye(
 	    TUINT32 a_uiEye,
