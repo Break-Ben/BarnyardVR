@@ -1124,6 +1124,13 @@ static CowTippingAimLimits GetVRAimLimits( const ACowTippingMiniGameState& state
 			result.maxPitch = TMath::Max( result.maxPitch, pitch );
 		}
 	}
+	// The sampled legacy camera/reticle geometry is an approximation. Allow
+	// a little more sideways and upward travel to match the original's range;
+	// positive Y points down, so upward corresponds to a smaller pitch.
+	const TFLOAT allowance = TMath::DegToRad( 3.0f );
+	result.minYaw   = TMath::Max( -safeLimit, result.minYaw - allowance );
+	result.maxYaw   = TMath::Min( safeLimit, result.maxYaw + allowance );
+	result.minPitch = TMath::Max( -safeLimit, result.minPitch - allowance );
 	return result;
 }
 
