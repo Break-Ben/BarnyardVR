@@ -1042,8 +1042,9 @@ void ACowTippingMiniGameState::OnAnimationEvent( void* a_pUnk1 )
 
 	TVector4 vUnk;
 	TMatrix44 head;
-	if ( IsPowerUpActive( 1 ) && AVRManager::GetSingleton().GetHeadWorldMatrix(
-	         ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head ) )
+	const TBOOL bVRExplosiveShot = IsPowerUpActive( 1 ) && AVRManager::GetSingleton().GetHeadWorldMatrix(
+	    ACameraManager::GetSingleton()->GetCurrentCamera()->GetMatrix(), head );
+	if ( bVRExplosiveShot )
 	{
 		// The explosive tomato's ground adjustment belongs to the shot, not
 		// the live aiming target used to orient the launcher and reticle.
@@ -1081,10 +1082,10 @@ void ACowTippingMiniGameState::OnAnimationEvent( void* a_pUnk1 )
 
 	pProjectile->pObject->GetModelInstance()->SetTranslation( vPosition.AsVector3() );
 
-	// Preserve the captured VR free-aim shot, but retain the original one-shot
-	// leading calculation when an enemy was locked at the start of the throw.
+	// Preserve VR free aim and the explosive tomato's ground-adjusted shot.
+	// Other locked-enemy shots retain the original one-shot leading calculation.
 	pProjectile->bRecalcVelocity = !AVRManager::GetSingleton().IsActive() ||
-	    pProjectile->pTarget != TNULL || m_pThrowEnemy != TNULL;
+	    pProjectile->pTarget != TNULL || ( m_pThrowEnemy != TNULL && !bVRExplosiveShot );
 	pProjectile->pEnemy          = 0;
 	pProjectile->bHit            = TFALSE;
 	pProjectile->iGrowType       = 6;

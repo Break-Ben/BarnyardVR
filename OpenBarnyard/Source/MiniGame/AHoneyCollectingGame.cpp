@@ -2594,9 +2594,10 @@ void AHoneyCollectingGame::UpdateHint()
 		if ( m_eHint != HINT_STOP || revision != s_uiCollectPromptRevision )
 		{
 			s_uiCollectPromptRevision = revision;
-			m_oHint.Show();
 			ShowHint( m_oHint, m_eHint, LOCALE_HINT_STOP, HINT_STOP );
 		}
+		// An interaction prompt may have temporarily hidden the same hint.
+		m_oHint.Show();
 
 		return;
 	}
