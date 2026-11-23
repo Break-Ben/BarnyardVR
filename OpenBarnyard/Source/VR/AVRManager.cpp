@@ -305,6 +305,9 @@ struct AVRManager::Impl
 	TBOOL bEyeActive = TFALSE;
 	TBOOL bHasNeutralPose = TFALSE;
 	TBOOL bRecenterPending = TFALSE;
+	TBOOL bUIFollowInitialized = TFALSE;
+	TFLOAT fUIFollowYaw = 0.0f;
+	XrTime uiFollowTime = 0;
 	TBOOL bExitRequested = TFALSE;
 	TBOOL bRuntimeLost = TFALSE;
 	TBOOL bDeviceLost = TFALSE;
@@ -1511,6 +1514,7 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	a_rImpl.bProjectionReady = TFALSE;
 	a_rImpl.bUILayerReady = TFALSE;
 	a_rImpl.bHasNeutralPose = TFALSE;
+	a_rImpl.bUIFollowInitialized = TFALSE;
 	a_rImpl.bInputActionsAttached = TFALSE;
 	a_rImpl.bSessionFocused = TFALSE;
 	a_rImpl.bLoggedInputSyncFailure = TFALSE;
@@ -1987,6 +1991,7 @@ TBOOL AVRManager::BeginFrame()
 		rImpl.qReferenceYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
 		rImpl.bHasNeutralPose = TTRUE;
 		rImpl.bRecenterPending = TFALSE;
+		rImpl.bUIFollowInitialized = TFALSE;
 	}
 
 	return TTRUE;
@@ -2398,12 +2403,57 @@ void AVRManager::EndUILayer()
 	if ( rImpl.bHasNeutralPose )
 	{
 		const TFLOAT fDistance = rImpl.bWorldRendered ? kUiWorldDistance : kUiMenuDistance;
+		XrVector3f vCenter = rImpl.vNeutralPosition;
+		XrQuaternionf qYaw = rImpl.qReferenceYaw;
+		if ( AVRSettings::GetSingleton().IsUIFollowingHead() && rImpl.bViewsValid )
+		{
+			const auto& left = rImpl.aLocatedViews[ 0 ].pose;
+			const auto& right = rImpl.aLocatedViews[ 1 ].pose;
+			const XrVector3f vForward = RotateVector( left.orientation, { 0.0f, 0.0f, -1.0f } );
+			if ( std::isfinite( vForward.x ) && std::isfinite( vForward.z ) &&
+			     vForward.x * vForward.x + vForward.z * vForward.z > 1.0e-4f )
+			{
+				const TFLOAT fHeadYaw = std::atan2( -vForward.x, -vForward.z );
+				if ( !rImpl.bUIFollowInitialized )
+				{
+					rImpl.fUIFollowYaw = fHeadYaw;
+					rImpl.bUIFollowInitialized = TTRUE;
+				}
+				else
+				{
+					// Shortest arc, with a small dead zone so the panel doesn't
+					// chase every glance. Time-based damping is independent of FPS.
+					const TFLOAT fDelta = std::atan2( std::sin( fHeadYaw - rImpl.fUIFollowYaw ), std::cos( fHeadYaw - rImpl.fUIFollowYaw ) );
+					constexpr TFLOAT fDeadZone = 0.17453293f; // 10 degrees
+					const TFLOAT fOutside = std::max( 0.0f, std::abs( fDelta ) - fDeadZone );
+					const double dt = std::max( 0.0, std::min( 0.1, double( rImpl.oFrameState.predictedDisplayTime - rImpl.uiFollowTime ) * 1.0e-9 ) );
+					rImpl.fUIFollowYaw += std::copysign( fOutside * TFLOAT( 1.0 - std::exp( -5.0 * dt ) ), fDelta );
+				}
+			}
+			rImpl.uiFollowTime = rImpl.oFrameState.predictedDisplayTime;
+			// When looking vertically, retain the last valid yaw rather than
+			// snapping back to the fixed UI direction.
+			if ( rImpl.bUIFollowInitialized )
+				qYaw = { 0.0f, std::sin( rImpl.fUIFollowYaw * 0.5f ), 0.0f, std::cos( rImpl.fUIFollowYaw * 0.5f ) };
+			if ( std::isfinite( left.position.x ) && std::isfinite( left.position.y ) && std::isfinite( left.position.z ) &&
+			     std::isfinite( right.position.x ) && std::isfinite( right.position.y ) && std::isfinite( right.position.z ) )
+			{
+				vCenter = { 0.5f * ( left.position.x + right.position.x ),
+				            0.5f * ( left.position.y + right.position.y ),
+				            0.5f * ( left.position.z + right.position.z ) };
+			}
+		}
+		else
+		{
+			rImpl.bUIFollowInitialized = TFALSE;
+		}
+		const TFLOAT fYaw = 2.0f * std::atan2( qYaw.y, qYaw.w );
 		rImpl.oQuadPose.position = {
-		    rImpl.vNeutralPosition.x - fDistance * std::sin( 2.0f * std::atan2( rImpl.qReferenceYaw.y, rImpl.qReferenceYaw.w ) ),
-		    rImpl.vNeutralPosition.y,
-		    rImpl.vNeutralPosition.z - fDistance * std::cos( 2.0f * std::atan2( rImpl.qReferenceYaw.y, rImpl.qReferenceYaw.w ) ),
+		    vCenter.x - fDistance * std::sin( fYaw ),
+		    vCenter.y,
+		    vCenter.z - fDistance * std::cos( fYaw ),
 		};
-		rImpl.oQuadPose.orientation = rImpl.qReferenceYaw;
+		rImpl.oQuadPose.orientation = qYaw;
 	}
 	else
 	{

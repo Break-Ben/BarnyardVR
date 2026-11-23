@@ -14,6 +14,10 @@ public:
 	void                         SetSnapTurnDegrees( TINT a_iDegrees );
 	TBOOL                        IsModernControls() const { return m_bModernControls; }
 	void                         SetModernControls( TBOOL a_bModern );
+	TBOOL IsHeadRelativeMovement() const { return m_bHeadRelativeMovement; }
+	void  SetHeadRelativeMovement( TBOOL a_bEnabled );
+	TBOOL IsUIFollowingHead() const { return m_bUIFollowsHead; }
+	void  SetUIFollowingHead( TBOOL a_bEnabled );
 
 	TBOOL IsDebugHUDEnabled() const { return m_bDebugHUD; }
 	void SetDebugHUDEnabled( TBOOL a_bEnabled );
@@ -39,6 +43,8 @@ private:
 	void         Load();
 
 	TBOOL m_bModernControls  = TTRUE;
+	TBOOL m_bHeadRelativeMovement = TFALSE;
+	TBOOL m_bUIFollowsHead = TFALSE;
 	TINT  m_iSnapTurnDegrees = 0;
 	TINT  m_iResolutionPercent = 100;
 	TINT  m_iMSAASamples       = 2;

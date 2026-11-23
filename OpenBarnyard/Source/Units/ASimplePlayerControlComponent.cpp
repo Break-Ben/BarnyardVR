@@ -8,6 +8,9 @@
 #include "UnitMovement/Steering/APlayerSteer.h"
 #include "UnitMovement/Steering/ASteerTraits.h"
 #include "Player/APlayerProfileManager.h"
+#include "Player/APlayerManager.h"
+#include "VR/AVRManager.h"
+#include "VR/AVRSettings.h"
 #include "Terrain/ATerrainInterface.h"
 #include "Debug/ADebugOverlay.h"
 #include "Physics/ACollisionManager.h"
@@ -225,6 +228,23 @@ void ASimplePlayerControlComponent::GetCameraForward( TVector4& a_rOutForward )
 {
 	ACamera* pCamera = ACameraManager::GetSingleton()->GetCurrentCamera();
 
+	// Change only the normal human player's on-foot movement basis. Specialized
+	// controllers can still override this method for minigame-specific axes.
+	if ( AVRSettings::GetSingleton().IsHeadRelativeMovement() &&
+	     APlayerManager::IsSingletonCreated() && GetOwner() == APlayerManager::GetSingleton()->GetPlayer( 0 ) )
+	{
+		TMatrix44 head;
+		if ( AVRManager::GetSingleton().GetHeadWorldMatrix( pCamera->GetMatrix(), head ) )
+		{
+			TVector4 forward = head.AsBasisVector4( BASISVECTOR_FORWARD );
+			if ( forward.x * forward.x + forward.z * forward.z > 1.0e-4f )
+			{
+				forward.NormaliseXZ();
+				a_rOutForward = forward;
+				return;
+			}
+		}
+	}
 	pCamera->GetFlatDirection( a_rOutForward );
 }
 
