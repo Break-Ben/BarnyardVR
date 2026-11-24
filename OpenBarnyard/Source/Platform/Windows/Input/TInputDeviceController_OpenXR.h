@@ -32,9 +32,6 @@ public:
 	virtual TBOOL  WasDown( Doodad a_iDoodad ) const override;
 	virtual TINT   GetPortIndex() override { return -1; }
 
-	// Radial response used by activities that require circular stick motion.
-	void GetRadialStick( Doodad a_iDoodad, TFLOAT& a_rfX, TFLOAT& a_rfY ) const;
-
 private:
 	AOpenXRPauseButtons m_oPauseButtons;
 	TUINT32 m_uiButtonMask;
