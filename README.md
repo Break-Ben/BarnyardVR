@@ -108,7 +108,7 @@ Then open the generated solution file with Visual Studio and build it. The Windo
 
 ### Drafting a release
 
-The repository's root `VERSION` file is the release version in SemVer format. It starts at `0.0.0` as an unreleased bootstrap value. To prepare a release, change it to the next version (for example, `0.1.0` or `1.0.0-rc.1`) in a pull request and merge that PR to `main`.
+The repository's root `VERSION` file contains the release version in SemVer format (currently `0.9.0`). To prepare a release, change it to the next version (for example, `0.10.0` or `1.0.0-rc.1`) in a pull request and merge that PR to `main`.
 
 The **Build and draft release** GitHub Action then generates the same VS 2026 DX11 Win32 solution, builds the `Release` / `Win32` configuration, and packages `bin\Release_Win32_x86_DX11\OpenBarnyard` as a ZIP attached to a **draft** GitHub release tagged `v<version>`. GitHub generates the release notes from merged PRs since the previous published release; PRs can be grouped using the `breaking`, `enhancement`/`feature`, and `bug`/`bugfix` labels. Apply `skip-changelog` to omit a PR from the notes.
 
