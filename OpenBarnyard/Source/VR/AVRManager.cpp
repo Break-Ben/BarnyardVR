@@ -375,6 +375,8 @@ struct AVRManager::Impl
 	XrSwapchainSubImage oQuadSubImage = {};
 	XrVector3f vNeutralPosition = { 0.0f, 0.0f, 0.0f };
 	XrQuaternionf qReferenceYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
+	// The original session/recenter heading is never changed by entry alignment.
+	XrQuaternionf qNeutralYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XrVector3f vFixedUICenter = { 0.0f, 0.0f, 0.0f };
 	XrQuaternionf qFixedUIYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XrPosef oQuadPose = {};
@@ -403,6 +405,13 @@ struct AVRManager::Impl
 	ID3D11RasterizerState* pMirrorRasterizer = TNULL;
 	ID3D11BlendState* pMirrorAlphaBlend = TNULL;
 };
+
+// Fixed UI keeps the same world reference as the pre-settings VR behaviour.
+// Use this for both gameplay poses and rendered eyes.
+static const XrQuaternionf& GetWorldReferenceYaw( const AVRManager::Impl& a_rImpl )
+{
+	return AVRSettings::GetSingleton().IsUIFollowingHead() ? a_rImpl.qReferenceYaw : a_rImpl.qNeutralYaw;
+}
 
 AVRManager::AVRManager()
     : m_pImpl( new Impl() )
@@ -1834,14 +1843,15 @@ TBOOL AVRManager::GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Tos
 	     q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w < 1.0e-6f )
 		return TFALSE;
 
-	a_rOutHead = MakeEyeWorldMatrix( a_rcRigCamera, location.pose, rImpl.vNeutralPosition, rImpl.qReferenceYaw );
+	const XrQuaternionf& qWorldYaw = GetWorldReferenceYaw( rImpl );
+	a_rOutHead = MakeEyeWorldMatrix( a_rcRigCamera, location.pose, rImpl.vNeutralPosition, qWorldYaw );
 	return TTRUE;
 }
 
 TBOOL AVRManager::AlignEntryHeading()
 {
 	Impl& rImpl = *m_pImpl;
-	if ( !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending || rImpl.bFrameBegun ||
+	if ( !AVRSettings::GetSingleton().IsUIFollowingHead() || !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending || rImpl.bFrameBegun ||
 	     rImpl.hHeadSpace == XR_NULL_HANDLE || rImpl.hLocalSpace == XR_NULL_HANDLE || rImpl.oFrameState.predictedDisplayTime <= 0 )
 		return TFALSE;
 
@@ -1875,6 +1885,9 @@ TBOOL AVRManager::AlignEntryHeading()
 
 TBOOL AVRManager::AlignBikeEntryHeading( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TVector4& a_rOutRigForward )
 {
+	if ( !AVRSettings::GetSingleton().IsUIFollowingHead() )
+		return TFALSE;
+
 	Toshi::TMatrix44 oHeadWorld;
 	if ( !GetHeadWorldMatrix( a_rcRigCamera, oHeadWorld ) )
 		return TFALSE;
@@ -2059,6 +2072,7 @@ TBOOL AVRManager::BeginFrame()
 		const XrVector3f vForward = RotateVector( qHead, { 0.0f, 0.0f, -1.0f } );
 		const TFLOAT fYaw = std::atan2( -vForward.x, -vForward.z );
 		rImpl.qReferenceYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
+		rImpl.qNeutralYaw = rImpl.qReferenceYaw;
 		rImpl.vFixedUICenter = rImpl.vNeutralPosition;
 		rImpl.qFixedUIYaw = rImpl.qReferenceYaw;
 		rImpl.bHasNeutralPose = TTRUE;
@@ -2242,7 +2256,8 @@ TBOOL AVRManager::BeginEye( TUINT32 a_uiEye, const Toshi::TMatrix44& a_rcCenterC
 	rImpl.bEyeActive = TTRUE;
 	rImpl.uiActiveEye = a_uiEye;
 	rImpl.bWorldRendered = rImpl.bWorldRendered || a_bWorldRendered;
-	a_pCamera->GetTransformObject().SetMatrix( MakeEyeWorldMatrix( a_rcCenterCamera, rImpl.aLocatedViews[ a_uiEye ].pose, rImpl.vNeutralPosition, rImpl.qReferenceYaw ) );
+	const XrQuaternionf& qWorldYaw = GetWorldReferenceYaw( rImpl );
+	a_pCamera->GetTransformObject().SetMatrix( MakeEyeWorldMatrix( a_rcCenterCamera, rImpl.aLocatedViews[ a_uiEye ].pose, rImpl.vNeutralPosition, qWorldYaw ) );
 
 	Toshi::TRenderD3DInterface::Interface()->ClearCurrentTargetRGBA( 0.0f, 0.0f, 0.0f, 1.0f, TTRUE, 1.0f );
 
@@ -2507,8 +2522,11 @@ void AVRManager::EndUILayer()
 	if ( rImpl.bHasNeutralPose )
 	{
 		const TFLOAT fDistance = rImpl.bWorldRendered ? kUiWorldDistance : kUiMenuDistance;
-		XrVector3f vCenter = rImpl.vFixedUICenter;
-		XrQuaternionf qYaw = rImpl.qFixedUIYaw;
+		const TBOOL bFollowSetting = AVRSettings::GetSingleton().IsUIFollowingHead();
+		// Fixed uses the original session/recenter anchor, even after a previous
+		// head-relative entry alignment. It is independent of movement mode.
+		XrVector3f vCenter = bFollowSetting ? rImpl.vFixedUICenter : rImpl.vNeutralPosition;
+		XrQuaternionf qYaw = bFollowSetting ? rImpl.qFixedUIYaw : rImpl.qNeutralYaw;
 		if ( CanFollowHeadUI( rImpl ) && rImpl.bViewsValid )
 		{
 			const auto& left = rImpl.aLocatedViews[ 0 ].pose;

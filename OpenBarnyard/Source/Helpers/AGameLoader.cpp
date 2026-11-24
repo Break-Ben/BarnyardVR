@@ -1876,9 +1876,9 @@ void AGameLoader::SetTransitionToMiniGame( TPString8 a_strName, TBOOL a_bStartLo
 }
 
 // On-foot missions use the normal freely turning camera and keep its reference.
-// Other registered minigames start with a fixed or game-controlled camera, so
-// align their scene with the fixed UI during loading. Bike races align when the
-// player mounts instead, preserving the camera handoff.
+// Other registered minigames start with a fixed or game-controlled camera.
+// In head-relative UI mode, align them during loading; bike races align at
+// the mount handoff. Fixed UI mode retains the original reference throughout.
 static void AlignFixedMiniGameEntry( TINT a_iMiniGame )
 {
 	const TClass* pStateClass = AMiniGameManager::GetSingleton()->GetStateClass( a_iMiniGame );

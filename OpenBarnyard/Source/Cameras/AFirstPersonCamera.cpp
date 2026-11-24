@@ -6,6 +6,8 @@
 #include "AGTAStyleCameraHelper.h"
 #include "ABikePhysicsCameraHelper.h"
 #include "AOptions.h"
+#include "VR/AVRManager.h"
+#include "VR/AVRSettings.h"
 #include "Helpers/ABikeManager.h"
 #include "Render/ARenderer.h"
 #include "Render/AShadowManager.h"
@@ -1354,7 +1356,10 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 				ApplyFirstPersonNearClip();
 				ApplyUnitHidden( pUnit, HIDE_RIDER, vEyePos );
 
-				if ( pCamMgr->m_bIsPosLerping && pCamMgr->m_fLerpDuration > 0.0f )
+				// Only the head-relative handoff needs the revised yaw blend.
+				// Fixed UI and non-VR use the original bike transition below.
+				if ( AVRManager::GetSingleton().IsActive() && AVRSettings::GetSingleton().IsUIFollowingHead() &&
+				     pCamMgr->m_bIsPosLerping && pCamMgr->m_fLerpDuration > 0.0f )
 				{
 					if ( GetRackBikeObject( pUnit ) )
 						s_pRackLerpUnit = pUnit->GetSelfProxy();
@@ -1378,6 +1383,40 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 					a_pCamera->LookAtDirection( vBlended );
 					return;
 				}
+
+				if ( pCamMgr->m_bIsPosLerping && pCamMgr->m_fLerpDuration > 0.0f )
+				{
+					if ( GetRackBikeObject( pUnit ) )
+						s_pRackLerpUnit = pUnit->GetSelfProxy();
+
+					if ( s_pRackLerpUnit && s_pRackLerpUnit->GetUnit() == pUnit )
+					{
+						// Blend toward the current animated cockpit, not the frozen
+						// body or the previous frame's pose. Keep blending if the
+						// animation ends before the camera transition does.
+						TFLOAT fProgress = pCamMgr->m_fLerpTime / pCamMgr->m_fLerpDuration;
+						TMath::Clip( fProgress, 0.0f, 1.0f );
+						TVector4 vPosition;
+						vPosition.Lerp4( pCamMgr->m_vLerpPosFrom, vEyePos, fProgress );
+						a_pCamera->GetMatrix().GetTranslation() = vPosition;
+
+						TVector4 vBlended;
+						vBlended.Lerp4( pCamMgr->m_vInitialLookDirection, vForward, fProgress );
+						if ( vBlended.MagnitudeSq() > 0.000001f )
+						{
+							vBlended.Normalise();
+							a_pCamera->LookAtDirection( vBlended );
+						}
+						else
+						{
+							a_pCamera->LookAtDirection( vForward );
+						}
+						return;
+					}
+				}
+
+				if ( pCamMgr->m_bIsPosLerping && TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) > 0.25f )
+					return;
 
 				a_pCamera->GetMatrix().GetTranslation() = vEyePos;
 				a_pCamera->LookAtDirection( vForward );
