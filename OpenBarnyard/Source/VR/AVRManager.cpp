@@ -16,7 +16,6 @@
 #include "Units/AUnit.h"
 #include "Units/APlayerControlComponent.h"
 #include "Units/ASimplePlayerControlComponent.h"
-#include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Render/TBackend.h>
@@ -2452,28 +2451,6 @@ void AVRManager::RenderDebugHUD()
 	else
 		std::swprintf( text, 128, L"MSAA: Off" );
 	drawLine( text );
-
-	const auto&  oCtrl   = rImpl.oControllerInputState;
-	const TFLOAT fRawLMag = std::sqrt( oCtrl.fLeftStickX * oCtrl.fLeftStickX + oCtrl.fLeftStickY * oCtrl.fLeftStickY );
-	const TFLOAT fRawRMag = std::sqrt( oCtrl.fRightStickX * oCtrl.fRightStickX + oCtrl.fRightStickY * oCtrl.fRightStickY );
-	std::swprintf( text, 128, L"Raw Stick L: %.2f, %.2f (%.2f)  R: %.2f, %.2f (%.2f)", oCtrl.fLeftStickX, oCtrl.fLeftStickY, fRawLMag, oCtrl.fRightStickX, oCtrl.fRightStickY, fRawRMag );
-	drawLine( text );
-
-	if ( Toshi::TInputInterface::IsSingletonCreated() )
-	{
-		if ( auto* pDevice = Toshi::TInputInterface::GetSingleton()->GetDeviceByIndex<Toshi::TInputOpenXRDeviceController>( 0 ) )
-		{
-			const TFLOAT fLX   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_LEFT, 0 );
-			const TFLOAT fLY   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_LEFT, 1 );
-			const TFLOAT fLMag = std::sqrt( fLX * fLX + fLY * fLY );
-			const TFLOAT fRX   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_RIGHT, 0 );
-			const TFLOAT fRY   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_RIGHT, 1 );
-			const TFLOAT fRMag = std::sqrt( fRX * fRX + fRY * fRY );
-			std::swprintf( text, 128, L"Proc Stick L: %.2f, %.2f (%.2f)  R: %.2f, %.2f (%.2f)", fLX, fLY, fLMag, fRX, fRY, fRMag );
-			drawLine( text );
-		}
-	}
-
 	pGUIRenderer->EndScene();
 	Toshi::T2GUIFontManager::ReleaseFont( pFont );
 }
