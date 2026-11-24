@@ -4,6 +4,8 @@
 #include <Toshi/Typedefs.h>
 #include <Math/TMatrix44.h>
 
+class AUnit;
+
 namespace Toshi
 {
 class TCameraObject;
@@ -74,6 +76,10 @@ public:
 	// Center-head pose for gameplay, independent of eye rendering. Uses the same
 	// recentering, coordinate conversion and yaw-only rig as the rendered views.
 	TBOOL GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TMatrix44& a_rOutHead ) const;
+
+	// Head height above the runtime's floor at the last recenter, for on-foot
+	// head-relative views. Other views keep the cow's fixed eye height.
+	TBOOL GetUserHeadHeight( const AUnit* a_pUnit, TFLOAT& a_rOutHeight ) const;
 
 	// Align the rig's forward and fixed UI with the current physical heading.
 	TBOOL AlignEntryHeading();
