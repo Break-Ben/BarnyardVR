@@ -91,7 +91,7 @@ jobs:
           if (-not (Test-Path $executable)) {
             throw "Expected build output was not found: $executable"
           }
-          $archive = "OpenBarnyard-$($env:RELEASE_VERSION)-Windows-x86-DX11.zip"
+          $archive = "BarnyardVR-$($env:RELEASE_VERSION)-Windows-x86-DX11.zip"
           Compress-Archive -Path (Join-Path $output '*') -DestinationPath $archive -CompressionLevel Optimal
           "archive=$archive" >> $env:GITHUB_OUTPUT
         env:
@@ -114,6 +114,6 @@ jobs:
 
           gh release create $env:RELEASE_TAG $env:RELEASE_ARCHIVE `
             --draft `
-            --title "OpenBarnyard $env:RELEASE_VERSION" `
+            --title "BarnyardVR $env:RELEASE_VERSION" `
             --generate-notes `
             --target $env:GITHUB_SHA
