@@ -563,7 +563,14 @@ TFLOAT AFirstPersonCamera::PitchDegFromDirection( const TVector4& a_rcDirection 
 
 void AFirstPersonCamera::ComputePlayerEyePosition( AUnit* a_pUnit, const TVector4& a_rcBasePos, TFLOAT a_fHeightOffset, TVector4& a_rOutEyePos )
 {
-	TFLOAT fEyeHeight  = ( a_fHeightOffset > 0.3f ) ? a_fHeightOffset : DEFAULT_EYE_HEIGHT;
+	TFLOAT fEyeHeight = ( a_fHeightOffset > 0.3f ) ? a_fHeightOffset : DEFAULT_EYE_HEIGHT;
+
+	// Head-relative views add headset motion to this rig position. Use the
+	// user's recentered height so their floor matches the in-game ground.
+	TFLOAT fUserHeight = 0.0f;
+	if ( AVRManager::GetSingleton().GetUserHeadHeight( a_pUnit, fUserHeight ) )
+		fEyeHeight = fUserHeight;
+
 	TFLOAT fSafeHeight = TMath::Min( 1.0f, fEyeHeight * 0.6f );
 
 	TVector4 vSafeStart( a_rcBasePos.x, a_rcBasePos.y - fSafeHeight, a_rcBasePos.z, 1.0f );
