@@ -58,6 +58,24 @@ void AVRSettings::SetModernControls( TBOOL a_bModern )
 	}
 }
 
+void AVRSettings::SetHeadRelativeMovement( TBOOL a_bEnabled )
+{
+	if ( m_bHeadRelativeMovement != a_bEnabled )
+	{
+		m_bHeadRelativeMovement = a_bEnabled;
+		m_bDirty = TTRUE;
+	}
+}
+
+void AVRSettings::SetUIFollowingHead( TBOOL a_bEnabled )
+{
+	if ( m_bUIFollowsHead != a_bEnabled )
+	{
+		m_bUIFollowsHead = a_bEnabled;
+		m_bDirty = TTRUE;
+	}
+}
+
 void AVRSettings::SetDebugHUDEnabled( TBOOL a_bEnabled )
 {
 	if ( m_bDebugHUD != a_bEnabled )
@@ -93,6 +111,8 @@ void AVRSettings::RestoreDefaults()
 {
 	SetSnapTurnDegrees( 0 );
 	SetModernControls( TTRUE );
+	SetHeadRelativeMovement( TFALSE );
+	SetUIFollowingHead( TFALSE );
 	SetResolutionPercent( 100 );
 	SetMSAASamples( 2 );
 	SetDebugHUDEnabled( TFALSE );
@@ -126,6 +146,10 @@ void AVRSettings::Load()
 
 		if ( key == "ModernControls" && ( number == 0 || number == 1 ) )
 			SetModernControls( number != 0 );
+		else if ( key == "HeadRelativeMovement" && ( number == 0 || number == 1 ) )
+			SetHeadRelativeMovement( number != 0 );
+		else if ( key == "UIFollowsHead" && ( number == 0 || number == 1 ) )
+			SetUIFollowingHead( number != 0 );
 		else if ( key == "DebugHUD" && ( number == 0 || number == 1 ) )
 			SetDebugHUDEnabled( number != 0 );
 		else if ( key == "SnapTurnDegrees" && number >= 0 && number <= 90 )
@@ -157,6 +181,7 @@ TBOOL AVRSettings::Save()
 	if ( !pFile ) return TFALSE;
 	fprintf( pFile, "# BarnyardVR settings. SnapTurnDegrees: 0 (disabled), 15, 30, 45, 60, 90.\n" );
 	fprintf( pFile, "SnapTurnDegrees=%d\nModernControls=%d\n", m_iSnapTurnDegrees, m_bModernControls ? 1 : 0 );
+	fprintf( pFile, "HeadRelativeMovement=%d\nUIFollowsHead=%d\n", m_bHeadRelativeMovement ? 1 : 0, m_bUIFollowsHead ? 1 : 0 );
 	fprintf( pFile, "# VR graphics: restart required. ResolutionPercent: 50-200 in steps of 10; 100 is the OpenXR recommendation.\n" );
 	fprintf( pFile, "# The -vrscale command-line option overrides ResolutionPercent.\n" );
 	fprintf( pFile, "# MSAASamples: 1 (off), 2, 4, 8. Unsupported counts fall back to a lower level.\n" );

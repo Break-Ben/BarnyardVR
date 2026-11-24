@@ -21,6 +21,8 @@ private:
 	{
 		ROW_CONTROLS,
 		ROW_SNAP_TURN,
+		ROW_MOVEMENT,
+		ROW_UI_PLACEMENT,
 		ROW_RESOLUTION,
 		ROW_MSAA,
 		ROW_DEBUG_HUD,
@@ -32,6 +34,8 @@ private:
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
 	TBOOL m_bOriginalModernControls  = TTRUE;
+	TBOOL m_bOriginalHeadRelativeMovement = TTRUE;
+	TBOOL m_bOriginalUIFollowsHead = TTRUE;
 	TINT  m_iOriginalSnapTurnDegrees = 0;
 	TINT  m_iOriginalResolutionPercent = 100;
 	TINT  m_iOriginalMSAASamples       = 2;

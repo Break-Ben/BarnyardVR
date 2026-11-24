@@ -6,6 +6,8 @@
 #include "AGTAStyleCameraHelper.h"
 #include "ABikePhysicsCameraHelper.h"
 #include "AOptions.h"
+#include "VR/AVRManager.h"
+#include "VR/AVRSettings.h"
 #include "Helpers/ABikeManager.h"
 #include "Render/ARenderer.h"
 #include "Render/AShadowManager.h"
@@ -133,7 +135,8 @@ TVector2 s_vVehicleKeyLook      = TVector2::VEC_ZERO;
 TFLOAT   s_fVehicleLookIdleTime = 10.0f;
 
 // Aim camera state
-TBOOL            s_bAimActive    = TFALSE;
+TBOOL            s_bAimActive      = TFALSE;
+TBOOL            s_bAimFreeTurning = TFALSE;
 TRef<AUnitProxy> s_pAimUnit;
 TVector4         s_vAimFlatDir   = TVector4( 0.0f, 0.0f, 1.0f, 1.0f );
 TFLOAT           s_fAimPitchDeg  = 0.0f;
@@ -509,6 +512,20 @@ TBOOL AFirstPersonCamera::IsUnitInFirstPerson( const AUnit* a_pUnit )
 	return IsUnitInOnFootFirstPerson( a_pUnit );
 }
 
+TBOOL AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( const AUnit* a_pUnit )
+{
+	if ( !IsOnFootPlayerTarget( a_pUnit ) || !ACameraManager::IsSingletonCreated() )
+		return TFALSE;
+
+	ACameraHelper* pHelper = ACameraManager::GetSingleton()->GetCurrentCameraHelper();
+	if ( IsUnitInOnFootFirstPerson( a_pUnit ) )
+		return !TSTATICCAST( AGTAStyleCameraHelper, pHelper )->HasYawLimits();
+
+	// Aim detaches the on-foot helper; only retain follow if aim was entered
+	// from an unrestricted on-foot camera, not from a fixed minigame view.
+	return !pHelper && s_bAimActive && s_bAimFreeTurning && s_pAimUnit && s_pAimUnit->GetUnit() == a_pUnit;
+}
+
 void AFirstPersonCamera::BuildForwardDirection( const TVector4& a_rcFlatForward, TFLOAT a_fPitchDeg, TVector4& a_rOutForward )
 {
 	TVector4 vFlat;
@@ -679,6 +696,25 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	TFLOAT fTotalPitch       = fVehiclePitch * fForwardAlignment + s_fVehicleLookPitch;
 
 	BuildForwardDirection( vFlatFwd, fTotalPitch, a_rOutForward );
+}
+
+// Interpolate bike mount yaw explicitly, including the antipodal case where
+// normalised vector lerp can collapse or choose an unstable direction.
+static TVector4 BlendBikeMountDirection( const TVector4& a_rcFrom, const TVector4& a_rcTo, TFLOAT a_fProgress )
+{
+	const TFLOAT fFromFlat = std::sqrt( a_rcFrom.x * a_rcFrom.x + a_rcFrom.z * a_rcFrom.z );
+	const TFLOAT fToFlat = std::sqrt( a_rcTo.x * a_rcTo.x + a_rcTo.z * a_rcTo.z );
+	if ( fFromFlat < 1.0e-4f || fToFlat < 1.0e-4f )
+		return a_rcTo;
+
+	const TFLOAT fFromYaw = std::atan2( a_rcFrom.x, a_rcFrom.z );
+	const TFLOAT fToYaw = std::atan2( a_rcTo.x, a_rcTo.z );
+	const TFLOAT fDelta = std::atan2( std::sin( fToYaw - fFromYaw ), std::cos( fToYaw - fFromYaw ) );
+	const TFLOAT fYaw = fFromYaw + fDelta * a_fProgress;
+	const TFLOAT fFlat = fFromFlat + ( fToFlat - fFromFlat ) * a_fProgress;
+	TVector4 vResult( std::sin( fYaw ) * fFlat, a_rcFrom.y + ( a_rcTo.y - a_rcFrom.y ) * a_fProgress, std::cos( fYaw ) * fFlat, 1.0f );
+	vResult.Normalise();
+	return vResult;
 }
 
 static TBOOL ContainsSubstringNoCase( const TCHAR* a_szHaystack, const TCHAR* a_szNeedle )
@@ -998,10 +1034,11 @@ void AFirstPersonCamera::UpdateVehicleLook( TFLOAT a_fDeltaTime, TFLOAT a_fVehic
 	}
 }
 
-void AFirstPersonCamera::EnterAimMode( AUnit* a_pOwner, const TVector4& a_rcInitialForward )
+void AFirstPersonCamera::EnterAimMode( AUnit* a_pOwner, const TVector4& a_rcInitialForward, TBOOL a_bFreeTurningOnFoot )
 {
-	s_bAimActive    = TTRUE;
-	s_pAimUnit      = a_pOwner ? a_pOwner->GetSelfProxy() : TRef<AUnitProxy>( TNULL );
+	s_bAimActive      = TTRUE;
+	s_bAimFreeTurning = a_bFreeTurningOnFoot;
+	s_pAimUnit        = a_pOwner ? a_pOwner->GetSelfProxy() : TRef<AUnitProxy>( TNULL );
 	s_vAimMouseTurn = TVector2::VEC_ZERO;
 	s_vAimRateTurn  = TVector2::VEC_ZERO;
 	s_vAimDpadTurn  = TVector2::VEC_ZERO;
@@ -1013,8 +1050,9 @@ void AFirstPersonCamera::EnterAimMode( AUnit* a_pOwner, const TVector4& a_rcInit
 
 void AFirstPersonCamera::LeaveAimMode()
 {
-	s_bAimActive    = TFALSE;
-	s_pAimUnit      = TNULL;
+	s_bAimActive      = TFALSE;
+	s_bAimFreeTurning = TFALSE;
+	s_pAimUnit        = TNULL;
 	s_vAimMouseTurn = TVector2::VEC_ZERO;
 	s_vAimRateTurn  = TVector2::VEC_ZERO;
 	s_vAimDpadTurn  = TVector2::VEC_ZERO;
@@ -1317,6 +1355,34 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 				// restoring it until the camera gets close causes a body flash on mount.
 				ApplyFirstPersonNearClip();
 				ApplyUnitHidden( pUnit, HIDE_RIDER, vEyePos );
+
+				// Only the head-relative handoff needs the revised yaw blend.
+				// Fixed UI and non-VR use the original bike transition below.
+				if ( AVRManager::GetSingleton().IsActive() && AVRSettings::GetSingleton().IsUIFollowingHead() &&
+				     pCamMgr->m_bIsPosLerping && pCamMgr->m_fLerpDuration > 0.0f )
+				{
+					if ( GetRackBikeObject( pUnit ) )
+						s_pRackLerpUnit = pUnit->GetSelfProxy();
+
+					TFLOAT fProgress = pCamMgr->m_fLerpTime / pCamMgr->m_fLerpDuration;
+					TMath::Clip( fProgress, 0.0f, 1.0f );
+					if ( s_pRackLerpUnit && s_pRackLerpUnit->GetUnit() == pUnit )
+					{
+						// Keep following the animated rack cockpit, including if the
+						// animation ends before the camera transition does.
+						TVector4 vPosition;
+						vPosition.Lerp4( pCamMgr->m_vLerpPosFrom, vEyePos, fProgress );
+						a_pCamera->GetMatrix().GetTranslation() = vPosition;
+					}
+					else if ( TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) <= 0.25f )
+					{
+						a_pCamera->GetMatrix().GetTranslation() = vEyePos;
+					}
+
+					const TVector4 vBlended = BlendBikeMountDirection( pCamMgr->m_vInitialLookDirection, vForward, fProgress );
+					a_pCamera->LookAtDirection( vBlended );
+					return;
+				}
 
 				if ( pCamMgr->m_bIsPosLerping && pCamMgr->m_fLerpDuration > 0.0f )
 				{

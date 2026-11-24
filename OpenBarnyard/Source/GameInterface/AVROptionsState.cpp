@@ -27,6 +27,8 @@ void AVROptionsState::RefreshLabels()
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: Disabled" );
 	else
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
+	std::swprintf( m_awszLabels[ ROW_MOVEMENT ], 96, L"Movement: %ls", settings.IsHeadRelativeMovement() ? L"Head Relative" : L"Fixed" );
+	std::swprintf( m_awszLabels[ ROW_UI_PLACEMENT ], 96, L"UI Position: %ls", settings.IsUIFollowingHead() ? L"Head Relative" : L"Fixed" );
 	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Resolution: %d%% (restart)", settings.GetResolutionPercent() );
 	if ( settings.GetMSAASamples() == 1 )
 		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: Off (restart)" );
@@ -42,6 +44,8 @@ void AVROptionsState::OnInsertion()
 {
 	m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
 	m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
+	m_bOriginalHeadRelativeMovement = AVRSettings::GetSingleton().IsHeadRelativeMovement();
+	m_bOriginalUIFollowsHead = AVRSettings::GetSingleton().IsUIFollowingHead();
 	m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 	m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 	m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();
@@ -51,7 +55,8 @@ void AVROptionsState::OnInsertion()
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 	{
 		auto& button = m_aButtons[ i ];
-		button.Create( pFont, 440.0f, m_awszLabels[ i ], 10.0f );
+		// Keep the expanded list inside the existing dialog at standard GUI sizes.
+		button.Create( pFont, 440.0f, m_awszLabels[ i ], 4.0f );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -73,6 +78,8 @@ void AVROptionsState::OnRemoval()
 	// Restore on forced removal too. A successful save advances this snapshot.
 	AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
 	AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
+	AVRSettings::GetSingleton().SetHeadRelativeMovement( m_bOriginalHeadRelativeMovement );
+	AVRSettings::GetSingleton().SetUIFollowingHead( m_bOriginalUIFollowsHead );
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
@@ -94,6 +101,16 @@ void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 	{
 		auto& settings = AVRSettings::GetSingleton();
 		settings.SetModernControls( !settings.IsModernControls() );
+		RefreshLabels();
+		return;
+	}
+	if ( a_iRow == ROW_MOVEMENT || a_iRow == ROW_UI_PLACEMENT )
+	{
+		auto& settings = AVRSettings::GetSingleton();
+		if ( a_iRow == ROW_MOVEMENT )
+			settings.SetHeadRelativeMovement( !settings.IsHeadRelativeMovement() );
+		else
+			settings.SetUIFollowingHead( !settings.IsUIFollowingHead() );
 		RefreshLabels();
 		return;
 	}
@@ -167,14 +184,14 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_RESOLUTION || row == ROW_MSAA || row == ROW_DEBUG_HUD )
+	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_MOVEMENT || row == ROW_UI_PLACEMENT || row == ROW_RESOLUTION || row == ROW_MSAA || row == ROW_DEBUG_HUD )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
 	}
 	else if ( row == ROW_DEFAULTS )
 	{
-		auto* pPopup = new AMessagePopupState( L"Restore Defaults", L"Reset all VR settings to their defaults?", TPString8(), TFALSE, AInputCommand_No, AInputCommand_Yes, AInputCommand_Empty, AInputCommand_Empty, TFALSE, 60.0f, 0 );
+		auto* pPopup = new AMessagePopupState( L"Restore Defaults", L"Reset all VR settings to their defaults?", TPString8(), TFALSE, AInputCommand_Yes, AInputCommand_No, AInputCommand_Empty, AInputCommand_Empty, TFALSE, 60.0f, 0 );
 		m_oResetListener.Connect( pPopup->GetResponseEmitter(), this, OnResetResponse, 0 );
 		AGameStateController::GetSingleton()->PushState( pPopup );
 	}
@@ -198,6 +215,8 @@ void AVROptionsState::OnMenuClose()
 	{
 		AVRSettings::GetSingleton().SetSnapTurnDegrees( m_iOriginalSnapTurnDegrees );
 		AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
+		AVRSettings::GetSingleton().SetHeadRelativeMovement( m_bOriginalHeadRelativeMovement );
+		AVRSettings::GetSingleton().SetUIFollowingHead( m_bOriginalUIFollowsHead );
 		AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 		AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 		AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
@@ -208,6 +227,8 @@ void AVROptionsState::OnMenuClose()
 	{
 		m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
 		m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
+		m_bOriginalHeadRelativeMovement = AVRSettings::GetSingleton().IsHeadRelativeMovement();
+		m_bOriginalUIFollowsHead = AVRSettings::GetSingleton().IsUIFollowingHead();
 		m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 		m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 		m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();

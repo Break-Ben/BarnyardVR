@@ -74,6 +74,11 @@ public:
 	// recentering, coordinate conversion and yaw-only rig as the rendered views.
 	TBOOL GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TMatrix44& a_rOutHead ) const;
 
+	// Align the rig's forward and fixed UI with the current physical heading.
+	TBOOL AlignEntryHeading();
+	// Rebase for a bike handoff while retaining the current world-facing view.
+	TBOOL AlignBikeEntryHeading( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TVector4& a_rOutRigForward );
+
 	// The camera matrix is the ordinary, gravity-locked game camera pose for this frame.
 	TBOOL BeginEye(
 	    TUINT32 a_uiEye,

@@ -55,6 +55,9 @@ public:
 	// Returns TTRUE if the active camera is currently showing a_pUnit in on-foot or aim first-person
 	static TBOOL IsUnitInFirstPerson( const AUnit* a_pUnit );
 
+	// On-foot or aim view entered from an unrestricted on-foot camera.
+	static TBOOL IsUnitInFreeTurningFirstPerson( const AUnit* a_pUnit );
+
 	// Builds a unit 3D forward vector from an XZ direction and a pitch angle in degrees
 	static void BuildForwardDirection( const Toshi::TVector4& a_rcFlatForward, TFLOAT a_fPitchDeg, Toshi::TVector4& a_rOutForward );
 
@@ -83,7 +86,7 @@ public:
 	//-----------------------------------------------------------------------------
 	// Aim camera (AAimedSquirtProjectileLauncher on the human player)
 	//-----------------------------------------------------------------------------
-	static void  EnterAimMode( AUnit* a_pOwner, const Toshi::TVector4& a_rcInitialForward );
+	static void  EnterAimMode( AUnit* a_pOwner, const Toshi::TVector4& a_rcInitialForward, TBOOL a_bFreeTurningOnFoot = TFALSE );
 	static void  LeaveAimMode();
 	static TBOOL IsAimModeActive();
 	static void  AddAimMouseInput( TFLOAT a_fDeltaX, TFLOAT a_fDeltaY, TBOOL& a_rbBreakLock );

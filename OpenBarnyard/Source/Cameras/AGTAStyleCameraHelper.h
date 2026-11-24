@@ -58,7 +58,8 @@ public:
 	void SetForceUpdate( TBOOL a_bForce );
 
 	// Limits the yaw of the camera around the target (radians)
-	void SetYawLimits( TBOOL a_bEnabled, TFLOAT a_fMin, TFLOAT a_fMax );
+	void  SetYawLimits( TBOOL a_bEnabled, TFLOAT a_fMin, TFLOAT a_fMax );
+	TBOOL HasYawLimits() const { return m_bYawLimits; }
 
 	// Adds/removes a bit of the collision mask used for the camera collision checks
 	TBOOL AddCollisionFlag( TINT a_iBit );

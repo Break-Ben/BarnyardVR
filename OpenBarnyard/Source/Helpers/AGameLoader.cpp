@@ -28,6 +28,12 @@
 #include "Assets/AMaterialLibraryManager.h"
 #include "MiniGame/AMiniGameManager.h"
 #include "MiniGame/ABikeRaceMicroGame.h"
+#include "MiniGame/AChasingChicksMiniGame.h"
+#include "MiniGame/AVeggiePatchDefenderGame.h"
+#include "MiniGame/AHoneyCollectingGame.h"
+#include "MiniGame/APrecisionSquirt.h"
+#include "MiniGame/AChickenCoopDefender.h"
+#include "VR/AVRManager.h"
 #include "Render/AShadowManager.h"
 #include "UnitMovement/PathfindingNetworks/AInteriorNetworkManager.h"
 #include "GameInterface/AFrontEndMainMenuState2.h"
@@ -1869,6 +1875,22 @@ void AGameLoader::SetTransitionToMiniGame( TPString8 a_strName, TBOOL a_bStartLo
 		SetTransitionToMiniGame( iMiniGame, a_bStartLoading );
 }
 
+// On-foot missions use the normal freely turning camera and keep its reference.
+// Other registered minigames start with a fixed or game-controlled camera.
+// In head-relative UI mode, align them during loading; bike races align at
+// the mount handoff. Fixed UI mode retains the original reference throughout.
+static void AlignFixedMiniGameEntry( TINT a_iMiniGame )
+{
+	const TClass* pStateClass = AMiniGameManager::GetSingleton()->GetStateClass( a_iMiniGame );
+	if ( pStateClass != &TGetClass( AChasingChicksMiniGame ) &&
+	     pStateClass != &TGetClass( AVeggiePatchDefenderGame ) &&
+	     pStateClass != &TGetClass( AHoneyCollectingGame ) &&
+	     pStateClass != &TGetClass( APrecisionSquirt ) &&
+	     pStateClass != &TGetClass( AChickenCoopDefender ) &&
+	     pStateClass != &TGetClass( ABikeRaceMicroGame ) )
+		AVRManager::GetSingleton().AlignEntryHeading();
+}
+
 // $Barnyard: FUNCTION 004239d0
 void AGameLoader::SetTransitionToMiniGame( TINT a_iMiniGame, TBOOL a_bStartLoading )
 {
@@ -1877,6 +1899,7 @@ void AGameLoader::SetTransitionToMiniGame( TINT a_iMiniGame, TBOOL a_bStartLoadi
 	if ( a_bStartLoading )
 	{
 		g_oLoadScreen.StartLoading( 100, TTRUE );
+		AlignFixedMiniGameEntry( a_iMiniGame );
 
 		s_pPrevGameStateClass = pController->GetCurrentState()->GetClass();
 		ACameraManager::GetSingleton()->DetachCameraHelpers();
@@ -1937,6 +1960,7 @@ void AGameLoader::RestartMiniGame( TBOOL a_bImmediately )
 	}
 
 	g_oLoadScreen.StartLoading( 100, TTRUE );
+	AlignFixedMiniGameEntry( s_iCurrMiniGame );
 
 	AMiniGameManager* pMiniGameManager = AMiniGameManager::GetSingleton();
 
