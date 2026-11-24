@@ -371,6 +371,7 @@ struct AVRManager::Impl
 	TBOOL bLeftHapticActive = TFALSE;
 	TBOOL bRightHapticActive = TFALSE;
 	XrSpace hLocalSpace = XR_NULL_HANDLE;
+	XrSpace hLocalFloorSpace = XR_NULL_HANDLE;
 	XrSpace hHeadSpace = XR_NULL_HANDLE;
 	XrEnvironmentBlendMode eBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	XrFrameState oFrameState = { XR_TYPE_FRAME_STATE };
@@ -382,6 +383,7 @@ struct AVRManager::Impl
 	XrCompositionLayerQuad oQuadLayer = { XR_TYPE_COMPOSITION_LAYER_QUAD };
 	XrSwapchainSubImage oQuadSubImage = {};
 	XrVector3f vNeutralPosition = { 0.0f, 0.0f, 0.0f };
+	TFLOAT fCenteredFloorHeight = 0.0f;
 	XrQuaternionf qReferenceYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
 	// The original session/recenter heading is never changed by entry alignment.
 	XrQuaternionf qNeutralYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -1497,14 +1499,17 @@ TBOOL AVRManager::Prepare( Toshi::TRenderInterface* a_pRenderer )
 	if ( !IsExtensionAvailable( aExtensions, szGraphicsExtension ) )
 		return TFALSE;
 
+	const char* aEnabledExtensions[] = { szGraphicsExtension, XR_EXT_LOCAL_FLOOR_EXTENSION_NAME };
+	const TBOOL  bLocalFloorAvailable = IsExtensionAvailable( aExtensions, XR_EXT_LOCAL_FLOOR_EXTENSION_NAME );
+
 	XrInstanceCreateInfo oInstanceInfo = { XR_TYPE_INSTANCE_CREATE_INFO };
 	std::strncpy( oInstanceInfo.applicationInfo.applicationName, "Barnyard", XR_MAX_APPLICATION_NAME_SIZE - 1 );
 	oInstanceInfo.applicationInfo.applicationVersion = 1;
 	std::strncpy( oInstanceInfo.applicationInfo.engineName, "Toshi", XR_MAX_ENGINE_NAME_SIZE - 1 );
 	oInstanceInfo.applicationInfo.engineVersion = 1;
 	oInstanceInfo.applicationInfo.apiVersion = XR_API_VERSION_1_0;
-	oInstanceInfo.enabledExtensionCount = 1;
-	oInstanceInfo.enabledExtensionNames = &szGraphicsExtension;
+	oInstanceInfo.enabledExtensionCount = bLocalFloorAvailable ? 2 : 1;
+	oInstanceInfo.enabledExtensionNames = aEnabledExtensions;
 	if ( XR_FAILED( xrCreateInstance( &oInstanceInfo, &rImpl.hInstance ) ) )
 		return TFALSE;
 
@@ -1570,6 +1575,11 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 		xrDestroySpace( a_rImpl.hLocalSpace );
 		a_rImpl.hLocalSpace = XR_NULL_HANDLE;
 	}
+	if ( a_rImpl.hLocalFloorSpace != XR_NULL_HANDLE )
+	{
+		xrDestroySpace( a_rImpl.hLocalFloorSpace );
+		a_rImpl.hLocalFloorSpace = XR_NULL_HANDLE;
+	}
 	if ( a_rImpl.hSession != XR_NULL_HANDLE )
 	{
 		StopControllerHaptics( a_rImpl );
@@ -1623,6 +1633,11 @@ static TBOOL CreateSessionAndTargets( AVRManager::Impl& a_rImpl )
 		DestroySessionTargets( a_rImpl );
 		return TFALSE;
 	}
+
+	// Floor-level space gives the real head height even when LOCAL is recentered to the head.
+	a_rImpl.hLocalFloorSpace = XR_NULL_HANDLE;
+	oSpaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR;
+	xrCreateReferenceSpace( a_rImpl.hSession, &oSpaceInfo, &a_rImpl.hLocalFloorSpace );
 
 	oSpaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
 	if ( XR_FAILED( xrCreateReferenceSpace( a_rImpl.hSession, &oSpaceInfo, &a_rImpl.hHeadSpace ) ) )
@@ -2176,6 +2191,17 @@ TBOOL AVRManager::BeginFrame()
 		    0.5f * ( rImpl.aLocatedViews[ 0 ].pose.position.y + rImpl.aLocatedViews[ 1 ].pose.position.y ),
 		    0.5f * ( rImpl.aLocatedViews[ 0 ].pose.position.z + rImpl.aLocatedViews[ 1 ].pose.position.z ),
 		};
+
+		rImpl.fCenteredFloorHeight = 0.0f;
+		if ( rImpl.hLocalFloorSpace != XR_NULL_HANDLE )
+		{
+			XrSpaceLocation oFloorLocation = { XR_TYPE_SPACE_LOCATION };
+			if ( XR_SUCCEEDED( xrLocateSpace( rImpl.hHeadSpace, rImpl.hLocalFloorSpace, rImpl.oFrameState.predictedDisplayTime, &oFloorLocation ) ) &&
+			     ( oFloorLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT ) &&
+			     std::isfinite( oFloorLocation.pose.position.y ) )
+				rImpl.fCenteredFloorHeight = oFloorLocation.pose.position.y;
+		}
+
 		const XrQuaternionf qHead = NormaliseQuaternion( rImpl.aLocatedViews[ 0 ].pose.orientation );
 		const XrVector3f vForward = RotateVector( qHead, { 0.0f, 0.0f, -1.0f } );
 		const TFLOAT fYaw = std::atan2( -vForward.x, -vForward.z );
@@ -2622,9 +2648,10 @@ TBOOL AVRManager::GetUserHeadHeight( const AUnit* a_pUnit, TFLOAT& a_rOutHeight 
 	if ( !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending || !CanFollowHeadUIInWorld( a_pUnit ) )
 		return TFALSE;
 
-	// Recentered head height gives the scale for the in-game floor. Reject
-	// implausible heights rather than putting the camera inside the ground.
-	const TFLOAT fHeight = rImpl.vNeutralPosition.y;
+	// Prefer the runtime's floor estimate; LOCAL alone may be head-anchored.
+	TFLOAT fHeight = rImpl.fCenteredFloorHeight;
+	if ( !std::isfinite( fHeight ) || fHeight < 0.5f || fHeight > 2.5f )
+		fHeight = rImpl.vNeutralPosition.y;
 	if ( !std::isfinite( fHeight ) || fHeight < 0.5f || fHeight > 2.5f )
 		return TFALSE;
 
