@@ -28,8 +28,11 @@
 #include "Assets/AMaterialLibraryManager.h"
 #include "MiniGame/AMiniGameManager.h"
 #include "MiniGame/ABikeRaceMicroGame.h"
-#include "MiniGame/AStatuesMiniGameState.h"
-#include "MiniGame/ADartMiniGame.h"
+#include "MiniGame/AChasingChicksMiniGame.h"
+#include "MiniGame/AVeggiePatchDefenderGame.h"
+#include "MiniGame/AHoneyCollectingGame.h"
+#include "MiniGame/APrecisionSquirt.h"
+#include "MiniGame/AChickenCoopDefender.h"
 #include "VR/AVRManager.h"
 #include "Render/AShadowManager.h"
 #include "UnitMovement/PathfindingNetworks/AInteriorNetworkManager.h"
@@ -1872,12 +1875,19 @@ void AGameLoader::SetTransitionToMiniGame( TPString8 a_strName, TBOOL a_bStartLo
 		SetTransitionToMiniGame( iMiniGame, a_bStartLoading );
 }
 
-// These minigames have fixed camera directions, unlike free-turning missions.
-// Align during the loading transition, without rebasing unrelated gameplay.
+// On-foot missions use the normal freely turning camera and keep its reference.
+// Other registered minigames start with a fixed or game-controlled camera, so
+// align their scene with the fixed UI during loading. Bike races align when the
+// player mounts instead, preserving the camera handoff.
 static void AlignFixedMiniGameEntry( TINT a_iMiniGame )
 {
 	const TClass* pStateClass = AMiniGameManager::GetSingleton()->GetStateClass( a_iMiniGame );
-	if ( pStateClass == &TGetClass( AStatuesMiniGameState ) || pStateClass == &TGetClass( ADartMiniGame ) )
+	if ( pStateClass != &TGetClass( AChasingChicksMiniGame ) &&
+	     pStateClass != &TGetClass( AVeggiePatchDefenderGame ) &&
+	     pStateClass != &TGetClass( AHoneyCollectingGame ) &&
+	     pStateClass != &TGetClass( APrecisionSquirt ) &&
+	     pStateClass != &TGetClass( AChickenCoopDefender ) &&
+	     pStateClass != &TGetClass( ABikeRaceMicroGame ) )
 		AVRManager::GetSingleton().AlignEntryHeading();
 }
 

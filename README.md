@@ -16,9 +16,11 @@ Open **Options → VR Settings** using the normal menu controls. This native men
 
 - **Control Layout:** Modern (default) or Classic. Left/right switches layouts for gamepads and OpenXR controllers in gameplay and minigames. Keyboard/mouse bindings are unchanged. Classic keeps the original controller bindings.
 - **Snap Turning:** Disabled (default), 15°, 30°, 45°, 60° or 90°. Left/right cycles the choices. Changes take effect in VR and are saved when confirmed.
-- **Movement:** Head Relative (default) or Fixed. Head Relative uses the headset's horizontal heading for ordinary on-foot movement in VR, including strafing; it does not change vehicle controls or specialized minigame input.
-- **UI Position:** Head Relative (default) or Fixed. Head Relative gently follows horizontal turns with a small dead zone during freely controlled first-person gameplay, including free roam and minigames. The panel remains fixed in menus, restricted views and fixed-camera minigames. This can be selected independently of movement direction. On entering Tease the Mailman/Mrs. Beady or Darts, the world and fixed panel align to your entry heading; on a first-person bike mount, world alignment blends over the camera transition.
+- **Movement:** Fixed (default) or Head Relative. Head Relative uses the headset's horizontal heading for ordinary on-foot movement in VR, including strafing; it does not change vehicle controls or specialized minigame input.
+- **UI Position:** Fixed (default) or Head Relative. Head Relative gently follows horizontal turns with a small dead zone during freely controlled first-person gameplay, including free roam and minigames. The panel remains fixed in menus, restricted views and fixed-camera minigames. This can be selected independently of movement direction. Registered fixed-camera minigames align the world and fixed panel to your entry heading during loading; first-person bike mounts use the camera transition to turn toward the bike.
 - **Restore Defaults:** asks for confirmation, with No selected by default.
+
+The registered minigames using the normal free-turning on-foot camera during gameplay are Chasing Chicks, Veggie Patch Defender, Honey Collecting (outside the hive interaction), Sharp Squirter and Chicken Coop Defender. Other in-world activities can inherit the same camera; the UI-follow policy checks the active camera and controls rather than using a minigame allowlist.
 - **Confirm / Cancel:** use the same device-aware prompts as the other options pages (Enter confirms, Escape cancels on keyboard). Confirm on a setting saves and returns; Cancel discards all edits, including Restore Defaults, and restores the values from when the page opened.
 
 When enabled, joystick camera yaw turns by the selected angle once per deflection. Return the stick towards centre before another snap (including reversing direction). The activation threshold is 70% and the release threshold is 30%, preventing jitter and held-stick repeats. Applies to normal camera turning, aimed squirting, and vehicle freelook; pitch stays unchanged. Mouse look, keyboard look keys, physical headset movement and non-VR camera controls are not snapped. This does not change vehicle steering or movement-stick mappings.
@@ -30,10 +32,10 @@ Settings load on first access from `BarnyardVR.cfg` in the save directory chosen
 SnapTurnDegrees=0
 # 1 = Modern (default), 0 = Classic
 ModernControls=1
-# 1 = head-relative walking (default), 0 = fixed
-HeadRelativeMovement=1
-# 1 = head-relative UI in free-turning first person (default), 0 = fixed
-UIFollowsHead=1
+# 1 = head-relative walking, 0 = fixed (default)
+HeadRelativeMovement=0
+# 1 = head-relative UI in free-turning first person, 0 = fixed (default)
+UIFollowsHead=0
 ```
 
 ### Controller layouts

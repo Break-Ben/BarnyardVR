@@ -696,6 +696,25 @@ void AFirstPersonCamera::ComputeBikeCockpit( AUnit* a_pRider, const TMatrix44& a
 	BuildForwardDirection( vFlatFwd, fTotalPitch, a_rOutForward );
 }
 
+// Interpolate bike mount yaw explicitly, including the antipodal case where
+// normalised vector lerp can collapse or choose an unstable direction.
+static TVector4 BlendBikeMountDirection( const TVector4& a_rcFrom, const TVector4& a_rcTo, TFLOAT a_fProgress )
+{
+	const TFLOAT fFromFlat = std::sqrt( a_rcFrom.x * a_rcFrom.x + a_rcFrom.z * a_rcFrom.z );
+	const TFLOAT fToFlat = std::sqrt( a_rcTo.x * a_rcTo.x + a_rcTo.z * a_rcTo.z );
+	if ( fFromFlat < 1.0e-4f || fToFlat < 1.0e-4f )
+		return a_rcTo;
+
+	const TFLOAT fFromYaw = std::atan2( a_rcFrom.x, a_rcFrom.z );
+	const TFLOAT fToYaw = std::atan2( a_rcTo.x, a_rcTo.z );
+	const TFLOAT fDelta = std::atan2( std::sin( fToYaw - fFromYaw ), std::cos( fToYaw - fFromYaw ) );
+	const TFLOAT fYaw = fFromYaw + fDelta * a_fProgress;
+	const TFLOAT fFlat = fFromFlat + ( fToFlat - fFromFlat ) * a_fProgress;
+	TVector4 vResult( std::sin( fYaw ) * fFlat, a_rcFrom.y + ( a_rcTo.y - a_rcFrom.y ) * a_fProgress, std::cos( fYaw ) * fFlat, 1.0f );
+	vResult.Normalise();
+	return vResult;
+}
+
 static TBOOL ContainsSubstringNoCase( const TCHAR* a_szHaystack, const TCHAR* a_szNeedle )
 {
 	if ( !a_szHaystack || !a_szNeedle || !a_szNeedle[ 0 ] )
@@ -1340,34 +1359,25 @@ void AFirstPersonCamera::SyncBeforeRender( ACamera* a_pCamera, TFLOAT a_fDeltaTi
 					if ( GetRackBikeObject( pUnit ) )
 						s_pRackLerpUnit = pUnit->GetSelfProxy();
 
+					TFLOAT fProgress = pCamMgr->m_fLerpTime / pCamMgr->m_fLerpDuration;
+					TMath::Clip( fProgress, 0.0f, 1.0f );
 					if ( s_pRackLerpUnit && s_pRackLerpUnit->GetUnit() == pUnit )
 					{
-						// Blend toward the current animated cockpit, not the frozen
-						// body or the previous frame's pose. Keep blending if the
+						// Keep following the animated rack cockpit, including if the
 						// animation ends before the camera transition does.
-						TFLOAT fProgress = pCamMgr->m_fLerpTime / pCamMgr->m_fLerpDuration;
-						TMath::Clip( fProgress, 0.0f, 1.0f );
 						TVector4 vPosition;
 						vPosition.Lerp4( pCamMgr->m_vLerpPosFrom, vEyePos, fProgress );
 						a_pCamera->GetMatrix().GetTranslation() = vPosition;
-
-						TVector4 vBlended;
-						vBlended.Lerp4( pCamMgr->m_vInitialLookDirection, vForward, fProgress );
-						if ( vBlended.MagnitudeSq() > 0.000001f )
-						{
-							vBlended.Normalise();
-							a_pCamera->LookAtDirection( vBlended );
-						}
-						else
-						{
-							a_pCamera->LookAtDirection( vForward );
-						}
-						return;
 					}
-				}
+					else if ( TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) <= 0.25f )
+					{
+						a_pCamera->GetMatrix().GetTranslation() = vEyePos;
+					}
 
-				if ( pCamMgr->m_bIsPosLerping && TVector4::DistanceSq( pCamMgr->m_vLerpPosFrom, vEyePos ) > 0.25f )
+					const TVector4 vBlended = BlendBikeMountDirection( pCamMgr->m_vInitialLookDirection, vForward, fProgress );
+					a_pCamera->LookAtDirection( vBlended );
 					return;
+				}
 
 				a_pCamera->GetMatrix().GetTranslation() = vEyePos;
 				a_pCamera->LookAtDirection( vForward );

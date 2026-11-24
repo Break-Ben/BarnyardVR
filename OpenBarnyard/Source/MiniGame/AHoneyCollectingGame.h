@@ -204,6 +204,7 @@ public:
 
 	TBOOL IsHiding() const { return m_bHiding; }
 	TBOOL IsDefeated() const { return m_bDefeated; }
+	TBOOL IsCollecting() const { return m_bCollecting; }
 	void  ResetStingTime() { m_fStingInterval = 0.0f; }
 
 private:

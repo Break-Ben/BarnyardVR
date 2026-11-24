@@ -10,6 +10,7 @@
 #include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
 #include "GameInterface/ABYardMenuState.h"
+#include "MiniGame/AHoneyCollectingGame.h"
 #include "Cameras/AFirstPersonCamera.h"
 #include "Player/APlayerManager.h"
 #include "Units/AUnit.h"
@@ -374,11 +375,6 @@ struct AVRManager::Impl
 	XrSwapchainSubImage oQuadSubImage = {};
 	XrVector3f vNeutralPosition = { 0.0f, 0.0f, 0.0f };
 	XrQuaternionf qReferenceYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
-	TBOOL bEntryYawBlending = TFALSE;
-	TFLOAT fEntryYawFrom = 0.0f;
-	TFLOAT fEntryYawDelta = 0.0f;
-	TFLOAT fEntryYawDuration = 0.0f;
-	XrTime entryYawStartTime = 0;
 	XrVector3f vFixedUICenter = { 0.0f, 0.0f, 0.0f };
 	XrQuaternionf qFixedUIYaw = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XrPosef oQuadPose = {};
@@ -1528,7 +1524,6 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	a_rImpl.bProjectionReady = TFALSE;
 	a_rImpl.bUILayerReady = TFALSE;
 	a_rImpl.bHasNeutralPose = TFALSE;
-	a_rImpl.bEntryYawBlending = TFALSE;
 	a_rImpl.bUIFollowInitialized = TFALSE;
 	a_rImpl.bInputActionsAttached = TFALSE;
 	a_rImpl.bSessionFocused = TFALSE;
@@ -1843,19 +1838,19 @@ TBOOL AVRManager::GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Tos
 	return TTRUE;
 }
 
-void AVRManager::AlignEntryHeading( TFLOAT a_fBlendSeconds )
+TBOOL AVRManager::AlignEntryHeading()
 {
 	Impl& rImpl = *m_pImpl;
 	if ( !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending || rImpl.bFrameBegun ||
 	     rImpl.hHeadSpace == XR_NULL_HANDLE || rImpl.hLocalSpace == XR_NULL_HANDLE || rImpl.oFrameState.predictedDisplayTime <= 0 )
-		return;
+		return TFALSE;
 
 	const XrTime time = rImpl.oFrameState.predictedDisplayTime + rImpl.oFrameState.predictedDisplayPeriod;
 	XrSpaceLocation location = { XR_TYPE_SPACE_LOCATION };
 	if ( XR_FAILED( xrLocateSpace( rImpl.hHeadSpace, rImpl.hLocalSpace, time, &location ) ) ||
 	     !( location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT ) ||
 	     !( location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT ) )
-		return;
+		return TFALSE;
 
 	const auto& p = location.pose.position;
 	const auto& q = location.pose.orientation;
@@ -1863,31 +1858,44 @@ void AVRManager::AlignEntryHeading( TFLOAT a_fBlendSeconds )
 	if ( !std::isfinite( p.x ) || !std::isfinite( p.y ) || !std::isfinite( p.z ) ||
 	     !std::isfinite( q.x ) || !std::isfinite( q.y ) || !std::isfinite( q.z ) || !std::isfinite( q.w ) ||
 	     !std::isfinite( fLengthSq ) || fLengthSq < 1.0e-6f )
-		return;
+		return TFALSE;
 
 	const XrVector3f vForward = RotateVector( NormaliseQuaternion( q ), { 0.0f, 0.0f, -1.0f } );
 	if ( vForward.x * vForward.x + vForward.z * vForward.z < 1.0e-4f )
-		return; // No stable heading when looking straight up or down.
+		return TFALSE; // No stable heading when looking straight up or down.
 
 	const TFLOAT fYaw = std::atan2( -vForward.x, -vForward.z );
-	const TFLOAT fOldYaw = 2.0f * std::atan2( rImpl.qReferenceYaw.y, rImpl.qReferenceYaw.w );
 	rImpl.vFixedUICenter = p;
 	rImpl.qFixedUIYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
 	rImpl.bUIFollowInitialized = TFALSE;
 
-	if ( a_fBlendSeconds > 0.0f && std::isfinite( a_fBlendSeconds ) )
-	{
-		rImpl.fEntryYawFrom = fOldYaw;
-		rImpl.fEntryYawDelta = std::atan2( std::sin( fYaw - fOldYaw ), std::cos( fYaw - fOldYaw ) );
-		rImpl.fEntryYawDuration = a_fBlendSeconds;
-		rImpl.entryYawStartTime = time;
-		rImpl.bEntryYawBlending = TTRUE;
-	}
-	else
-	{
-		rImpl.bEntryYawBlending = TFALSE;
-		rImpl.qReferenceYaw = rImpl.qFixedUIYaw;
-	}
+	rImpl.qReferenceYaw = rImpl.qFixedUIYaw;
+	return TTRUE;
+}
+
+TBOOL AVRManager::AlignBikeEntryHeading( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TVector4& a_rOutRigForward )
+{
+	Toshi::TMatrix44 oHeadWorld;
+	if ( !GetHeadWorldMatrix( a_rcRigCamera, oHeadWorld ) )
+		return TFALSE;
+
+	const Toshi::TVector4& rHeadForward = oHeadWorld.AsBasisVector4( Toshi::BASISVECTOR_FORWARD );
+	const Toshi::TVector4& rRigForward = a_rcRigCamera.AsBasisVector4( Toshi::BASISVECTOR_FORWARD );
+	const TFLOAT fHeadFlatSq = rHeadForward.x * rHeadForward.x + rHeadForward.z * rHeadForward.z;
+	const TFLOAT fRigFlatSq = rRigForward.x * rRigForward.x + rRigForward.z * rRigForward.z;
+	if ( !std::isfinite( fHeadFlatSq ) || !std::isfinite( fRigFlatSq ) || fHeadFlatSq < 1.0e-4f || fRigFlatSq < 1.0e-4f )
+		return TFALSE;
+
+	// Rotate the rig by exactly the yaw removed from the headset pose. This
+	// preserves the initial world view, so the camera's own shortest-arc
+	// interpolation is the only turn the player experiences during mounting.
+	const TFLOAT fScale = std::sqrt( fRigFlatSq / fHeadFlatSq );
+	Toshi::TVector4 vForward( rHeadForward.x * fScale, rRigForward.y, rHeadForward.z * fScale, rRigForward.w );
+	vForward.Normalise();
+	if ( !AlignEntryHeading() )
+		return TFALSE;
+	a_rOutRigForward = vForward;
+	return TTRUE;
 }
 
 TBOOL AVRManager::HasControllerInput() const
@@ -2055,17 +2063,7 @@ TBOOL AVRManager::BeginFrame()
 		rImpl.qFixedUIYaw = rImpl.qReferenceYaw;
 		rImpl.bHasNeutralPose = TTRUE;
 		rImpl.bRecenterPending = TFALSE;
-		rImpl.bEntryYawBlending = TFALSE;
 		rImpl.bUIFollowInitialized = TFALSE;
-	}
-	else if ( rImpl.bEntryYawBlending )
-	{
-		const double fElapsed = double( rImpl.oFrameState.predictedDisplayTime - rImpl.entryYawStartTime ) * 1.0e-9;
-		const TFLOAT fProgress = TFLOAT( std::max( 0.0, std::min( 1.0, fElapsed / rImpl.fEntryYawDuration ) ) );
-		const TFLOAT fYaw = rImpl.fEntryYawFrom + rImpl.fEntryYawDelta * fProgress;
-		rImpl.qReferenceYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
-		if ( fProgress >= 1.0f )
-			rImpl.bEntryYawBlending = TFALSE;
 	}
 
 	return TTRUE;
@@ -2455,6 +2453,12 @@ static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 	if ( pStates->GetNumStates() <= 1 || pStates->GetCurrentState()->IsA( &TGetClass( ABYardMenuState ) ) )
 		return TFALSE;
 
+	// Honey uses a custom camera-turn restriction instead of GTA yaw limits.
+	// Keep the panel fixed at the hive; ordinary exploration still follows.
+	if ( pStates->GetCurrentState()->IsA( &TGetClass( AHoneyCollectingGame ) ) &&
+	     TSTATICCAST( AHoneyCollectingGame, pStates->GetCurrentState() )->IsCollecting() )
+		return TFALSE;
+
 	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayer( 0 );
 	if ( !pPlayer || !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( pPlayer ) )
 		return TFALSE;
@@ -2505,7 +2509,7 @@ void AVRManager::EndUILayer()
 		const TFLOAT fDistance = rImpl.bWorldRendered ? kUiWorldDistance : kUiMenuDistance;
 		XrVector3f vCenter = rImpl.vFixedUICenter;
 		XrQuaternionf qYaw = rImpl.qFixedUIYaw;
-		if ( !rImpl.bEntryYawBlending && CanFollowHeadUI( rImpl ) && rImpl.bViewsValid )
+		if ( CanFollowHeadUI( rImpl ) && rImpl.bViewsValid )
 		{
 			const auto& left = rImpl.aLocatedViews[ 0 ].pose;
 			const auto& right = rImpl.aLocatedViews[ 1 ].pose;
@@ -2715,7 +2719,8 @@ AVRManager& AVRManager::GetSingleton()
 }
 
 TBOOL AVRManager::GetHeadWorldMatrix( const Toshi::TMatrix44&, Toshi::TMatrix44& ) const { return TFALSE; }
-void AVRManager::AlignEntryHeading( TFLOAT ) {}
+TBOOL AVRManager::AlignEntryHeading() { return TFALSE; }
+TBOOL AVRManager::AlignBikeEntryHeading( const Toshi::TMatrix44&, Toshi::TVector4& ) { return TFALSE; }
 TBOOL AVRManager::Prepare( Toshi::TRenderInterface* ) { return TFALSE; }
 TBOOL AVRManager::Initialize( Toshi::TRenderInterface* ) { return TFALSE; }
 void AVRManager::Shutdown() {}

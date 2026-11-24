@@ -75,8 +75,9 @@ public:
 	TBOOL GetHeadWorldMatrix( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TMatrix44& a_rOutHead ) const;
 
 	// Align the rig's forward and fixed UI with the current physical heading.
-	// A nonzero duration blends the world yaw during a visible camera handoff.
-	void AlignEntryHeading( TFLOAT a_fBlendSeconds = 0.0f );
+	TBOOL AlignEntryHeading();
+	// Rebase for a bike handoff while retaining the current world-facing view.
+	TBOOL AlignBikeEntryHeading( const Toshi::TMatrix44& a_rcRigCamera, Toshi::TVector4& a_rOutRigForward );
 
 	// The camera matrix is the ordinary, gravity-locked game camera pose for this frame.
 	TBOOL BeginEye(

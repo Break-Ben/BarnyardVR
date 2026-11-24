@@ -43,8 +43,8 @@ private:
 	void         Load();
 
 	TBOOL m_bModernControls  = TTRUE;
-	TBOOL m_bHeadRelativeMovement = TTRUE;
-	TBOOL m_bUIFollowsHead = TTRUE;
+	TBOOL m_bHeadRelativeMovement = TFALSE;
+	TBOOL m_bUIFollowsHead = TFALSE;
 	TINT  m_iSnapTurnDegrees = 0;
 	TINT  m_iResolutionPercent = 100;
 	TINT  m_iMSAASamples       = 2;
