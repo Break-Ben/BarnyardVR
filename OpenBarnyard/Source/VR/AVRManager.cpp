@@ -16,6 +16,7 @@
 #include "Units/AUnit.h"
 #include "Units/APlayerControlComponent.h"
 #include "Units/ASimplePlayerControlComponent.h"
+#include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
 
 #include <Input/TInputDeviceController.h>
 #include <Render/TBackend.h>
@@ -2460,22 +2461,16 @@ void AVRManager::RenderDebugHUD()
 
 	if ( Toshi::TInputInterface::IsSingletonCreated() )
 	{
-		auto* pInput = Toshi::TInputInterface::GetSingleton();
-		for ( TUINT i = 0; i < pInput->GetNumDevices(); i++ )
+		if ( auto* pDevice = Toshi::TInputInterface::GetSingleton()->GetDeviceByIndex<Toshi::TInputOpenXRDeviceController>( 0 ) )
 		{
-			auto* pDevice = pInput->GetDevice( i );
-			if ( pDevice && pDevice->IsA( &TGetClass( Toshi::TInputOpenXRDeviceController ) ) )
-			{
-				const TFLOAT fLX   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_LEFT, 0 );
-				const TFLOAT fLY   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_LEFT, 1 );
-				const TFLOAT fLMag = std::sqrt( fLX * fLX + fLY * fLY );
-				const TFLOAT fRX   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_RIGHT, 0 );
-				const TFLOAT fRY   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_RIGHT, 1 );
-				const TFLOAT fRMag = std::sqrt( fRX * fRX + fRY * fRY );
-				std::swprintf( text, 128, L"Proc Stick L: %.2f, %.2f (%.2f)  R: %.2f, %.2f (%.2f)", fLX, fLY, fLMag, fRX, fRY, fRMag );
-				drawLine( text );
-				break;
-			}
+			const TFLOAT fLX   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_LEFT, 0 );
+			const TFLOAT fLY   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_LEFT, 1 );
+			const TFLOAT fLMag = std::sqrt( fLX * fLX + fLY * fLY );
+			const TFLOAT fRX   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_RIGHT, 0 );
+			const TFLOAT fRY   = pDevice->GetAxisFloat( Toshi::TInputDeviceController::STICK_RIGHT, 1 );
+			const TFLOAT fRMag = std::sqrt( fRX * fRX + fRY * fRY );
+			std::swprintf( text, 128, L"Proc Stick L: %.2f, %.2f (%.2f)  R: %.2f, %.2f (%.2f)", fLX, fLY, fLMag, fRX, fRY, fRMag );
+			drawLine( text );
 		}
 	}
 
