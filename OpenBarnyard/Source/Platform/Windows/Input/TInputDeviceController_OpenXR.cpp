@@ -88,12 +88,29 @@ void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )
 	m_afRawSticks[ 2 ] = ClampAxis( oState.fRightStickX );
 	m_afRawSticks[ 3 ] = ClampAxis( -oState.fRightStickY );
 
-	// Use the same per-axis deadzone and saturation as the Windows gamepad.
-	// Bike power slides require full steering, even with a little Y input.
-	for ( TINT i = 0; i < TARRAYSIZE( m_afSticks ); i++ )
+	// OpenXR thumbsticks have a circular gate, so use radial deadzone and
+	// saturation to preserve full magnitude on diagonals.
+	constexpr TFLOAT kStickDeadzone = TFLOAT( TInputDXDeviceController::STICK_DEADZONE ) / TFLOAT( TInputDXDeviceController::STICK_SATURATE );
+	constexpr TFLOAT kStickSaturate = TFLOAT( TInputDXDeviceController::STICK_SATURATE ) / TFLOAT( TInputDXDeviceController::STICK_CENTRE );
+
+	for ( TINT i = 0; i < 2; i++ )
 	{
-		const TINT iAxis = TINT( m_afRawSticks[ i ] * TInputDXDeviceController::STICK_CENTRE ) + TInputDXDeviceController::STICK_CENTRE;
-		m_afSticks[ i ] = TInputDXDeviceController::NormaliseStick( iAxis );
+		const TFLOAT fX         = m_afRawSticks[ i * 2 ];
+		const TFLOAT fY         = m_afRawSticks[ i * 2 + 1 ];
+		const TFLOAT fMagnitude = std::sqrt( fX * fX + fY * fY );
+
+		if ( fMagnitude <= kStickDeadzone )
+		{
+			m_afSticks[ i * 2 ]     = 0.0f;
+			m_afSticks[ i * 2 + 1 ] = 0.0f;
+		}
+		else
+		{
+			const TFLOAT fAdjustedMagnitude = std::min( ( fMagnitude - kStickDeadzone ) / ( kStickSaturate - kStickDeadzone ), 1.0f );
+			const TFLOAT fScale             = fAdjustedMagnitude / fMagnitude;
+			m_afSticks[ i * 2 ]             = fX * fScale;
+			m_afSticks[ i * 2 + 1 ]         = fY * fScale;
+		}
 	}
 
 	UpdateVirtualButtons();
@@ -170,26 +187,6 @@ TFLOAT TInputOpenXRDeviceController::GetAxisFloat( Doodad a_iDoodad, TINT a_iAxi
 		return m_afSticks[ 2 + a_iAxis ];
 
 	return 0.0f;
-}
-
-void TInputOpenXRDeviceController::GetRadialStick( Doodad a_iDoodad, TFLOAT& a_rfX, TFLOAT& a_rfY ) const
-{
-	constexpr TFLOAT kStickDeadzone = 7500.0f / 32000.0f;
-	a_rfX = GetAxisFloat2( a_iDoodad, 0 );
-	a_rfY = GetAxisFloat2( a_iDoodad, 1 );
-
-	const TFLOAT fMagnitude = std::sqrt( a_rfX * a_rfX + a_rfY * a_rfY );
-	if ( fMagnitude <= kStickDeadzone )
-	{
-		a_rfX = 0.0f;
-		a_rfY = 0.0f;
-		return;
-	}
-
-	const TFLOAT fAdjustedMagnitude = std::min( ( fMagnitude - kStickDeadzone ) / ( 1.0f - kStickDeadzone ), 1.0f );
-	const TFLOAT fScale = fAdjustedMagnitude / fMagnitude;
-	a_rfX *= fScale;
-	a_rfY *= fScale;
 }
 
 TFLOAT TInputOpenXRDeviceController::GetAxisFloat2( Doodad a_iDoodad, TINT a_iAxis ) const
