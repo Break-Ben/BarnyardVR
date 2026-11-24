@@ -16,10 +16,6 @@
 #include "Physics/ACollisionManager.h"
 #include "Physics/APhysics.h"
 
-#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
-#  include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
-#endif
-
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
 // Note: Should be the last include!
@@ -108,19 +104,6 @@ TBOOL ASimplePlayerControlComponent::ProcessCommand( AInputCommand a_eCommand, c
 		{
 			TFLOAT fX = a_pEvent->GetMagnitudeFloat( 0 );
 			TFLOAT fY = a_pEvent->GetMagnitudeFloat( 1 );
-
-#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
-			// Preserve full analog magnitude on diagonals for on-foot movement.
-			// Other consumers (notably bikes) retain the per-axis response.
-			TInputDevice* pSource = a_pEvent->GetSource();
-			const TINT iDoodad = a_pEvent->GetDoodad();
-			if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
-			     pSource->IsA( &TGetClass( TInputOpenXRDeviceController ) ) &&
-			     ( iDoodad == TInputDeviceController::STICK_LEFT || iDoodad == TInputDeviceController::STICK_RIGHT ) )
-			{
-				TSTATICCAST( TInputOpenXRDeviceController, pSource )->GetRadialStick( iDoodad, fX, fY );
-			}
-#endif
 
 			m_vMovement.x += fX;
 			m_vMovement.y -= fY;
