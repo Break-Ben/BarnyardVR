@@ -112,7 +112,7 @@ The repository's root `VERSION` file contains the release version in SemVer form
 
 The **Build and draft release** GitHub Action then generates the same VS 2026 DX11 Win32 solution, builds the `Release` / `Win32` configuration, and packages `bin\Release_Win32_x86_DX11\OpenBarnyard` as a ZIP attached to a **draft** GitHub release tagged `v<version>`. GitHub generates the release notes from merged PRs since the previous published release; PRs can be grouped using the `breaking`, `enhancement`/`feature`, and `bug`/`bugfix` labels. Apply `skip-changelog` to omit a PR from the notes.
 
-The action never publishes a release. Review and edit the draft's title, notes, and ZIP in GitHub, then publish it yourself when ready. A draft must be published or deleted before the next version bump is processed. The workflow requires a Windows runner with Visual Studio 2026 (including the C++ build tools); if GitHub's hosted `windows-latest` image does not yet include VS 2026, the build step will fail with a clear message and the workflow must be run on a suitable Windows runner.
+The action never publishes a release. Review and edit the draft's title, notes, and ZIP in GitHub, then publish it yourself when ready. A draft must be published or deleted before the next version bump is processed. To retry a failed preparation without changing the version, run **Build and draft release** manually from the Actions tab. The workflow requires a Windows runner with Visual Studio 2026 (including the C++ build tools); if GitHub's hosted `windows-latest` image does not yet include VS 2026, the build step will fail with a clear message and the workflow must be run on a suitable Windows runner.
 
 ## Contributing
 
