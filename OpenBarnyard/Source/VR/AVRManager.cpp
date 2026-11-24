@@ -11,6 +11,7 @@
 #include "GameInterface/AGameStateController.h"
 #include "GameInterface/ABYardMenuState.h"
 #include "MiniGame/AHoneyCollectingGame.h"
+#include "MiniGame/AShakeTreeMicroGame.h"
 #include "Cameras/AFirstPersonCamera.h"
 #include "Player/APlayerManager.h"
 #include "Units/AUnit.h"
@@ -1586,6 +1587,8 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	a_rImpl.bUILayerReady = TFALSE;
 	a_rImpl.bHasNeutralPose = TFALSE;
 	a_rImpl.bUIFollowInitialized = TFALSE;
+	a_rImpl.fUIFollowYaw = 0.0f;
+	a_rImpl.uiFollowTime = 0;
 	a_rImpl.bInputActionsAttached = TFALSE;
 	a_rImpl.bSessionFocused = TFALSE;
 	a_rImpl.bLoggedInputSyncFailure = TFALSE;
@@ -1940,6 +1943,7 @@ TBOOL AVRManager::AlignEntryHeading()
 	const TFLOAT fYaw = std::atan2( -vForward.x, -vForward.z );
 	rImpl.vFixedUICenter = p;
 	rImpl.qFixedUIYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
+	rImpl.fUIFollowYaw = fYaw;
 	rImpl.bUIFollowInitialized = TFALSE;
 
 	rImpl.qReferenceYaw = rImpl.qFixedUIYaw;
@@ -2179,6 +2183,7 @@ TBOOL AVRManager::BeginFrame()
 		rImpl.qNeutralYaw = rImpl.qReferenceYaw;
 		rImpl.vFixedUICenter = rImpl.vNeutralPosition;
 		rImpl.qFixedUIYaw = rImpl.qReferenceYaw;
+		rImpl.fUIFollowYaw = fYaw;
 		rImpl.bHasNeutralPose = TTRUE;
 		rImpl.bRecenterPending = TFALSE;
 		rImpl.bUIFollowInitialized = TFALSE;
@@ -2598,7 +2603,11 @@ static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 	auto* pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( APlayerControlComponent ) ) );
 	if ( !pControl )
 		pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
-	return pControl && pControl->IsAIEnabled() && pControl->IsCameraInputEnabled();
+	if ( !pControl || !pControl->IsCameraInputEnabled() )
+		return TFALSE;
+	// Kicking crates, haybales, trees, or the henhouse briefly disables player
+	// control during the kick animation while remaining in normal gameplay.
+	return pControl->IsAIEnabled() || pStates->GetCurrentState()->FindChildState( &TGetClass( AShakeTreeMicroGame ) ) != TNULL;
 }
 
 void AVRManager::EndUILayer()
@@ -2650,27 +2659,24 @@ void AVRManager::EndUILayer()
 			     vForward.x * vForward.x + vForward.z * vForward.z > 1.0e-4f )
 			{
 				const TFLOAT fHeadYaw = std::atan2( -vForward.x, -vForward.z );
-				if ( !rImpl.bUIFollowInitialized )
-				{
-					rImpl.fUIFollowYaw = fHeadYaw;
-					rImpl.bUIFollowInitialized = TTRUE;
-				}
-				else
-				{
-					// Shortest arc, with a small dead zone so the panel doesn't
-					// chase every glance. Time-based damping is independent of FPS.
-					const TFLOAT fDelta = std::atan2( std::sin( fHeadYaw - rImpl.fUIFollowYaw ), std::cos( fHeadYaw - rImpl.fUIFollowYaw ) );
-					constexpr TFLOAT fDeadZone = 0.17453293f; // 10 degrees
-					const TFLOAT fOutside = std::max( 0.0f, std::abs( fDelta ) - fDeadZone );
-					const double dt = std::max( 0.0, std::min( 0.1, double( rImpl.oFrameState.predictedDisplayTime - rImpl.uiFollowTime ) * 1.0e-9 ) );
-					rImpl.fUIFollowYaw += std::copysign( fOutside * TFLOAT( 1.0 - std::exp( -5.0 * dt ) ), fDelta );
-				}
+				// Shortest arc, with a small dead zone so the panel doesn't
+				// chase every glance. Resume from the current panel yaw rather
+				// than snapping across the dead zone after a menu or control lock.
+				const TFLOAT fDelta = std::atan2( std::sin( fHeadYaw - rImpl.fUIFollowYaw ), std::cos( fHeadYaw - rImpl.fUIFollowYaw ) );
+				constexpr TFLOAT fDeadZone = 0.17453293f; // 10 degrees
+				const TFLOAT fOutside = std::max( 0.0f, std::abs( fDelta ) - fDeadZone );
+				const XrDuration frameElapsed = rImpl.bUIFollowInitialized
+				    ? ( rImpl.oFrameState.predictedDisplayTime - rImpl.uiFollowTime )
+				    : rImpl.oFrameState.predictedDisplayPeriod;
+				const double dt = std::max( 0.0, std::min( 0.1, double( frameElapsed ) * 1.0e-9 ) );
+				rImpl.fUIFollowYaw += std::copysign( fOutside * TFLOAT( 1.0 - std::exp( -5.0 * dt ) ), fDelta );
+				rImpl.fUIFollowYaw = std::atan2( std::sin( rImpl.fUIFollowYaw ), std::cos( rImpl.fUIFollowYaw ) );
 			}
+			rImpl.bUIFollowInitialized = TTRUE;
 			rImpl.uiFollowTime = rImpl.oFrameState.predictedDisplayTime;
 			// When looking vertically, retain the last valid yaw rather than
 			// snapping back to the fixed UI direction.
-			if ( rImpl.bUIFollowInitialized )
-				qYaw = { 0.0f, std::sin( rImpl.fUIFollowYaw * 0.5f ), 0.0f, std::cos( rImpl.fUIFollowYaw * 0.5f ) };
+			qYaw = { 0.0f, std::sin( rImpl.fUIFollowYaw * 0.5f ), 0.0f, std::cos( rImpl.fUIFollowYaw * 0.5f ) };
 			if ( std::isfinite( left.position.x ) && std::isfinite( left.position.y ) && std::isfinite( left.position.z ) &&
 			     std::isfinite( right.position.x ) && std::isfinite( right.position.y ) && std::isfinite( right.position.z ) )
 			{
@@ -2686,6 +2692,7 @@ void AVRManager::EndUILayer()
 		else
 		{
 			rImpl.bUIFollowInitialized = TFALSE;
+			rImpl.fUIFollowYaw = 2.0f * std::atan2( qYaw.y, qYaw.w );
 		}
 		const TFLOAT fYaw = 2.0f * std::atan2( qYaw.y, qYaw.w );
 		rImpl.oQuadPose.position = {
