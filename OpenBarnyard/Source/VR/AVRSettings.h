@@ -18,6 +18,8 @@ public:
 	void  SetHeadRelativeMovement( TBOOL a_bEnabled );
 	TBOOL IsUIFollowingHead() const { return m_bUIFollowsHead; }
 	void  SetUIFollowingHead( TBOOL a_bEnabled );
+	TBOOL IsVibrationEnabled() const { return m_bVibration; }
+	void  SetVibrationEnabled( TBOOL a_bEnabled );
 
 	TBOOL IsDebugHUDEnabled() const { return m_bDebugHUD; }
 	void SetDebugHUDEnabled( TBOOL a_bEnabled );
@@ -45,6 +47,7 @@ private:
 	TBOOL m_bModernControls  = TTRUE;
 	TBOOL m_bHeadRelativeMovement = TFALSE;
 	TBOOL m_bUIFollowsHead = TFALSE;
+	TBOOL m_bVibration = TTRUE;
 	TINT  m_iSnapTurnDegrees = 0;
 	TINT  m_iResolutionPercent = 100;
 	TINT  m_iMSAASamples       = 2;

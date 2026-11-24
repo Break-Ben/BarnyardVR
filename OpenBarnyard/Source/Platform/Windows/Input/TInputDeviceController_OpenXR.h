@@ -29,7 +29,9 @@ public:
 	virtual TFLOAT GetAxisFloat( Doodad a_iDoodad, TINT a_iAxis ) const override;
 	virtual TFLOAT GetAxisFloat2( Doodad a_iDoodad, TINT a_iAxis ) const override;
 	virtual TBOOL  IsEnabled() const override { return TTRUE; }
+	virtual TBOOL  IsForceFeedbackDevice() override;
 	virtual TBOOL  WasDown( Doodad a_iDoodad ) const override;
+	virtual void   SetVibration( VIBRATION_ACTUATOR a_eActuator, TFLOAT a_fValue, TBOOL a_bUnknown ) override;
 	virtual TINT   GetPortIndex() override { return -1; }
 
 private:
@@ -38,6 +40,7 @@ private:
 	TUINT32 m_uiOldButtonMask;
 	TFLOAT  m_afSticks[ 4 ];
 	TFLOAT  m_afRawSticks[ 4 ];
+	TFLOAT  m_afVibration[ 2 ];
 	TBOOL   m_bPolled;
 };
 

@@ -11,6 +11,7 @@
 #include "GameInterface/AGameStateController.h"
 #include "GameInterface/ABYardMenuState.h"
 #include "MiniGame/AHoneyCollectingGame.h"
+#include "MiniGame/AShakeTreeMicroGame.h"
 #include "Cameras/AFirstPersonCamera.h"
 #include "Player/APlayerManager.h"
 #include "Units/AUnit.h"
@@ -50,8 +51,9 @@ constexpr TUINT32 kEyeCount = 2;
 constexpr TFLOAT  kUiQuadWidthMeters = 1.95f;
 constexpr TFLOAT  kUiWorldDistance = 1.75f;
 constexpr TFLOAT  kUiMenuDistance = 2.1f;
-constexpr TFLOAT  kGripButtonThreshold = 0.5f;
-constexpr TFLOAT  kTriggerButtonThreshold = 0.12f;
+constexpr TFLOAT     kGripButtonThreshold    = 0.5f;
+constexpr TFLOAT     kTriggerButtonThreshold = 0.12f;
+constexpr XrDuration kHapticPulseDurationNs  = 100000000;
 
 static bool IsCommandLineOption( const char* a_szCommandLine, const char* a_szOption )
 {
@@ -352,6 +354,8 @@ struct AVRManager::Impl
 	XrAction hRightSqueezeAction = XR_NULL_HANDLE;
 	XrAction hLeftTriggerAction = XR_NULL_HANDLE;
 	XrAction hRightTriggerAction = XR_NULL_HANDLE;
+	XrAction hLeftHapticAction = XR_NULL_HANDLE;
+	XrAction hRightHapticAction = XR_NULL_HANDLE;
 	AVRManager::ControllerInputState oControllerInputState;
 	std::array<AVRControllerPrompt, 27> aControllerPrompts {};
 	TBOOL bPromptBindingsDirty = TTRUE;
@@ -362,6 +366,10 @@ struct AVRManager::Impl
 	TBOOL bInputActionsAttached = TFALSE;
 	TBOOL bSessionFocused = TFALSE;
 	TBOOL bLoggedInputSyncFailure = TFALSE;
+	TBOOL bLeftPinchEmulated = TFALSE;
+	TBOOL bRightPinchEmulated = TFALSE;
+	TBOOL bLeftHapticActive = TFALSE;
+	TBOOL bRightHapticActive = TFALSE;
 	XrSpace hLocalSpace = XR_NULL_HANDLE;
 	XrSpace hHeadSpace = XR_NULL_HANDLE;
 	XrEnvironmentBlendMode eBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
@@ -435,8 +443,30 @@ static void ClearControllerInputState( AVRManager::Impl& a_rImpl )
 	a_rImpl.oControllerInputState = {};
 }
 
+static void StopHandHaptic( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hHandPath, TBOOL& a_rbActive )
+{
+	if ( !a_rbActive )
+		return;
+
+	a_rbActive = TFALSE;
+	if ( !a_rImpl.bInputActionsReady || !a_rImpl.bInputActionsAttached || !a_rImpl.bSessionRunning ||
+	     a_rImpl.bRuntimeLost || a_rImpl.hSession == XR_NULL_HANDLE || a_hAction == XR_NULL_HANDLE )
+		return;
+
+	XrHapticActionInfo oHapticInfo = { XR_TYPE_HAPTIC_ACTION_INFO, TNULL, a_hAction, a_hHandPath };
+	xrStopHapticFeedback( a_rImpl.hSession, &oHapticInfo );
+}
+
+static void StopControllerHaptics( AVRManager::Impl& a_rImpl )
+{
+	StopHandHaptic( a_rImpl, a_rImpl.hLeftHapticAction, a_rImpl.hLeftHandPath, a_rImpl.bLeftHapticActive );
+	StopHandHaptic( a_rImpl, a_rImpl.hRightHapticAction, a_rImpl.hRightHandPath, a_rImpl.bRightHapticActive );
+}
+
 static void DestroyInputActions( AVRManager::Impl& a_rImpl )
 {
+	StopControllerHaptics( a_rImpl );
+
 	XrAction* apActions[] = {
 	    &a_rImpl.hLeftStickAction,
 	    &a_rImpl.hRightStickAction,
@@ -452,6 +482,8 @@ static void DestroyInputActions( AVRManager::Impl& a_rImpl )
 	    &a_rImpl.hRightSqueezeAction,
 	    &a_rImpl.hLeftTriggerAction,
 	    &a_rImpl.hRightTriggerAction,
+	    &a_rImpl.hLeftHapticAction,
+	    &a_rImpl.hRightHapticAction,
 	};
 
 	for ( XrAction* pAction : apActions )
@@ -478,6 +510,10 @@ static void DestroyInputActions( AVRManager::Impl& a_rImpl )
 	a_rImpl.bInputActionsReady = TFALSE;
 	a_rImpl.bInputActionsAttached = TFALSE;
 	a_rImpl.bLoggedInputSyncFailure = TFALSE;
+	a_rImpl.bLeftPinchEmulated = TFALSE;
+	a_rImpl.bRightPinchEmulated = TFALSE;
+	a_rImpl.bLeftHapticActive = TFALSE;
+	a_rImpl.bRightHapticActive = TFALSE;
 	ClearControllerInputState( a_rImpl );
 }
 
@@ -558,7 +594,9 @@ static TBOOL CreateInputActions( AVRManager::Impl& a_rImpl )
 	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "left_squeeze", "Left Squeeze", a_rImpl.hLeftHandPath, a_rImpl.hLeftSqueezeAction ) &&
 	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "right_squeeze", "Right Squeeze", a_rImpl.hRightHandPath, a_rImpl.hRightSqueezeAction ) &&
 	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "left_trigger", "Left Trigger", a_rImpl.hLeftHandPath, a_rImpl.hLeftTriggerAction ) &&
-	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "right_trigger", "Right Trigger", a_rImpl.hRightHandPath, a_rImpl.hRightTriggerAction );
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_FLOAT_INPUT, "right_trigger", "Right Trigger", a_rImpl.hRightHandPath, a_rImpl.hRightTriggerAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_VIBRATION_OUTPUT, "left_haptic", "Left Vibration", a_rImpl.hLeftHandPath, a_rImpl.hLeftHapticAction ) &&
+	    CreateInputAction( a_rImpl, XR_ACTION_TYPE_VIBRATION_OUTPUT, "right_haptic", "Right Vibration", a_rImpl.hRightHandPath, a_rImpl.hRightHapticAction );
 
 	if ( !bActionsCreated )
 	{
@@ -580,6 +618,8 @@ static TBOOL CreateInputActions( AVRManager::Impl& a_rImpl )
 	    { a_rImpl.hRightSqueezeAction, "/user/hand/right/input/squeeze/value" },
 	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
 	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	    { a_rImpl.hLeftHapticAction, "/user/hand/left/output/haptic" },
+	    { a_rImpl.hRightHapticAction, "/user/hand/right/output/haptic" },
 	};
 	const ActionBinding aIndexBindings[] = {
 	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/thumbstick" },
@@ -594,6 +634,8 @@ static TBOOL CreateInputActions( AVRManager::Impl& a_rImpl )
 	    { a_rImpl.hRightSqueezeAction, "/user/hand/right/input/squeeze/value" },
 	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
 	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	    { a_rImpl.hLeftHapticAction, "/user/hand/left/output/haptic" },
+	    { a_rImpl.hRightHapticAction, "/user/hand/right/output/haptic" },
 	};
 	const ActionBinding aMicrosoftBindings[] = {
 	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/thumbstick" },
@@ -610,6 +652,8 @@ static TBOOL CreateInputActions( AVRManager::Impl& a_rImpl )
 	    { a_rImpl.hRightSqueezeAction, "/user/hand/right/input/squeeze/value" },
 	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
 	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	    { a_rImpl.hLeftHapticAction, "/user/hand/left/output/haptic" },
+	    { a_rImpl.hRightHapticAction, "/user/hand/right/output/haptic" },
 	};
 	const ActionBinding aViveBindings[] = {
 	    { a_rImpl.hLeftStickAction, "/user/hand/left/input/trackpad" },
@@ -620,6 +664,8 @@ static TBOOL CreateInputActions( AVRManager::Impl& a_rImpl )
 	    { a_rImpl.hRightStickClickAction, "/user/hand/right/input/trackpad/click" },
 	    { a_rImpl.hLeftTriggerAction, "/user/hand/left/input/trigger/value" },
 	    { a_rImpl.hRightTriggerAction, "/user/hand/right/input/trigger/value" },
+	    { a_rImpl.hLeftHapticAction, "/user/hand/left/output/haptic" },
+	    { a_rImpl.hRightHapticAction, "/user/hand/right/output/haptic" },
 	};
 
 	TBOOL bHasBindings = TFALSE;
@@ -900,16 +946,22 @@ static void SyncControllerInput( AVRManager::Impl& a_rImpl )
 	const TUINT32 uiRightHandButtons = AVRManager::CONTROLLER_BUTTON_START | AVRManager::CONTROLLER_BUTTON_STICK_RIGHT |
 	    AVRManager::CONTROLLER_BUTTON_CONTEXT_2 | AVRManager::CONTROLLER_BUTTON_CONTEXT_3 |
 	    AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_1 | AVRManager::CONTROLLER_BUTTON_SHOULDER_RIGHT_2;
-	if ( HasPinchTriggerSource( a_rImpl, a_rImpl.hLeftTriggerAction ) )
+	a_rImpl.bLeftPinchEmulated  = HasPinchTriggerSource( a_rImpl, a_rImpl.hLeftTriggerAction );
+	a_rImpl.bRightPinchEmulated = HasPinchTriggerSource( a_rImpl, a_rImpl.hRightTriggerAction );
+	if ( a_rImpl.bLeftPinchEmulated )
 	{
 		a_rImpl.oControllerInputState.uiButtonMask &= ~uiLeftHandButtons;
 		a_rImpl.oControllerInputState.fLeftStickX = a_rImpl.oControllerInputState.fLeftStickY = 0.0f;
+		StopHandHaptic( a_rImpl, a_rImpl.hLeftHapticAction, a_rImpl.hLeftHandPath, a_rImpl.bLeftHapticActive );
 	}
-	if ( HasPinchTriggerSource( a_rImpl, a_rImpl.hRightTriggerAction ) )
+	if ( a_rImpl.bRightPinchEmulated )
 	{
 		a_rImpl.oControllerInputState.uiButtonMask &= ~uiRightHandButtons;
 		a_rImpl.oControllerInputState.fRightStickX = a_rImpl.oControllerInputState.fRightStickY = 0.0f;
+		StopHandHaptic( a_rImpl, a_rImpl.hRightHapticAction, a_rImpl.hRightHandPath, a_rImpl.bRightHapticActive );
 	}
+	if ( !AVRSettings::GetSingleton().IsVibrationEnabled() )
+		StopControllerHaptics( a_rImpl );
 }
 
 static void DestroyMirrorPipeline( AVRManager::Impl& a_rImpl )
@@ -1520,6 +1572,7 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	}
 	if ( a_rImpl.hSession != XR_NULL_HANDLE )
 	{
+		StopControllerHaptics( a_rImpl );
 		// xrEndSession is only valid after the runtime reports STOPPING. Teardown
 		// can also happen during device loss or app shutdown, so destroy the
 		// session directly rather than issuing an invalid state-dependent call.
@@ -1534,9 +1587,15 @@ static void DestroySessionTargets( AVRManager::Impl& a_rImpl )
 	a_rImpl.bUILayerReady = TFALSE;
 	a_rImpl.bHasNeutralPose = TFALSE;
 	a_rImpl.bUIFollowInitialized = TFALSE;
+	a_rImpl.fUIFollowYaw = 0.0f;
+	a_rImpl.uiFollowTime = 0;
 	a_rImpl.bInputActionsAttached = TFALSE;
 	a_rImpl.bSessionFocused = TFALSE;
 	a_rImpl.bLoggedInputSyncFailure = TFALSE;
+	a_rImpl.bLeftPinchEmulated = TFALSE;
+	a_rImpl.bRightPinchEmulated = TFALSE;
+	a_rImpl.bLeftHapticActive = TFALSE;
+	a_rImpl.bRightHapticActive = TFALSE;
 	ClearControllerInputState( a_rImpl );
 }
 
@@ -1713,6 +1772,8 @@ static void MarkRuntimeLost( AVRManager::Impl& a_rImpl )
 	a_rImpl.bRuntimeLost = TTRUE;
 	a_rImpl.bSessionRunning = TFALSE;
 	a_rImpl.bSessionFocused = TFALSE;
+	a_rImpl.bLeftHapticActive = TFALSE;
+	a_rImpl.bRightHapticActive = TFALSE;
 	ClearControllerInputState( a_rImpl );
 	SetVSyncAndKeepRunning( a_rImpl, TFALSE );
 }
@@ -1748,9 +1809,14 @@ static void PollEvents( AVRManager::Impl& a_rImpl )
 				if ( pStateEvent->session != a_rImpl.hSession )
 					break;
 
+				const TBOOL bWasFocused = a_rImpl.bSessionFocused;
 				a_rImpl.bSessionFocused = pStateEvent->state == XR_SESSION_STATE_FOCUSED;
 				if ( !a_rImpl.bSessionFocused )
+				{
+					if ( bWasFocused )
+						StopControllerHaptics( a_rImpl );
 					ClearControllerInputState( a_rImpl );
+				}
 
 				switch ( pStateEvent->state )
 				{
@@ -1877,6 +1943,7 @@ TBOOL AVRManager::AlignEntryHeading()
 	const TFLOAT fYaw = std::atan2( -vForward.x, -vForward.z );
 	rImpl.vFixedUICenter = p;
 	rImpl.qFixedUIYaw = { 0.0f, std::sin( fYaw * 0.5f ), 0.0f, std::cos( fYaw * 0.5f ) };
+	rImpl.fUIFollowYaw = fYaw;
 	rImpl.bUIFollowInitialized = TFALSE;
 
 	rImpl.qReferenceYaw = rImpl.qFixedUIYaw;
@@ -1933,6 +2000,47 @@ TBOOL AVRManager::GetControllerInputState( ControllerInputState& a_rState ) cons
 
 	a_rState = m_pImpl->oControllerInputState;
 	return TTRUE;
+}
+
+static void ApplyHandHaptic( AVRManager::Impl& a_rImpl, XrAction a_hAction, XrPath a_hHandPath, TFLOAT a_fAmplitude, TBOOL a_bPinchEmulated, TBOOL& a_rbActive )
+{
+	if ( a_bPinchEmulated || a_fAmplitude <= 0.0f )
+	{
+		StopHandHaptic( a_rImpl, a_hAction, a_hHandPath, a_rbActive );
+		return;
+	}
+
+	if ( a_hAction == XR_NULL_HANDLE )
+		return;
+
+	XrHapticActionInfo oHapticInfo = { XR_TYPE_HAPTIC_ACTION_INFO, TNULL, a_hAction, a_hHandPath };
+	XrHapticVibration  oVibration  = { XR_TYPE_HAPTIC_VIBRATION, TNULL, kHapticPulseDurationNs, XR_FREQUENCY_UNSPECIFIED, a_fAmplitude };
+
+	const XrResult eResult = xrApplyHapticFeedback(
+	    a_rImpl.hSession,
+	    &oHapticInfo,
+	    reinterpret_cast<const XrHapticBaseHeader*>( &oVibration )
+	);
+	if ( XR_SUCCEEDED( eResult ) && eResult != XR_SESSION_NOT_FOCUSED )
+		a_rbActive = TTRUE;
+}
+
+void AVRManager::SetControllerVibration( TFLOAT a_fAmplitude )
+{
+	Impl&        rImpl      = *m_pImpl;
+	const TFLOAT fAmplitude = ( std::isfinite( a_fAmplitude ) && AVRSettings::GetSingleton().IsVibrationEnabled() )
+	    ? std::max( 0.0f, std::min( a_fAmplitude, 1.0f ) )
+	    : 0.0f;
+
+	if ( fAmplitude <= 0.0f || !rImpl.bInputActionsReady || !rImpl.bInputActionsAttached ||
+	     !rImpl.bSessionRunning || !rImpl.bSessionFocused || rImpl.bRuntimeLost || rImpl.hSession == XR_NULL_HANDLE )
+	{
+		StopControllerHaptics( rImpl );
+		return;
+	}
+
+	ApplyHandHaptic( rImpl, rImpl.hLeftHapticAction, rImpl.hLeftHandPath, fAmplitude, rImpl.bLeftPinchEmulated, rImpl.bLeftHapticActive );
+	ApplyHandHaptic( rImpl, rImpl.hRightHapticAction, rImpl.hRightHandPath, fAmplitude, rImpl.bRightPinchEmulated, rImpl.bRightHapticActive );
 }
 
 TBOOL AVRManager::ShouldExit() const
@@ -2075,6 +2183,7 @@ TBOOL AVRManager::BeginFrame()
 		rImpl.qNeutralYaw = rImpl.qReferenceYaw;
 		rImpl.vFixedUICenter = rImpl.vNeutralPosition;
 		rImpl.qFixedUIYaw = rImpl.qReferenceYaw;
+		rImpl.fUIFollowYaw = fYaw;
 		rImpl.bHasNeutralPose = TTRUE;
 		rImpl.bRecenterPending = TFALSE;
 		rImpl.bUIFollowInitialized = TFALSE;
@@ -2494,7 +2603,11 @@ static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 	auto* pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( APlayerControlComponent ) ) );
 	if ( !pControl )
 		pControl = TSTATICCAST( ASimplePlayerControlComponent, pPlayer->FindComponent( &TGetClass( ASimplePlayerControlComponent ) ) );
-	return pControl && pControl->IsAIEnabled() && pControl->IsCameraInputEnabled();
+	if ( !pControl || !pControl->IsCameraInputEnabled() )
+		return TFALSE;
+	// Kicking crates, haybales, trees, or the henhouse briefly disables player
+	// control during the kick animation while remaining in normal gameplay.
+	return pControl->IsAIEnabled() || pStates->GetCurrentState()->FindChildState( &TGetClass( AShakeTreeMicroGame ) ) != TNULL;
 }
 
 void AVRManager::EndUILayer()
@@ -2546,27 +2659,24 @@ void AVRManager::EndUILayer()
 			     vForward.x * vForward.x + vForward.z * vForward.z > 1.0e-4f )
 			{
 				const TFLOAT fHeadYaw = std::atan2( -vForward.x, -vForward.z );
-				if ( !rImpl.bUIFollowInitialized )
-				{
-					rImpl.fUIFollowYaw = fHeadYaw;
-					rImpl.bUIFollowInitialized = TTRUE;
-				}
-				else
-				{
-					// Shortest arc, with a small dead zone so the panel doesn't
-					// chase every glance. Time-based damping is independent of FPS.
-					const TFLOAT fDelta = std::atan2( std::sin( fHeadYaw - rImpl.fUIFollowYaw ), std::cos( fHeadYaw - rImpl.fUIFollowYaw ) );
-					constexpr TFLOAT fDeadZone = 0.17453293f; // 10 degrees
-					const TFLOAT fOutside = std::max( 0.0f, std::abs( fDelta ) - fDeadZone );
-					const double dt = std::max( 0.0, std::min( 0.1, double( rImpl.oFrameState.predictedDisplayTime - rImpl.uiFollowTime ) * 1.0e-9 ) );
-					rImpl.fUIFollowYaw += std::copysign( fOutside * TFLOAT( 1.0 - std::exp( -5.0 * dt ) ), fDelta );
-				}
+				// Shortest arc, with a small dead zone so the panel doesn't
+				// chase every glance. Resume from the current panel yaw rather
+				// than snapping across the dead zone after a menu or control lock.
+				const TFLOAT fDelta = std::atan2( std::sin( fHeadYaw - rImpl.fUIFollowYaw ), std::cos( fHeadYaw - rImpl.fUIFollowYaw ) );
+				constexpr TFLOAT fDeadZone = 0.17453293f; // 10 degrees
+				const TFLOAT fOutside = std::max( 0.0f, std::abs( fDelta ) - fDeadZone );
+				const XrDuration frameElapsed = rImpl.bUIFollowInitialized
+				    ? ( rImpl.oFrameState.predictedDisplayTime - rImpl.uiFollowTime )
+				    : rImpl.oFrameState.predictedDisplayPeriod;
+				const double dt = std::max( 0.0, std::min( 0.1, double( frameElapsed ) * 1.0e-9 ) );
+				rImpl.fUIFollowYaw += std::copysign( fOutside * TFLOAT( 1.0 - std::exp( -5.0 * dt ) ), fDelta );
+				rImpl.fUIFollowYaw = std::atan2( std::sin( rImpl.fUIFollowYaw ), std::cos( rImpl.fUIFollowYaw ) );
 			}
+			rImpl.bUIFollowInitialized = TTRUE;
 			rImpl.uiFollowTime = rImpl.oFrameState.predictedDisplayTime;
 			// When looking vertically, retain the last valid yaw rather than
 			// snapping back to the fixed UI direction.
-			if ( rImpl.bUIFollowInitialized )
-				qYaw = { 0.0f, std::sin( rImpl.fUIFollowYaw * 0.5f ), 0.0f, std::cos( rImpl.fUIFollowYaw * 0.5f ) };
+			qYaw = { 0.0f, std::sin( rImpl.fUIFollowYaw * 0.5f ), 0.0f, std::cos( rImpl.fUIFollowYaw * 0.5f ) };
 			if ( std::isfinite( left.position.x ) && std::isfinite( left.position.y ) && std::isfinite( left.position.z ) &&
 			     std::isfinite( right.position.x ) && std::isfinite( right.position.y ) && std::isfinite( right.position.z ) )
 			{
@@ -2582,6 +2692,7 @@ void AVRManager::EndUILayer()
 		else
 		{
 			rImpl.bUIFollowInitialized = TFALSE;
+			rImpl.fUIFollowYaw = 2.0f * std::atan2( qYaw.y, qYaw.w );
 		}
 		const TFLOAT fYaw = 2.0f * std::atan2( qYaw.y, qYaw.w );
 		rImpl.oQuadPose.position = {
@@ -2757,6 +2868,7 @@ TUINT32 AVRManager::GetControllerPromptRevision() const { return 0; }
 AVRControllerPrompt AVRManager::GetControllerPrompt( TINT ) const { return {}; }
 TBOOL AVRManager::HasControllerInput() const { return TFALSE; }
 TBOOL AVRManager::GetControllerInputState( ControllerInputState& a_rState ) const { a_rState = {}; return TFALSE; }
+void AVRManager::SetControllerVibration( TFLOAT ) {}
 TBOOL AVRManager::ShouldExit() const { return TFALSE; }
 TBOOL AVRManager::BeginFrame() { return TFALSE; }
 TBOOL AVRManager::ShouldRender() const { return TFALSE; }

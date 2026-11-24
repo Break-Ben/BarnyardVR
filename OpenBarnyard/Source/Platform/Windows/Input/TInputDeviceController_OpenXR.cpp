@@ -44,6 +44,7 @@ TInputOpenXRDeviceController::TInputOpenXRDeviceController()
     , m_uiOldButtonMask( 0 )
     , m_afSticks {}
     , m_afRawSticks {}
+    , m_afVibration {}
     , m_bPolled( TFALSE )
 {
 }
@@ -56,6 +57,12 @@ TBOOL TInputOpenXRDeviceController::Acquire()
 
 TBOOL TInputOpenXRDeviceController::Unacquire()
 {
+	if ( m_afVibration[ 0 ] != 0.0f || m_afVibration[ 1 ] != 0.0f )
+	{
+		m_afVibration[ 0 ] = 0.0f;
+		m_afVibration[ 1 ] = 0.0f;
+		AVRManager::GetSingleton().SetControllerVibration( 0.0f );
+	}
 	m_oPauseButtons.Reset();
 	SetAcquired( TFALSE );
 	m_bPolled = TFALSE;
@@ -64,8 +71,40 @@ TBOOL TInputOpenXRDeviceController::Unacquire()
 
 void TInputOpenXRDeviceController::Release()
 {
+	if ( m_afVibration[ 0 ] != 0.0f || m_afVibration[ 1 ] != 0.0f )
+	{
+		m_afVibration[ 0 ] = 0.0f;
+		m_afVibration[ 1 ] = 0.0f;
+		AVRManager::GetSingleton().SetControllerVibration( 0.0f );
+	}
 	m_oPauseButtons.Reset();
 	m_bPolled = TFALSE;
+}
+
+TBOOL TInputOpenXRDeviceController::IsForceFeedbackDevice()
+{
+	return AVRManager::GetSingleton().HasControllerInput();
+}
+
+void TInputOpenXRDeviceController::SetVibration( VIBRATION_ACTUATOR a_eActuator, TFLOAT a_fValue, TBOOL a_bUnknown )
+{
+	(void)a_bUnknown;
+	if ( a_eActuator != VIBRATION_ACTUATOR_0 && a_eActuator != VIBRATION_ACTUATOR_1 )
+		return;
+
+	const TFLOAT fClamped         = std::isfinite( a_fValue ) ? std::max( 0.0f, std::min( a_fValue, 1.0f ) ) : 0.0f;
+	const TBOOL  bActuatorChanged = m_afVibration[ a_eActuator ] != fClamped;
+	m_afVibration[ a_eActuator ]  = fClamped;
+
+	const TFLOAT fAmplitude = std::max( m_afVibration[ VIBRATION_ACTUATOR_0 ], m_afVibration[ VIBRATION_ACTUATOR_1 ] );
+	if ( fAmplitude <= 0.0f )
+	{
+		AVRManager::GetSingleton().SetControllerVibration( 0.0f );
+	}
+	else if ( fClamped > 0.0f || bActuatorChanged )
+	{
+		AVRManager::GetSingleton().SetControllerVibration( fAmplitude );
+	}
 }
 
 void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )

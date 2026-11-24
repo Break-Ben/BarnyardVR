@@ -6,7 +6,7 @@ BarnyardVR is a community port of the video game Barnyard into VR with OpenXR, b
 
 ## VR input
 
-Use physical OpenXR controllers, a regular gamepad, or keyboard/mouse. Hand tracking is not supported. BarnyardVR rejects detected pinch-emulated controller input so hand gestures do not trigger gameplay actions or switch button prompts. This does not change the headset/runtime's global hand-tracking settings.
+Use physical OpenXR controllers, a regular gamepad, or keyboard/mouse. Hand tracking is not supported. BarnyardVR rejects detected pinch-emulated controller input so hand gestures do not trigger gameplay actions or switch button prompts. This does not change the headset/runtime's global hand-tracking settings. Gameplay controller vibrations/haptics are forwarded to physical OpenXR controllers as well as regular force-feedback controllers.
 
 In VR, look with the headset to aim milk squirts in the Barnyard and minigames. Both hip-fire and aimed squirting use headset forward, with the existing firing buttons unchanged. Mouse/right-stick aim controls turn the player and view in place. Lock-on takes priority over headset direction: the character faces the target and squirts use the existing target-directed aim until unlocked. The indicator marks the aiming point rather than the stream’s eventual landing point; gravity and inherited player momentum still affect the stream. Non-VR aiming is unchanged.
 
@@ -18,6 +18,7 @@ Open **Options → VR Settings** using the normal menu controls. This native men
 - **Snap Turning:** Disabled (default), 15°, 30°, 45°, 60° or 90°. Left/right cycles the choices. Changes take effect in VR and are saved when confirmed.
 - **Movement:** Fixed (default) or Head Relative. Head Relative uses the headset's horizontal heading for ordinary on-foot movement in VR, including strafing; it does not change vehicle controls or specialized minigame input.
 - **UI Position:** Fixed (default) or Head Relative. Fixed uses the original session/recenter forward direction for the panel and world, including on bikes and in minigames, regardless of the movement setting. Switching back to Fixed restores that original direction. Head Relative gently follows horizontal turns with a small dead zone during freely controlled first-person gameplay, while collecting honey, and in the in-game pause menu (including its options and confirmations); fixed-camera minigames and first-person bike mounts can align to your entry heading. The panel remains fixed in other menus and restricted views.
+- **Vibration:** On (default) or Off. Left/right toggles controller vibration/haptics for both OpenXR controllers and normal controllers.
 - **Restore Defaults:** asks for confirmation, with No selected by default.
 - **Confirm / Cancel:** use the same device-aware prompts as the other options pages (Enter confirms, Escape cancels on keyboard). Confirm on a setting saves and returns; Cancel discards all edits, including Restore Defaults, and restores the values from when the page opened.
 
@@ -36,6 +37,8 @@ ModernControls=1
 HeadRelativeMovement=0
 # 1 = head-relative UI in free-turning first person, 0 = fixed (default)
 UIFollowsHead=0
+# 1 = controller vibration enabled (default), 0 = disabled
+Vibration=1
 ```
 
 ### Controller layouts

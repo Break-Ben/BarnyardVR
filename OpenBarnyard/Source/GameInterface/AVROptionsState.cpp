@@ -29,6 +29,7 @@ void AVROptionsState::RefreshLabels()
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
 	std::swprintf( m_awszLabels[ ROW_MOVEMENT ], 96, L"Movement: %ls", settings.IsHeadRelativeMovement() ? L"Head Relative" : L"Fixed" );
 	std::swprintf( m_awszLabels[ ROW_UI_PLACEMENT ], 96, L"UI Position: %ls", settings.IsUIFollowingHead() ? L"Head Relative" : L"Fixed" );
+	std::swprintf( m_awszLabels[ ROW_VIBRATION ], 96, L"Vibration: %ls", settings.IsVibrationEnabled() ? L"On" : L"Off" );
 	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Resolution: %d%% (restart)", settings.GetResolutionPercent() );
 	if ( settings.GetMSAASamples() == 1 )
 		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: Off (restart)" );
@@ -46,6 +47,7 @@ void AVROptionsState::OnInsertion()
 	m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
 	m_bOriginalHeadRelativeMovement = AVRSettings::GetSingleton().IsHeadRelativeMovement();
 	m_bOriginalUIFollowsHead = AVRSettings::GetSingleton().IsUIFollowingHead();
+	m_bOriginalVibration     = AVRSettings::GetSingleton().IsVibrationEnabled();
 	m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 	m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 	m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();
@@ -56,7 +58,7 @@ void AVROptionsState::OnInsertion()
 	{
 		auto& button = m_aButtons[ i ];
 		// Keep the expanded list inside the existing dialog at standard GUI sizes.
-		button.Create( pFont, 440.0f, m_awszLabels[ i ], 4.0f );
+		button.Create( pFont, 440.0f, m_awszLabels[ i ], 2.5f );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -80,6 +82,7 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
 	AVRSettings::GetSingleton().SetHeadRelativeMovement( m_bOriginalHeadRelativeMovement );
 	AVRSettings::GetSingleton().SetUIFollowingHead( m_bOriginalUIFollowsHead );
+	AVRSettings::GetSingleton().SetVibrationEnabled( m_bOriginalVibration );
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
@@ -111,6 +114,13 @@ void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 			settings.SetHeadRelativeMovement( !settings.IsHeadRelativeMovement() );
 		else
 			settings.SetUIFollowingHead( !settings.IsUIFollowingHead() );
+		RefreshLabels();
+		return;
+	}
+	if ( a_iRow == ROW_VIBRATION )
+	{
+		auto& settings = AVRSettings::GetSingleton();
+		settings.SetVibrationEnabled( !settings.IsVibrationEnabled() );
 		RefreshLabels();
 		return;
 	}
@@ -184,7 +194,7 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_MOVEMENT || row == ROW_UI_PLACEMENT || row == ROW_RESOLUTION || row == ROW_MSAA || row == ROW_DEBUG_HUD )
+	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_MOVEMENT || row == ROW_UI_PLACEMENT || row == ROW_VIBRATION || row == ROW_RESOLUTION || row == ROW_MSAA || row == ROW_DEBUG_HUD )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
@@ -217,6 +227,7 @@ void AVROptionsState::OnMenuClose()
 		AVRSettings::GetSingleton().SetModernControls( m_bOriginalModernControls );
 		AVRSettings::GetSingleton().SetHeadRelativeMovement( m_bOriginalHeadRelativeMovement );
 		AVRSettings::GetSingleton().SetUIFollowingHead( m_bOriginalUIFollowsHead );
+		AVRSettings::GetSingleton().SetVibrationEnabled( m_bOriginalVibration );
 		AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 		AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 		AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
@@ -229,6 +240,7 @@ void AVROptionsState::OnMenuClose()
 		m_bOriginalModernControls  = AVRSettings::GetSingleton().IsModernControls();
 		m_bOriginalHeadRelativeMovement = AVRSettings::GetSingleton().IsHeadRelativeMovement();
 		m_bOriginalUIFollowsHead = AVRSettings::GetSingleton().IsUIFollowingHead();
+		m_bOriginalVibration     = AVRSettings::GetSingleton().IsVibrationEnabled();
 		m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 		m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 		m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();
