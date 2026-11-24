@@ -214,6 +214,8 @@ private:
 
 	// Picks the strongest rumble and applies it to m_pRumbleController
 	void UpdateRumbles( TFLOAT a_fDeltaTime );
+	TBOOL IsVibrationAllowed() const;
+	void StopControllerVibrations();
 
 	TBOOL ProcessInputEvent( Toshi::TInputInterface* a_pInputInterface, Toshi::TInputInterface::InputEvent* a_pEvent );
 	TBOOL OnDeviceStatusChanged( Toshi::TInputInterface* a_pInputInterface, Toshi::TInputInterface::DeviceStatusEvent* a_pEvent );
@@ -251,8 +253,9 @@ private:
 
 #ifdef BARNYARD_COMMUNITY_PATCH
 
-	TBOOL m_bControllerUsed   = TFALSE; // whether current device is controller or keyboarr/mouse
-	TBOOL m_bControllerXInput = TFALSE;
+	TBOOL m_bControllerUsed        = TFALSE; // whether current device is controller or keyboarr/mouse
+	TBOOL m_bControllerXInput      = TFALSE;
+	TBOOL m_bLastVibrationAllowed  = TTRUE;
 
 #endif // BARNYARD_COMMUNITY_PATCH
 };

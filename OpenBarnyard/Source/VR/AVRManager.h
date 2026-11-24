@@ -56,6 +56,7 @@ public:
 	AVRControllerPrompt GetControllerPrompt( TINT a_iDoodad ) const;
 	TBOOL HasControllerInput() const;
 	TBOOL GetControllerInputState( ControllerInputState& a_rState ) const;
+	void  SetControllerVibration( TFLOAT a_fAmplitude );
 
 	// Prepare is called before the DX11 device is created so the runtime's required
 	// adapter LUID can be used during device selection.

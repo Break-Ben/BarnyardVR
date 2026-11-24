@@ -7,6 +7,7 @@
 #include "GUI/AGUI2.h"
 #include "Player/APlayerManager.h"
 #include "AOptions.h"
+#include "VR/AVRSettings.h"
 #include "Debug/APrimeDebug.h"
 
 #include <Input/TInputInterface.h>
@@ -156,6 +157,9 @@ TBOOL AInputHandler::OnCreate()
 		m_llFreePositionalRumbles.InsertTail( &m_pPositionalRumbles[ i ] );
 
 	m_bRumbleEnabled = AOptions::GetSingleton()->IsRumbleEnabled();
+#ifdef BARNYARD_COMMUNITY_PATCH
+	m_bLastVibrationAllowed = IsVibrationAllowed();
+#endif
 	return TTRUE;
 }
 
@@ -167,6 +171,13 @@ TBOOL AInputHandler::OnUpdate( TFLOAT a_fDeltaTime )
 
 	TInputInterface::GetSingleton()->AcquireAll();
 	TInputInterface::GetSingleton()->ProcessEvents( a_fDeltaTime );
+
+#ifdef BARNYARD_COMMUNITY_PATCH
+	const TBOOL bVibrationAllowed = IsVibrationAllowed();
+	if ( m_bLastVibrationAllowed && !bVibrationAllowed )
+		StopControllerVibrations();
+	m_bLastVibrationAllowed = bVibrationAllowed;
+#endif
 
 #ifdef PRIMEDEBUG_DEV
 	APrimeDebug::Update( a_fDeltaTime );
@@ -185,7 +196,9 @@ void AInputHandler::OnDestroy()
 	m_DeviceStatusListener.Disconnect();
 	m_PauseListener.Disconnect();
 
+	StopRumble( m_pRumbleController );
 	StopAllRumbles();
+	m_llRumbles.RemoveAll();
 	m_llFreeRumbles.RemoveAll();
 	m_llFreePositionalRumbles.RemoveAll();
 
@@ -314,7 +327,12 @@ void AInputHandler::UpdateRumbles( TFLOAT a_fDeltaTime )
 		}
 	}
 
-	if ( pStrongestPositional )
+	if ( !IsVibrationAllowed() )
+	{
+		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_0, 0.0f, TFALSE );
+		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
+	}
+	else if ( pStrongestPositional )
 	{
 		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, fStrongest, TFALSE );
 	}
@@ -329,8 +347,29 @@ void AInputHandler::UpdateRumbles( TFLOAT a_fDeltaTime )
 	}
 	else
 	{
-		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
 		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_0, 0.0f, TFALSE );
+		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
+	}
+}
+
+TBOOL AInputHandler::IsVibrationAllowed() const
+{
+	return m_bRumbleEnabled && AVRSettings::GetSingleton().IsVibrationEnabled();
+}
+
+void AInputHandler::StopControllerVibrations()
+{
+	for ( TINT i = 0; i < m_Devices.Size(); i++ )
+	{
+		TInputDeviceController* pController = TSTATICCAST( TInputDeviceController, m_Devices[ i ] );
+		pController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_0, 0.0f, TFALSE );
+		pController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
+	}
+
+	if ( m_pRumbleController && m_Devices.Find( m_pRumbleController ) == m_Devices.End() )
+	{
+		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_0, 0.0f, TFALSE );
+		m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
 	}
 }
 
@@ -380,14 +419,20 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 	// the prompt family from a mouse, keyboard or another physical controller.
 	if ( pInputSource->GetClass()->IsA( &TGetClass( TInputDeviceController ) ) )
 	{
+		auto*       playerManager   = APlayerManager::GetSingleton();
+		auto*       playerSet       = playerManager ? playerManager->GetCurrentPlayerSet() : TNULL;
+		const TBOOL multiplePlayers = playerSet && playerSet->GetHumanPlayerCount() > 1;
 		const TBOOL pressed = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN;
 		const TBOOL moved = a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL && a_pEvent->GetAxisCount() >= 2 &&
 		    TMath::Abs( a_pEvent->GetMagnitudeFloat( 0 ) ) + TMath::Abs( a_pEvent->GetMagnitudeFloat( 1 ) ) >= 0.1f;
 		if ( pressed || moved )
 		{
+			auto* pController = TSTATICCAST( TInputDeviceController, pInputSource );
+			if ( !multiplePlayers && m_pRumbleController && m_pRumbleController != pController )
+				StopRumble( m_pRumbleController );
 			// Gameplay pause checks IsValidDevice(), not just prompt style. Keep
 			// the primary device in step when switching gamepad <-> OpenXR.
-			m_pMainController = TSTATICCAST( TInputDeviceController, pInputSource );
+			m_pMainController = pController;
 #if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 )
 			AInputPrompts::SetOpenXRActive( pInputSource->GetClass()->IsA( &TGetClass( TInputOpenXRDeviceController ) ) );
 #else
@@ -400,9 +445,6 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 		// In single-player, multiple pads feed the same camera/control channel.
 		// In multiplayer, each assigned pad must deliver its own neutral axes;
 		// the globally last-used pad does not own the other players' channels.
-		auto*       playerManager   = APlayerManager::GetSingleton();
-		auto*       playerSet       = playerManager ? playerManager->GetCurrentPlayerSet() : TNULL;
-		const TBOOL multiplePlayers = playerSet && playerSet->GetHumanPlayerCount() > 1;
 		if ( !multiplePlayers && a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_VIRTUAL &&
 		     a_pEvent->GetAxisCount() >= 2 && pInputSource != m_pMainController )
 			return TFALSE;
@@ -439,6 +481,7 @@ TBOOL AInputHandler::ProcessInputEvent( Toshi::TInputInterface* a_pInputInterfac
 		{
 			SetControllerUsed( TFALSE );
 			StopAllRumbles();
+			StopRumble( m_pRumbleController );
 
 			TTRACE( "Controller is not active anymore due to %s\n", pInputSource->GetClass()->GetName() );
 		}
@@ -493,6 +536,9 @@ TBOOL AInputHandler::OnDeviceStatusChanged( Toshi::TInputInterface* a_pInputInte
 
 	if ( a_pEvent->eStatus == TInputInterface::DEVICESTATUS_DISCONNECTED )
 	{
+		if ( pDevice == m_pRumbleController )
+			StopRumble( m_pRumbleController );
+
 		if ( !m_bRecordLostControllers && pDevice == m_pMainController )
 		{
 			m_pLostMainController = m_pMainController;
@@ -521,6 +567,8 @@ TBOOL AInputHandler::OnDeviceStatusChanged( Toshi::TInputInterface* a_pInputInte
 TBOOL AInputHandler::OnPause( Toshi::TSystemManager* a_pSystemManager, TBOOL* a_pPause )
 {
 	m_bIsPaused = *a_pPause;
+	if ( m_bIsPaused )
+		StopControllerVibrations();
 
 #ifdef TOSHI_SKU_WINDOWS
 	if ( !m_bIsPaused )
@@ -571,15 +619,8 @@ void AInputHandler::SetRumbleEnabled( TBOOL a_bEnabled )
 	{
 		m_bRumbleEnabled = a_bEnabled;
 
-		if ( !a_bEnabled )
-		{
-			for ( TINT i = 0; i < m_Devices.Size(); i++ )
-			{
-				TInputDeviceController* pController = TSTATICCAST( TInputDeviceController, m_Devices[ i ] );
-				pController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_0, 0.0f, TFALSE );
-				pController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
-			}
-		}
+		if ( !IsVibrationAllowed() )
+			StopControllerVibrations();
 	}
 }
 
@@ -613,7 +654,7 @@ void AInputHandler::StopRumble( TInputDeviceController* a_pController )
 
 TINT AInputHandler::SetRumble( TInputDeviceController* a_pController, const RumbleParams* a_pParams )
 {
-	if ( !a_pController || !a_pController->IsForceFeedbackDevice() || !m_bRumbleEnabled )
+	if ( !a_pController || !a_pController->IsForceFeedbackDevice() || !IsVibrationAllowed() )
 		return 0;
 
 	if ( m_llFreeRumbles.IsEmpty() || !IsControllerUsed() )
@@ -657,6 +698,12 @@ void AInputHandler::RemoveRumble( TINT a_iRumble, TInputDeviceController* a_pCon
 		{
 			pRumble->Remove();
 			m_llFreeRumbles.InsertTail( pRumble );
+
+			if ( m_llRumbles.IsEmpty() && m_llPositionalRumbles.IsEmpty() && m_pRumbleController )
+			{
+				m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_0, 0.0f, TFALSE );
+				m_pRumbleController->SetVibration( TInputDeviceController::VIBRATION_ACTUATOR_1, 0.0f, TFALSE );
+			}
 			return;
 		}
 	}
