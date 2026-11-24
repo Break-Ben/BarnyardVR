@@ -2455,25 +2455,35 @@ void AVRManager::RenderDebugHUD()
 	Toshi::T2GUIFontManager::ReleaseFont( pFont );
 }
 
-// Follow during player-controlled, unrestricted first-person views, regardless
-// of which gameplay state owns them. Menus and fixed cameras keep the anchor.
+// Follow in the in-game pause menu, while collecting honey, and during
+// unrestricted player-controlled first-person gameplay. Other menus and fixed
+// cameras keep the anchor.
 static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 {
 	if ( !a_rImpl.bWorldRendered || g_oLoadScreen.IsLoadingScreen() || !AVRSettings::GetSingleton().IsUIFollowingHead() ||
-	     !AGameStateController::IsSingletonCreated() || !APlayerManager::IsSingletonCreated() ||
-	     AGameStateController::ms_bPausedByMenu )
+	     !AGameStateController::IsSingletonCreated() )
 		return TFALSE;
 
 	auto* pStates = AGameStateController::GetSingleton();
-	if ( pStates->GetNumStates() <= 1 || pStates->GetCurrentState()->IsA( &TGetClass( ABYardMenuState ) ) )
+	if ( pStates->GetNumStates() <= 1 )
 		return TFALSE;
 
-	// Honey uses a custom camera-turn restriction instead of GTA yaw limits.
-	// Keep the panel fixed at the hive; ordinary exploration still follows.
+	// The pause state stays on the stack underneath Options and confirmations.
+	// Do not use ms_bPausedByMenu alone: instruction screens also set it.
+	if ( pStates->FindGameStateOnStack( TPS8D( "AStartMenuState" ) ) )
+		return TTRUE;
+
+	if ( AGameStateController::ms_bPausedByMenu || pStates->GetCurrentState()->IsA( &TGetClass( ABYardMenuState ) ) )
+		return TFALSE;
+
+	// Collection has its own restricted camera controls, but its HUD should
+	// still follow the physical headset even while player controls are held.
 	if ( pStates->GetCurrentState()->IsA( &TGetClass( AHoneyCollectingGame ) ) &&
 	     TSTATICCAST( AHoneyCollectingGame, pStates->GetCurrentState() )->IsCollecting() )
-		return TFALSE;
+		return TTRUE;
 
+	if ( !APlayerManager::IsSingletonCreated() )
+		return TFALSE;
 	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayer( 0 );
 	if ( !pPlayer || !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( pPlayer ) )
 		return TFALSE;
