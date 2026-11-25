@@ -1,88 +1,51 @@
-# BarnyardVR
+![BarnyardVR](docs/images/BarnyardVRWithIcon.png)
 
-[OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard) | [API Docs](https://opentoshi.net/OpenBarnyard/docs/) | [OpenJPOG](https://github.com/AdventureT/OpenJPOG) | [Modifications](https://www.youtube.com/@infc0re) | [Discord](https://discord.gg/j7vbsNP4my)
+BarnyardVR is a community-made OpenXR VR port of the 2006 video game **Barnyard**, based on [OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard).
 
-BarnyardVR is a community port of the video game Barnyard into VR with OpenXR, based heavily on [OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard).
+## Features
 
-## VR input
+- OpenXR support with stereoscopic VR rendering, 6DOF head tracking and a desktop mirror.
+- VR controller support with vibration, custom button prompts and optional modern control remapping.
+- Full first-person support in the Barnyard and suitable minigames.
+- Snap/smooth turning options and head-relative movement/UI options.
+- VR-specific minigame improvements, including head-directed aiming and rendering suitable UI in 3D space.
+- Adjustable VR resolution and anti-aliasing options, with an FPS debug HUD to help tune performance.
 
-Use physical OpenXR controllers, a regular gamepad, or keyboard/mouse. Hand tracking is not supported. BarnyardVR rejects detected pinch-emulated controller input so hand gestures do not trigger gameplay actions or switch button prompts. This does not change the headset/runtime's global hand-tracking settings. Gameplay controller vibrations/haptics are forwarded to physical OpenXR controllers as well as regular force-feedback controllers.
+## Installation
 
-In VR, look with the headset to aim milk squirts in the Barnyard and minigames. Both hip-fire and aimed squirting use headset forward, with the existing firing buttons unchanged. Mouse/right-stick aim controls turn the player and view in place. Lock-on takes priority over headset direction: the character faces the target and squirts use the existing target-directed aim until unlocked. The indicator marks the aiming point rather than the stream’s eventual landing point; gravity and inherited player momentum still affect the stream. Non-VR aiming is unchanged.
+1. Install a Windows copy of Barnyard and have an OpenXR-compatible PCVR headset and runtime set up.
+2. Download the [latest Windows release ZIP file](https://github.com/Break-Ben/BarnyardVR/releases/latest).
+3. (Optional but recommended) Copy your game files to a separate folder first to avoid conflicts with other mods or changes to your original installation.
+4. Extract the ZIP contents into the game directory, alongside the existing `Barnyard.exe`.
+5. Start your PCVR headset/runtime and launch `BarnyardVR.exe` from the game folder.
 
-## VR settings
+## Settings
 
-Open **Options → VR Settings** using the normal menu controls. This native menu is also available in flat-screen mode so settings can be prepared without a headset.
+BarnyardVR contains options that are configurable in-game via **Options → VR Settings**. Defaults are shown in bold. Some changes require a restart.
 
-- **Control Layout:** Modern (default) or Classic. Left/right switches layouts for gamepads and OpenXR controllers in gameplay and minigames. Keyboard/mouse bindings are unchanged. Classic keeps the original controller bindings.
-- **Snap Turning:** Disabled (default), 15°, 30°, 45°, 60° or 90°. Left/right cycles the choices. Changes take effect in VR and are saved when confirmed.
-- **Movement:** Fixed (default) or Head Relative. Head Relative uses the headset's horizontal heading for ordinary on-foot movement in VR, including strafing; it does not change vehicle controls or specialized minigame input.
-- **UI Position:** Fixed (default) or Head Relative. Fixed uses the original session/recenter forward direction for the panel and world, including on bikes and in minigames, regardless of the movement setting. Switching back to Fixed restores that original direction. Head Relative gently follows horizontal turns with a small dead zone during freely controlled first-person gameplay, while collecting honey, and in the in-game pause menu (including its options and confirmations); fixed-camera minigames and first-person bike mounts can align to your entry heading. The panel remains fixed in other menus and restricted views.
-- **Vibration:** On (default) or Off. Left/right toggles controller vibration/haptics for both OpenXR controllers and normal controllers.
-- **Restore Defaults:** asks for confirmation, with No selected by default.
-- **Confirm / Cancel:** use the same device-aware prompts as the other options pages (Enter confirms, Escape cancels on keyboard). Confirm on a setting saves and returns; Cancel discards all edits, including Restore Defaults, and restores the values from when the page opened.
+| Setting | Values | Description |
+| --- | --- | --- |
+| Control Layout | **Modern**, Classic | Modern remaps controls for VR controllers and modern conventions. Classic uses the original gamepad layout. |
+| Snap Turning | **Disabled**, 15°, 30°, 45°, 60°, 90° | Turn smoothly when disabled, or turn by the selected angle. |
+| Movement | **Fixed**, Head Relative | While on foot, move relative to the VR forward direction when fixed, or your headset direction when head-relative. |
+| UI Position | **Fixed**, Head Relative | Keep the interface at the VR forward direction when fixed, or let it follow your headset direction (where supported) when head-relative. |
+| Vibration | **On**, Off | Toggle vibration on VR controllers and gamepads. |
+| Resolution (Requires Restart) | 50–200%; **100%** | Change VR render resolution factor. Higher values are recommended to improve visual clarity (since the game isn't demanding), but it may cost performance on weaker computers. |
+| MSAA (Requires Restart) | Off, **2x**, 4x, 8x | Smooth jagged edges. Higher levels can reduce performance. Levels unsupported by your hardware fall back to a lower level. |
+| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, and MSAA. |
 
-The registered minigames using the normal free-turning on-foot camera during gameplay are Chasing Chicks, Veggie Patch Defender, Honey Collecting (outside the hive interaction), Sharp Squirter and Chicken Coop Defender. Other in-world activities can inherit the same camera; the UI-follow policy checks the active camera and controls rather than using a minigame allowlist. In those same head-relative on-foot views, the eye height uses the headset height above the runtime's floor estimate at the last recenter rather than the cow's fixed eye height, so the real floor lines up with the ground in-game. Vehicles, bikes, golf and fixed-camera minigames keep their original camera height.
+## Content Disclosure
 
-When enabled, joystick camera yaw turns by the selected angle once per deflection. Return the stick towards centre before another snap (including reversing direction). The activation threshold is 70% and the release threshold is 30%, preventing jitter and held-stick repeats. Applies to normal camera turning, aimed squirting, and vehicle freelook; pitch stays unchanged. Mouse look, keyboard look keys, physical headset movement and non-VR camera controls are not snapped. This does not change vehicle steering or movement-stick mappings.
-
-Settings load on first access from `BarnyardVR.cfg` in the save directory chosen by `SaveLoadSKU` (normally `Save` next to the executable). This is separate from `OpenBarnyard.cfg` and `savedata.by`. Missing entries use defaults; unknown keys (including the old dummy keys) and malformed/unsupported values are ignored. Changes are written only when confirming the page, using a temporary file before replacing the previous config. Save errors are reported in-game and retain the edited values for retry.
-
-```ini
-# 0 disables snapping; supported angles: 15, 30, 45, 60, 90
-SnapTurnDegrees=0
-# 1 = Modern (default), 0 = Classic
-ModernControls=1
-# 1 = head-relative walking, 0 = fixed (default)
-HeadRelativeMovement=0
-# 1 = head-relative UI in free-turning first person, 0 = fixed (default)
-UIFollowsHead=0
-# 1 = controller vibration enabled (default), 0 = disabled
-Vibration=1
-```
-
-### Controller layouts
-
-Modern resolves each game's native controller map rather than changing the original controls asset. Input dispatch and button-name/glyph lookup use the same effective map. Sticks and directional navigation retain their native behavior. Modern UI uses Quest A to accept and B to go back/cancel. Gameplay action preferences are:
-
-| Action | Modern preference (Quest button names) |
-| --- | --- |
-| Jump | A (bottom face button) |
-| Bike accelerate / brake | Right trigger / left trigger |
-| Car-chase accelerate / brake / handbrake | Right trigger / left trigger / A |
-| Squirt aim (hold) / shoot | Left trigger / right trigger |
-| Target lock | Left grip |
-| Primary interact | B |
-| Use, reload | X |
-| Dodge, leave | B when not occupied by Interact; otherwise displaced |
-| Alternate fire | Right grip |
-| Sprint / boost | Left stick click |
-| Inventory | Y |
-| Bell / horn | Y when not occupied by Inventory; otherwise displaced |
-| Bike boost (`Trick1`) | Left stick click |
-| Bike left / right airborne trick (`Trick3` / `Trick4`) | Left grip / right grip |
-| Previous / next selection | Left grip / right grip |
-
-These are **priorities, not additive binds**: when a minigame uses the same source button for multiple state-dependent actions, the group stays together. Higher-priority actions (jump, pedals, shooting, interaction) win; displaced actions move with their original button group, so no original action is removed and no new button-sharing is introduced. Follow the game's effective button prompts for the particular activity. Generic face-button/QTE and direction-only maps retain their native layout. UI maps separately prefer A for OK/Yes and B for Cancel/Back/No. The resolver covers normal play, bike/races, car chase, golf, pool, darts, cooking, tapper, cow tipping, gate crash, honey collecting, gopher shop, statues, whack-a-raccoon, and the herding/defender/squirt/microgame contexts through their shared maps. Triggers remain digital; this does not add analog throttle.
-
-The bike's native command names are misleading: `Trick1` is sprint/boost, `Trick3` and `Trick4` control the left/right airborne tricks, and holding both selects the combined trick variant. `Trick2` has no bike handler; Modern adds no preference or handler for it. Existing gameplay handlers, Classic bindings and keyboard/mouse controls are unchanged.
-
-**Activity-specific Modern controls:** inventory uses **A to select/use** and **Y or B to close**, with its own effective map so on-foot B interaction is unaffected. Golf uses **A to swing**, **left trigger to zoom out**, and **right trigger to zoom in**. Darts uses **A to throw**; pool, cooking, tapper, whack-a-raccoon, gopher shop and honey collecting also prefer A for their primary action. These activity preferences take priority over the generic combat layout above.
-
-**Loading/instruction screen (both layouts):** A or B continues once the activity is ready; Start/Pause and the original keyboard/mouse controls still work. The prompt says “Press A or B” only while controller input is active; keyboard/mouse use the original localized prompt, including in VR. This is separate from the front-end title screen.
-
-**Title screen (both layouts):** press Quest A or B to enter the main menu. While controller input is active, the title prompt shows “Press A or B”; keyboard/mouse retain the original localized prompt and input behavior, including in VR.
-
-**OpenXR pause (both layouts):** the application menu button acts as Start/Pause. If the controller has no application-accessible menu (for example Index), click both thumbsticks together. System/dashboard buttons are not used. Standalone OpenXR stick clicks have a short 0.2-second chord-detection delay; quick clicks are still delivered. Existing virtual-gamepad prompt artwork is reused, not replaced with headset-specific artwork. Gamepads retain their normal Start/Pause button.
-
-For future port options, add typed values and validated setters to `VR/AVRSettings`, have the relevant subsystem consume those values, and expose them through `AVROptionsState`. Do not store port settings in the original binary save layout. Snap turning has no command-line override; existing VR arguments (including `-vrscale`) are unchanged. When connecting startup-sensitive settings, load them before their subsystem initializes, label restart requirements in the menu, and apply any command-line overrides after loading without writing those overrides back to the file.
+- BarnyardVR works with the original Barnyard game, created and owned by [THQ Nordic](https://www.thqnordic.com) without the use of AI. Its files are not included in this repository.
+- This port is forked from and heavily based on [OpenBarnyard](https://github.com/InfiniteC0re/OpenBarnyard). Thank you to [InfiniteC0re](https://github.com/InfiniteC0re) for extensive manual reverse engineering and AI-assisted decompilation work - this project would not be possible without it!
+- AI was used heavily to write and adapt code for the BarnyardVR port.
 
 ## Notes
 
 > [!IMPORTANT]
 > **SUPPORT THE DEVELOPERS OF THE TOSHI ENGINE**
 >
-> We do not own the Toshi Engine in any way, shape or form, and this project would not have been possible had they not developed TOSHI in the first place. The Toshi Engine is currently owned by [THQ Nordic](https://www.thqnordic.com); we highly urge you to follow & support their projects if you like this project!
+> We do not own the Toshi Engine in any way, shape or form and this project would not have been possible had they not developed TOSHI in the first place. The Toshi Engine is currently owned by [THQ Nordic](https://www.thqnordic.com); we highly urge you to follow & support their projects if you like this project!
 
 > [!WARNING]
 > **DO NOT USE THIS DECOMPILATION PROJECT AS A MEANS TO PIRATE BARNYARD OR ANY OTHER TOSHI GAMES!**
@@ -95,31 +58,17 @@ For future port options, add typed values and validated setters to `VR/AVRSettin
 
 Building on Windows requires:
 
-- Visual Studio 2026
+- Visual Studio 2026 with the Desktop development with C++ workload and Windows SDK
 
 Clone the repository with the following commands:
-
-	git clone https://github.com/Break-Ben/BarnyardVR.git
-	cd BarnyardVR
-	git submodule update --init --recursive
-	./GenerateProjects-WIN-DX11-VS2026.bat
-
+```bat
+git clone https://github.com/Break-Ben/BarnyardVR.git
+cd BarnyardVR
+git submodule update --init --recursive
+.\GenerateProjects-WIN-DX11-VS2026.bat
+```
 Then open the generated solution file with Visual Studio and build it. The Windows game executable is named `BarnyardVR.exe`.
-
-### Drafting a release
-
-The repository's root `VERSION` file contains the release version in SemVer format (currently `0.9.0`). To prepare a release, change it to the next version (for example, `0.10.0` or `1.0.0-rc.1`) in a pull request and merge that PR to `main`.
-
-The **Build and draft release** GitHub Action then generates the same VS 2026 DX11 Win32 solution, builds the `Release` / `Win32` configuration, and packages `bin\Release_Win32_x86_DX11\OpenBarnyard` as a ZIP attached to a **draft** GitHub release tagged `v<version>`. GitHub generates the release notes from merged PRs since the previous published release; PRs can be grouped using the `breaking`, `enhancement`/`feature`, and `bug`/`bugfix` labels. Apply `skip-changelog` to omit a PR from the notes.
-
-The action never publishes a release. Review and edit the draft's title, notes, and ZIP in GitHub, then publish it yourself when ready. A draft must be published or deleted before the next version bump is processed. To retry a failed preparation without changing the version, run **Build and draft release** manually from the Actions tab. The workflow requires a Windows runner with Visual Studio 2026 (including the C++ build tools); if GitHub's hosted `windows-latest` image does not yet include VS 2026, the build step will fail with a clear message and the workflow must be run on a suitable Windows runner.
 
 ## Contributing
 
-The project is open to any kind of contributions!
-
-## Third-Party libraries
-- [premake](https://github.com/premake/premake-core)
-- [tracy](https://github.com/wolfpld/tracy)
-- [fmod](https://fmod.com/)
-- [Opcode](http://www.codercorner.com/Opcode.htm)
+The project is open to any kind of contributions! Report issues on [GitHub](https://github.com/Break-Ben/BarnyardVR/issues) or Discord.
