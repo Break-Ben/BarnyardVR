@@ -130,9 +130,10 @@ void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )
 	// Typical gamepads can report a little beyond a unit circle before each
 	// axis clips. Approximate that rounded range for circular OpenXR sticks,
 	// then use the exact same per-axis deadzone and saturation as XInput.
-	// This gain is an approximation based on observed ranges, not an
-	// OpenXR/XInput guarantee or a hardware calibration.
-	constexpr TFLOAT kGamepadRange = 1.09f;
+	// For a unit-circle input, 1.125 gives roughly 7.4% average outer
+	// radius deviation after axis clipping, within reported stock gamepad
+	// ranges. It is a model, not an OpenXR/XInput guarantee or calibration.
+	constexpr TFLOAT kGamepadRange = 1.125f;
 	for ( TINT i = 0; i < TARRAYSIZE( m_afSticks ); i++ )
 	{
 		const TFLOAT fAxis = ClampAxis( m_afRawSticks[ i ] * kGamepadRange );
