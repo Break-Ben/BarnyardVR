@@ -80,8 +80,8 @@ void AVROptionsState::UpdateScrollIndicators()
 	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
 	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
 	// Centre the arrows in the space above and below the row content.
-	m_aScrollArrows[ 0 ].SetTransform( 0.0f, -11.0f );
-	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight - 5.0f );
+	m_aScrollArrows[ 0 ].SetTransform( 0.0f, -9.0f );
+	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight + 1.0f );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
