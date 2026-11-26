@@ -127,29 +127,18 @@ void TInputOpenXRDeviceController::Update( TFLOAT a_fDeltaTime )
 	m_afRawSticks[ 2 ] = ClampAxis( oState.fRightStickX );
 	m_afRawSticks[ 3 ] = ClampAxis( -oState.fRightStickY );
 
-	// OpenXR thumbsticks have a circular gate, so use radial deadzone and
-	// saturation to preserve full magnitude on diagonals.
-	constexpr TFLOAT kStickDeadzone = TFLOAT( TInputDXDeviceController::STICK_DEADZONE ) / TFLOAT( TInputDXDeviceController::STICK_SATURATE );
-	constexpr TFLOAT kStickSaturate = TFLOAT( TInputDXDeviceController::STICK_SATURATE ) / TFLOAT( TInputDXDeviceController::STICK_CENTRE );
-
-	for ( TINT i = 0; i < 2; i++ )
+	// Typical gamepads can report a little beyond a unit circle before each
+	// axis clips. Approximate that rounded range for circular OpenXR sticks,
+	// then use the exact same per-axis deadzone and saturation as XInput.
+	// For a unit-circle input, 1.125 gives roughly 7.4% average outer
+	// radius deviation after axis clipping, within reported stock gamepad
+	// ranges. It is a model, not an OpenXR/XInput guarantee or calibration.
+	constexpr TFLOAT kGamepadRange = 1.125f;
+	for ( TINT i = 0; i < TARRAYSIZE( m_afSticks ); i++ )
 	{
-		const TFLOAT fX         = m_afRawSticks[ i * 2 ];
-		const TFLOAT fY         = m_afRawSticks[ i * 2 + 1 ];
-		const TFLOAT fMagnitude = std::sqrt( fX * fX + fY * fY );
-
-		if ( fMagnitude <= kStickDeadzone )
-		{
-			m_afSticks[ i * 2 ]     = 0.0f;
-			m_afSticks[ i * 2 + 1 ] = 0.0f;
-		}
-		else
-		{
-			const TFLOAT fAdjustedMagnitude = std::min( ( fMagnitude - kStickDeadzone ) / ( kStickSaturate - kStickDeadzone ), 1.0f );
-			const TFLOAT fScale             = fAdjustedMagnitude / fMagnitude;
-			m_afSticks[ i * 2 ]             = fX * fScale;
-			m_afSticks[ i * 2 + 1 ]         = fY * fScale;
-		}
+		const TFLOAT fAxis = ClampAxis( m_afRawSticks[ i ] * kGamepadRange );
+		const TINT   iAxis = TINT( fAxis * TInputDXDeviceController::STICK_CENTRE ) + TInputDXDeviceController::STICK_CENTRE;
+		m_afSticks[ i ]    = TInputDXDeviceController::NormaliseStick( iAxis );
 	}
 
 	UpdateVirtualButtons();

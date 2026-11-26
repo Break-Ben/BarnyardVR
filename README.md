@@ -27,13 +27,13 @@ BarnyardVR contains options that are configurable in-game via **Options → VR S
 | --- | --- | --- |
 | Control Layout | **Modern**, Classic | Modern remaps controls for VR controllers and modern conventions. Classic uses the original gamepad layout. |
 | Snap Turning | **Disabled**, 15°, 30°, 45°, 60°, 90° | Turn smoothly when disabled, or turn by the selected angle. |
-| Toggle Sprint | **Off**, On | Press sprint to toggle it; on foot it stops when you stop moving, and on a bike boost stops when you release the accelerator or brake. Both stop when stamina runs out. |
+| Toggle Sprint | **Off**, On | Press sprint to toggle it. Automatically disables when you stop accelerating or when stamina runs out. |
 | Movement | **Fixed**, Head Relative | While on foot, move relative to the VR forward direction when fixed, or your headset direction when head-relative. |
 | UI Position | **Fixed**, Head Relative | Keep the interface at the VR forward direction when fixed, or let it follow your headset direction (where supported) when head-relative. |
 | Vibration | **On**, Off | Toggle vibration on VR controllers and gamepads. |
 | Resolution (Requires Restart) | 50–200%; **100%** | Change VR render resolution factor. Higher values are recommended to improve visual clarity (since the game isn't demanding), but it may cost performance on weaker computers. |
 | MSAA (Requires Restart) | Off, **2x**, 4x, 8x | Smooth jagged edges. Higher levels can reduce performance. Levels unsupported by your hardware fall back to a lower level. |
-| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, and MSAA. |
+| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, MSAA, and joystick inputs. |
 
 ## Content Disclosure
 

@@ -57,6 +57,18 @@ public:
 	void  BindToUserIndex( DWORD a_uiUserIndex );
 	DWORD GetUserIndex() const { return m_uiUserIndex; }
 
+	// Diagnostic values: the centred device axis and the value sent in stick events.
+	TFLOAT GetRawStickAxis( Doodad a_iDoodad, TINT a_iAxis ) const
+	{
+		if ( !m_bPolled || ( a_iDoodad != STICK_LEFT && a_iDoodad != STICK_RIGHT ) || a_iAxis < 0 || a_iAxis > 1 ) return 0.0f;
+		return ( GetDXAxis( a_iDoodad, a_iAxis ) - STICK_CENTRE ) * ( 1.0f / STICK_CENTRE );
+	}
+	TFLOAT GetEventStickAxis( Doodad a_iDoodad, TINT a_iAxis ) const
+	{
+		if ( !m_bPolled || ( a_iDoodad != STICK_LEFT && a_iDoodad != STICK_RIGHT ) || a_iAxis < 0 || a_iAxis > 1 ) return 0.0f;
+		return m_afSticks[ ( a_iDoodad == STICK_RIGHT ? 2 : 0 ) + a_iAxis ];
+	}
+
 	// Loads XInput, returns TFALSE if none is available
 	static TBOOL LoadXInput();
 	static void  UnloadXInput();
