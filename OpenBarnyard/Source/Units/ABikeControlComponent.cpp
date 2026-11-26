@@ -57,14 +57,12 @@ void ABikeControlComponent::UpdateAI( TFLOAT a_fDeltaTime )
 
 	if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() )
 	{
-		// Boost itself is an accelerator on bikes. A toggle holds it until
-		// cancelled; never resume it automatically after braking or exhaustion.
-		if ( m_bToggleBrake || pSteer->IsExhausted() || pSteer->GetStamina() <= 0.0f || pSteer->IsStopped() )
+		// Toggle boost only while the accelerator supplies input. Releasing it
+		// cancels the toggle rather than making the bike drive by itself.
+		if ( m_vecInput.z <= 0.0f || m_bToggleBrake || pSteer->IsExhausted() || pSteer->GetStamina() <= 0.0f || pSteer->IsStopped() )
 			m_bBoost = TFALSE;
 		if ( m_bToggleBrake )
 			m_vecInput.z = -1.0f;
-		else if ( m_bBoost )
-			m_vecInput.z = 1.0f;
 	}
 	m_bToggleBrake = TFALSE;
 
