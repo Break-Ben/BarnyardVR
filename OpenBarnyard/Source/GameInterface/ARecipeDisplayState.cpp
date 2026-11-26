@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "VR/AVRManager.h"
 #include "ARecipeDisplayState.h"
 #include "AGameStateController.h"
 #include "ALoadScreen.h"
@@ -103,6 +104,7 @@ ARecipeDisplayState::ARecipeDisplayState( TBOOL a_bCocktails )
 // $Barnyard: FUNCTION 0044a860
 ARecipeDisplayState::~ARecipeDisplayState()
 {
+	AVRManager::UnregisterWorldDimRectangle( &m_oFade );
 }
 
 // $Barnyard: FUNCTION 0044a320
@@ -245,6 +247,7 @@ void ARecipeDisplayState::OnInsertion()
 void ARecipeDisplayState::OnRemoval()
 {
 	m_oFade.RemoveSelf();
+	AVRManager::UnregisterWorldDimRectangle( &m_oFade );
 
 	for ( TINT i = ACookingRecipe::MAX_INGREDIENTS - 1; i >= 0; i-- )
 	{
@@ -312,6 +315,7 @@ void ARecipeDisplayState::Create()
 	m_oFade.SetDimensions( fWidth, fHeight );
 	m_oFade.SetColour( 0x7F000000 );
 	pRoot->AddChildTail( m_oFade );
+	AVRManager::RegisterWorldDimRectangle( &m_oFade );
 
 	LoadRecipes();
 	m_pRecipesFound = AHintManager::GetRecipes();

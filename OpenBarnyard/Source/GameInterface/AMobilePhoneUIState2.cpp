@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "VR/AVRManager.h"
 #include "AMobilePhoneUIState2.h"
 #include "GUI/AGUI2.h"
 #include "Helpers/AGameTimeManager.h"
@@ -119,6 +120,7 @@ AMobilePhoneUIState2::AMobilePhoneUIState2()
 // $Barnyard: FUNCTION 0043b090
 AMobilePhoneUIState2::~AMobilePhoneUIState2()
 {
+	AVRManager::UnregisterWorldDimRectangle( &m_oFade );
 }
 
 // $Barnyard: FUNCTION 0043ac50
@@ -237,6 +239,7 @@ void AMobilePhoneUIState2::OnInsertion()
 	m_oFade.SetDimensions( fWidth, fHeight );
 	m_oFade.SetColour( 0x7F000000 );
 	pRoot->AddChildTail( m_oFade );
+	AVRManager::RegisterWorldDimRectangle( &m_oFade );
 
 	ARootTask::GetSingleton()->SetPaused( TTRUE );
 	SetInputMap( TPS8( DialogInputMap ) );
@@ -425,6 +428,7 @@ void AMobilePhoneUIState2::OnInsertion()
 void AMobilePhoneUIState2::OnRemoval()
 {
 	m_oFade.RemoveSelf();
+	AVRManager::UnregisterWorldDimRectangle( &m_oFade );
 	ARootTask::GetSingleton()->SetPaused( TFALSE );
 
 	// Put the phone away

@@ -9,6 +9,7 @@ BarnyardVR is a community-made OpenXR VR port of the 2006 video game **Barnyard*
 - Full first-person support in the Barnyard and suitable minigames.
 - Snap/smooth turning options and head-relative movement/UI options.
 - VR-specific minigame improvements, including head-directed aiming and rendering suitable UI in 3D space.
+- Full-view background dimming behind pause menus and other screens.
 - Adjustable VR resolution and anti-aliasing options, with an FPS debug HUD to help tune performance.
 
 ## Installation

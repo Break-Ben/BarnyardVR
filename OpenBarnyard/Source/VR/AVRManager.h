@@ -12,6 +12,7 @@ class TCameraObject;
 class TRenderContext;
 class TRenderInterface;
 class TViewport;
+class T2GUIRectangle;
 }
 
 // Owns OpenXR session/frame state and keeps all OpenXR/Win32 graphics types private to
@@ -50,6 +51,11 @@ public:
 
 public:
 	static AVRManager& GetSingleton();
+
+	// Register only full-screen background rectangles, not ordinary UI panels.
+	// Unregister before the owning element is destroyed.
+	static void RegisterWorldDimRectangle( Toshi::T2GUIRectangle* a_pRectangle );
+	static void UnregisterWorldDimRectangle( Toshi::T2GUIRectangle* a_pRectangle );
 
 	// The OpenXR action set is created with the instance and attached to every session.
 	// The game input device reads this frame's action state through the usual Toshi

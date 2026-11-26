@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "VR/AVRManager.h"
 #include "AHintDisplayState.h"
 #include "GUI/AGUI2.h"
 #include "Helpers/AHintManager.h"
@@ -64,6 +65,7 @@ AHintDisplayState::AHintDisplayState( TBOOL a_bCollectHint )
 // $Barnyard: FUNCTION 004493d0
 AHintDisplayState::~AHintDisplayState()
 {
+	AVRManager::UnregisterWorldDimRectangle( &m_oFade );
 }
 
 // $Barnyard: FUNCTION 00449120
@@ -183,6 +185,7 @@ void AHintDisplayState::OnInsertion()
 	m_oFade.SetDimensions( fWidth, fHeight );
 	m_oFade.SetColour( 0x7F000000 );
 	pRoot->AddChildTail( m_oFade );
+	AVRManager::RegisterWorldDimRectangle( &m_oFade );
 
 	if ( m_bCollectHint )
 	{
@@ -209,6 +212,7 @@ void AHintDisplayState::OnInsertion()
 void AHintDisplayState::OnRemoval()
 {
 	m_oFade.RemoveSelf();
+	AVRManager::UnregisterWorldDimRectangle( &m_oFade );
 	m_oHint.RemoveSelf();
 	m_oTitle.RemoveSelf();
 	m_oPrompt.RemoveSelf();
