@@ -52,8 +52,8 @@ private:
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
 	TBOOL m_bOriginalModernControls  = TTRUE;
-	TBOOL m_bOriginalHeadRelativeMovement = TTRUE;
-	TBOOL m_bOriginalUIFollowsHead = TTRUE;
+	TBOOL m_bOriginalHeadRelativeMovement = TFALSE;
+	TBOOL m_bOriginalUIFollowsHead = TFALSE;
 	TBOOL m_bOriginalToggleSprint = TFALSE;
 	TINT  m_iFirstVisible = 0;
 	TBOOL m_bOriginalVibration     = TTRUE;

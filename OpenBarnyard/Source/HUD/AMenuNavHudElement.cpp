@@ -41,6 +41,7 @@ namespace
 // do not have live prompt tokens, without changing the original HUD layout.
 auto& NavTextSources()
 {
+	// Keep the registry available through shutdown; OnDetach removes each entry.
 	static auto* sources = new std::unordered_map<const AMenuNavHudElement*, std::array<std::wstring, AMenuNavHudElement::NUM_TEXTS>>;
 	return *sources;
 }
