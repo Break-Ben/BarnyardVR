@@ -19,6 +19,13 @@ public:
 	virtual void  OnMenuClose() OVERRIDE;
 
 private:
+	// Draw a horizontal texture vertically without rotating its hit geometry.
+	class ScrollPlank : public Toshi::T2GUIRectangle
+	{
+	public:
+		virtual void Render() OVERRIDE;
+	};
+
 	enum ROW
 	{
 		ROW_CONTROLS,
@@ -54,8 +61,8 @@ private:
 	TBOOL m_bConfirmed               = TFALSE;
 
 	Toshi::T2GUIElement   m_oScrollTrack;
-	Toshi::T2GUIRectangle m_oScrollRail;
-	Toshi::T2GUIRectangle m_oScrollThumb;
+	ScrollPlank           m_oScrollRail;
+	ScrollPlank           m_oScrollThumb;
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];
 	TWCHAR                                                                                   m_awszLabels[ ROW_COUNT ][ 96 ];
 	Toshi::TListener<AMessagePopupState, AMessagePopupState::ResponseEvent, AVROptionsState> m_oResetListener;

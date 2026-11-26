@@ -2,6 +2,7 @@
 #include "AVROptionsState.h"
 #include "VR/AVRSettings.h"
 #include "GUI/T2GUIFontManager.h"
+#include "GUI/T2GUI.h"
 #include "GUI/T2GUITextureSectionManager.h"
 #include "GUI/AGUI2.h"
 #include <Input/TInputDeviceMouse.h>
@@ -16,6 +17,27 @@
 TOSHI_NAMESPACE_USING
 
 TDEFINE_CLASS( AVROptionsState );
+
+void AVROptionsState::ScrollPlank::Render()
+{
+	auto* pRenderer = T2GUI::GetRenderer();
+	pRenderer->SetMaterial( GetMaterial() );
+	pRenderer->SetColour( GetColour() );
+	if ( IsInFront() ) pRenderer->ResetZCoordinate();
+
+	const TFLOAT fHalfWidth = GetWidth() * 0.5f;
+	const TFLOAT fHalfHeight = GetHeight() * 0.5f;
+	TVector2 vertices[] = {
+		{ -fHalfWidth, -fHalfHeight }, { fHalfWidth, -fHalfHeight },
+		{ -fHalfWidth, fHalfHeight }, { fHalfWidth, fHalfHeight }
+	};
+	TVector2 uv1, uv2, uv3, uv4;
+	GetUVs( uv1, uv2, uv3, uv4 );
+	// Rotate the complete section 90 degrees, including its natural ends.
+	TVector2 uvs[] = { uv4, uv1, uv3, uv2 };
+	pRenderer->RenderTriStrip( vertices, uvs, 4 );
+	T2GUIElement::Render();
+}
 
 AVROptionsState::~AVROptionsState()
 {
@@ -73,12 +95,12 @@ void AVROptionsState::UpdateScrollBar()
 	// The invisible hit area remains unrotated for reliable mouse picking.
 	m_oScrollTrack.SetDimensions( 36.0f, fHeight );
 	m_oScrollTrack.SetTransform( fX, fInset );
-	// Wood_Thin is a complete horizontal plank; rotate the whole texture,
-	// retaining its ends instead of using the frame's uncapped border tile.
-	m_oScrollRail.SetDimensions( fHeight, 14.0f );
-	m_oScrollRail.SetTransform( fX, fInset + fHeight * 0.5f, TMath::HALF_PI );
-	m_oScrollThumb.SetDimensions( fThumbHeight, 24.0f );
-	m_oScrollThumb.SetTransform( fX, fInset + fTop + fThumbHeight * 0.5f, TMath::HALF_PI );
+	// The texture is rotated in ScrollPlank::Render, keeping the dimensions
+	// and hit area in the same upright coordinate system.
+	m_oScrollRail.SetDimensions( 14.0f, fHeight );
+	m_oScrollRail.SetTransform( fX, fInset + fHeight * 0.5f );
+	m_oScrollThumb.SetDimensions( 24.0f, fThumbHeight );
+	m_oScrollThumb.SetTransform( fX, fInset + fTop + fThumbHeight * 0.5f );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -193,7 +215,7 @@ void AVROptionsState::OnInsertion()
 
 	// Use the game's complete wooden plank for both pieces. Render the
 	// lighter, wider thumb in front of the darker rail.
-	auto* pWood = T2GUITextureSectionManager::GetTextureSection( "Wood_Thin" );
+	auto* pWood = T2GUITextureSectionManager::GetTextureSection( "Panel_01" );
 	m_oScrollRail.SetTextureSection( pWood );
 	m_oScrollThumb.SetTextureSection( pWood );
 	m_oScrollRail.SetColour( 0xff806b55 );
@@ -202,8 +224,9 @@ void AVROptionsState::OnInsertion()
 	m_oScrollRail.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
 	m_oScrollThumb.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
 	m_oScrollThumb.SetInFront();
-	m_oMenu.AddChildTail( m_oScrollThumb );
+	// AddChildTail renders older children first; the thumb must follow the rail.
 	m_oMenu.AddChildTail( m_oScrollRail );
+	m_oMenu.AddChildTail( m_oScrollThumb );
 	m_oMenu.AddChildTail( m_oScrollTrack );
 	UpdateScrollBar();
 	m_oScrollRail.SetAlpha( 0.0f );
