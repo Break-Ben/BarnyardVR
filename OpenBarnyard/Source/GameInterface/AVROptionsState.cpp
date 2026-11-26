@@ -35,6 +35,10 @@ void AVROptionsState::RefreshLabels()
 	std::swprintf( m_awszLabels[ ROW_UI_PLACEMENT ], 96, L"UI Position: %ls", settings.IsUIFollowingHead() ? L"Head Relative" : L"Fixed" );
 	std::swprintf( m_awszLabels[ ROW_VIBRATION ], 96, L"Vibration: %ls", settings.IsVibrationEnabled() ? L"On" : L"Off" );
 	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Resolution: %d%% (restart)", settings.GetResolutionPercent() );
+	// Preserve the restart reminder without wrapping at the game's normal font size.
+	auto* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
+	if ( pFont && pFont->GetTextWidth( m_awszLabels[ ROW_RESOLUTION ] ) > 440.0f )
+		std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Res: %d%% (restart)", settings.GetResolutionPercent() );
 	if ( settings.GetMSAASamples() == 1 )
 		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: Off (restart)" );
 	else
@@ -60,11 +64,12 @@ void AVROptionsState::UpdateScrollBar()
 	const TFLOAT fTop = iMaxFirst > 0 ? ( fHeight - fThumbHeight ) * m_iFirstVisible / iMaxFirst : 0.0f;
 
 	m_oScrollTrack.SetVisible( iMaxFirst > 0 );
-	m_oScrollTrack.SetDimensions( 14.0f, fHeight );
-	m_oScrollTrack.SetTransform( m_oMenu.GetWidth() * 0.5f + 4.0f, 0.0f );
-	// Wood_Thin is a horizontal plank; rotate it so the grain runs down the bar.
-	m_oScrollThumb.SetDimensions( fThumbHeight, 14.0f );
-	m_oScrollThumb.SetTransform( 0.0f, fTop + fThumbHeight * 0.5f, TMath::HALF_PI );
+	m_oScrollThumb.SetVisible( iMaxFirst > 0 );
+	const TFLOAT fX = m_oMenu.GetWidth() * 0.5f + 28.0f;
+	m_oScrollTrack.SetDimensions( 18.0f, fHeight );
+	m_oScrollTrack.SetTransform( fX, 0.0f );
+	m_oScrollThumb.SetDimensions( 18.0f, fThumbHeight );
+	m_oScrollThumb.SetTransform( fX, fTop + fThumbHeight * 0.5f );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -150,38 +155,10 @@ void AVROptionsState::OnInsertion()
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
 
-	// Use one consistent scale for all rows. Measure every variable label so
-	// changing a value cannot wrap a row or collide with the scrollbar.
-	TFLOAT fMaxLabelWidth = 0.0f;
-	for ( TINT i = 0; i < ROW_COUNT; ++i )
-		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( m_awszLabels[ i ] ) );
-	const TWCHAR* apAlternatives[] = {
-		L"Control Layout: Modern", L"Control Layout: Classic", L"Snap Turning: Disabled",
-		L"Toggle Sprint: On", L"Toggle Sprint: Off", L"Movement: Head Relative", L"Movement: Fixed",
-		L"UI Position: Head Relative", L"UI Position: Fixed", L"Vibration: On", L"Vibration: Off",
-		L"MSAA: Off (restart)", L"MSAA: 2x (restart)", L"MSAA: 4x (restart)", L"MSAA: 8x (restart)",
-		L"Debug HUD: On", L"Debug HUD: Off"
-	};
-	for ( const TWCHAR* text : apAlternatives )
-		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( text ) );
-	TWCHAR wszSample[ 96 ];
-	for ( TINT degrees : AVRSettings::SNAP_ANGLES )
-	{
-		if ( degrees == 0 ) continue;
-		std::swprintf( wszSample, 96, L"Snap Turning: %d degrees", degrees );
-		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( wszSample ) );
-	}
-	for ( TINT percent = AVRSettings::RESOLUTION_MIN; percent <= AVRSettings::RESOLUTION_MAX; percent += AVRSettings::RESOLUTION_STEP )
-	{
-		std::swprintf( wszSample, 96, L"Resolution: %d%% (restart)", percent );
-		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( wszSample ) );
-	}
-	const TFLOAT fTextScale = fMaxLabelWidth > 380.0f ? 380.0f / fMaxLabelWidth : 1.0f;
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 	{
 		auto& button = m_aButtons[ i ];
 		button.Create( pFont, 440.0f, m_awszLabels[ i ], 10.0f );
-		button.GetTextBox().SetScale( fTextScale );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -191,7 +168,7 @@ void AVROptionsState::OnInsertion()
 		button.SetTextShadow( TTRUE, 0xa0000000, 0.6f );
 		button.SetTextShadowOffset( 5.0f );
 		// Centre the combined text and its right-offset shadow visually.
-		button.GetTextBox().SetTranslation( -2.5f * fTextScale, 0.0f );
+		button.GetTextBox().SetTranslation( -2.5f, 0.0f );
 		m_oMenu.AddMenuItem( button );
 	}
 	m_iFirstVisible = 0;
@@ -200,15 +177,23 @@ void AVROptionsState::OnInsertion()
 	m_oDialogTitle.SetText( L"VR Settings" );
 	BaseClass::OnInsertion();
 
-	// Leave a clear gutter between the labels and the scrollbar, inside the frame.
+	// Keep normal text size, leaving a separate gutter inside the wider frame.
 	m_oMenu.SetAttachment( T2GUIATTACHMENT_MIDDLECENTER, T2GUIATTACHMENT_MIDDLECENTER );
-	m_oMenu.SetTranslation( -12.0f, 0.0f );
-	m_oScrollTrack.SetColour( 0xff392718 );
+	m_oMenu.SetTranslation( -28.0f, 0.0f );
+	m_oDialog.SetDialogSize( m_oMenu.GetWidth() + 180.0f, TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 128.0f );
+
+	// Both parts use the game's vertical wooden border. The darker rail and
+	// brighter thumb are siblings so the thumb renders on top of the rail.
+	auto* pBorder = T2GUITextureSectionManager::GetTextureSection( "Border_Vertical" );
+	m_oScrollTrack.SetTextureSection( pBorder );
+	m_oScrollThumb.SetTextureSection( pBorder );
+	m_oScrollTrack.SetColour( 0xff504038 );
+	m_oScrollThumb.SetColour( 0xffffffff );
 	m_oScrollTrack.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_TOPCENTER );
-	m_oMenu.AddChildTail( m_oScrollTrack );
-	m_oScrollThumb.SetTextureSection( T2GUITextureSectionManager::GetTextureSection( "Wood_Thin" ) );
 	m_oScrollThumb.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
-	m_oScrollTrack.AddChildTail( m_oScrollThumb );
+	m_oScrollThumb.SetInFront();
+	m_oMenu.AddChildTail( m_oScrollThumb );
+	m_oMenu.AddChildTail( m_oScrollTrack );
 	UpdateScrollBar();
 	m_oScrollTrack.SetAlpha( 0.0f );
 	m_oScrollThumb.SetAlpha( 0.0f );
