@@ -80,13 +80,12 @@ void AVROptionsState::ShowRows()
 
 void AVROptionsState::UpdateScrollIndicators()
 {
-	const TFLOAT fX = m_oMenu.GetWidth() * 0.5f + 52.0f;
 	const TFLOAT fHeight = m_oMenu.GetHeight();
 	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
 	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
-	// Align the arrows with the first and last rows, in the right-hand gutter.
-	m_aScrollArrows[ 0 ].SetTransform( fX, 22.0f );
-	m_aScrollArrows[ 1 ].SetTransform( fX, fHeight - 22.0f );
+	// Centre the arrows in the space above and below the row content.
+	m_aScrollArrows[ 0 ].SetTransform( 0.0f, 0.0f );
+	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -197,13 +196,14 @@ void AVROptionsState::OnInsertion()
 	m_oDialogTitle.SetText( L"VR Settings" );
 	BaseClass::OnInsertion();
 
-	// Keep normal text size, leaving a separate gutter inside the wider frame.
+	// Centre the labels and allow extra space between the title and the top
+	// arrow without changing the game's text size or row spacing.
 	m_oMenu.SetAttachment( T2GUIATTACHMENT_MIDDLECENTER, T2GUIATTACHMENT_MIDDLECENTER );
-	m_oMenu.SetTranslation( -28.0f, 0.0f );
-	m_oDialog.SetDialogSize( m_oMenu.GetWidth() + 180.0f, TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 128.0f );
+	m_oMenu.SetTranslation( 0.0f, 0.0f );
+	m_oDialog.SetDialogSize( m_oMenu.GetWidth() + 180.0f, TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 152.0f );
 
 	// Use the game's arrow texture, keeping the indicators and their clickable
-	// areas inside the panel rather than over the labels or the frame.
+	// areas between the title, rows and frame.
 	auto* pArrow = T2GUITextureSectionManager::GetTextureSection( "left_arrow" );
 	m_bHasScrollArrows = pArrow != TNULL;
 	if ( pArrow )
@@ -212,7 +212,7 @@ void AVROptionsState::OnInsertion()
 		{
 			auto& arrow = m_aScrollArrows[ i ];
 			arrow.SetTextureSection( pArrow );
-			arrow.SetDimensions( 26.0f, 26.0f );
+			arrow.SetDimensions( 16.0f, 16.0f );
 			arrow.SetDown( i == 1 );
 			arrow.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
 			arrow.SetAlpha( 0.0f );
