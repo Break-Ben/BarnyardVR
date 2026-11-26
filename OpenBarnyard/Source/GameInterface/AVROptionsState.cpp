@@ -51,10 +51,20 @@ void AVROptionsState::ShowRows()
 		m_aButtons[ i ].SetVisible( i >= m_iFirstVisible && i < m_iFirstVisible + VISIBLE_ROWS );
 }
 
-void AVROptionsState::UpdateScrollIndicators()
+void AVROptionsState::UpdateScrollBar()
 {
-	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
-	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
+	const TFLOAT fHeight = m_oMenu.GetHeight();
+	const TINT iVisible = TMath::Min( TINT( ROW_COUNT ), VISIBLE_ROWS );
+	const TFLOAT fThumbHeight = fHeight * iVisible / ROW_COUNT;
+	const TINT iMaxFirst = TMath::Max( TINT( ROW_COUNT ) - VISIBLE_ROWS, 0 );
+	const TFLOAT fTop = iMaxFirst > 0 ? ( fHeight - fThumbHeight ) * m_iFirstVisible / iMaxFirst : 0.0f;
+
+	m_oScrollTrack.SetVisible( iMaxFirst > 0 );
+	m_oScrollTrack.SetDimensions( 14.0f, fHeight );
+	m_oScrollTrack.SetTransform( m_oMenu.GetWidth() * 0.5f + 4.0f, 0.0f );
+	// Wood_Thin is a horizontal plank; rotate it so the grain runs down the bar.
+	m_oScrollThumb.SetDimensions( fThumbHeight, 14.0f );
+	m_oScrollThumb.SetTransform( 0.0f, fTop + fThumbHeight * 0.5f, TMath::HALF_PI );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -73,7 +83,7 @@ void AVROptionsState::FocusRow( TINT a_iRow )
 		ShowRows();
 		m_oMenu.ReflowChildrenVertically();
 		m_oMenu.SetMenuAlpha( m_fMenuOpacity, m_fMenuOpacity * 0.6f );
-		UpdateScrollIndicators();
+		UpdateScrollBar();
 	}
 	m_oMenu.SetFocusAt( m_aButtons[ a_iRow ] );
 	ASoundManager::GetSingleton()->PlayCue( soundbank::UI_MENUCLICK );
@@ -83,7 +93,8 @@ TBOOL AVROptionsState::OnUpdate( TFLOAT a_fDeltaTime )
 {
 	// OnMenuClose can remove this state during the base update, so do not access
 	// members after calling it. The indicator follows the menu fade by one frame.
-	for ( auto& arrow : m_aScrollArrows ) arrow.SetAlpha( m_fMenuOpacity );
+	m_oScrollTrack.SetAlpha( m_fMenuOpacity * 0.65f );
+	m_oScrollThumb.SetAlpha( m_fMenuOpacity );
 	return BaseClass::OnUpdate( a_fDeltaTime );
 }
 
@@ -106,19 +117,15 @@ TBOOL AVROptionsState::ProcessInput( const TInputInterface::InputEvent* a_pEvent
 		}
 		if ( type == TInputInterface::EVENT_TYPE_GONE_DOWN && doodad == TInputDeviceMouse::BUTTON_1 )
 		{
-			for ( TINT i = 0; i < 2; ++i )
+			T2GUITransform inverse;
+			m_oScrollTrack.GetInvScreenTransform( inverse );
+			TVector2 pos;
+			inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
+			if ( m_oScrollTrack.IsVisible() && m_oScrollTrack.IsPointInside( pos.x, pos.y ) )
 			{
-				if ( !m_aScrollArrows[ i ].IsVisible() ) continue;
-				T2GUITransform inverse;
-				m_aScrollArrows[ i ].GetInvScreenTransform( inverse );
-				TVector2 pos;
-				inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
-				if ( m_aScrollArrows[ i ].IsPointInside( pos.x, pos.y ) )
-				{
-					// Jump to the next hidden row so clicking an arrow scrolls immediately.
-					FocusRow( i == 0 ? m_iFirstVisible - 1 : m_iFirstVisible + VISIBLE_ROWS );
-					return TTRUE;
-				}
+				const TFLOAT fFraction = ( pos.y + m_oScrollTrack.GetHeight() * 0.5f ) / m_oScrollTrack.GetHeight();
+				FocusRow( TMath::Min( TINT( fFraction * ROW_COUNT ), TINT( ROW_COUNT ) - 1 ) );
+				return TTRUE;
 			}
 			// Recalculate hover after a scroll, even when the mouse hasn't moved.
 			m_oMenu.SetMouseStateDirty();
@@ -142,10 +149,39 @@ void AVROptionsState::OnInsertion()
 	m_bConfirmed               = TFALSE;
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
+
+	// Use one consistent scale for all rows. Measure every variable label so
+	// changing a value cannot wrap a row or collide with the scrollbar.
+	TFLOAT fMaxLabelWidth = 0.0f;
+	for ( TINT i = 0; i < ROW_COUNT; ++i )
+		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( m_awszLabels[ i ] ) );
+	const TWCHAR* apAlternatives[] = {
+		L"Control Layout: Modern", L"Control Layout: Classic", L"Snap Turning: Disabled",
+		L"Toggle Sprint: On", L"Toggle Sprint: Off", L"Movement: Head Relative", L"Movement: Fixed",
+		L"UI Position: Head Relative", L"UI Position: Fixed", L"Vibration: On", L"Vibration: Off",
+		L"MSAA: Off (restart)", L"MSAA: 2x (restart)", L"MSAA: 4x (restart)", L"MSAA: 8x (restart)",
+		L"Debug HUD: On", L"Debug HUD: Off"
+	};
+	for ( const TWCHAR* text : apAlternatives )
+		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( text ) );
+	TWCHAR wszSample[ 96 ];
+	for ( TINT degrees : AVRSettings::SNAP_ANGLES )
+	{
+		if ( degrees == 0 ) continue;
+		std::swprintf( wszSample, 96, L"Snap Turning: %d degrees", degrees );
+		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( wszSample ) );
+	}
+	for ( TINT percent = AVRSettings::RESOLUTION_MIN; percent <= AVRSettings::RESOLUTION_MAX; percent += AVRSettings::RESOLUTION_STEP )
+	{
+		std::swprintf( wszSample, 96, L"Resolution: %d%% (restart)", percent );
+		fMaxLabelWidth = TMath::Max( fMaxLabelWidth, pFont->GetTextWidth( wszSample ) );
+	}
+	const TFLOAT fTextScale = fMaxLabelWidth > 380.0f ? 380.0f / fMaxLabelWidth : 1.0f;
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 	{
 		auto& button = m_aButtons[ i ];
 		button.Create( pFont, 440.0f, m_awszLabels[ i ], 10.0f );
+		button.GetTextBox().SetScale( fTextScale );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -155,7 +191,7 @@ void AVROptionsState::OnInsertion()
 		button.SetTextShadow( TTRUE, 0xa0000000, 0.6f );
 		button.SetTextShadowOffset( 5.0f );
 		// Centre the combined text and its right-offset shadow visually.
-		button.GetTextBox().SetTranslation( -2.5f, 0.0f );
+		button.GetTextBox().SetTranslation( -2.5f * fTextScale, 0.0f );
 		m_oMenu.AddMenuItem( button );
 	}
 	m_iFirstVisible = 0;
@@ -164,26 +200,18 @@ void AVROptionsState::OnInsertion()
 	m_oDialogTitle.SetText( L"VR Settings" );
 	BaseClass::OnInsertion();
 
-	// Reuse the game's own scroll arrows, centred in the space above and below
-	// the rows instead of drawing a bar over the dialog frame.
+	// Leave a clear gutter between the labels and the scrollbar, inside the frame.
 	m_oMenu.SetAttachment( T2GUIATTACHMENT_MIDDLECENTER, T2GUIATTACHMENT_MIDDLECENTER );
-	m_oMenu.SetTranslation( 0.0f, 0.0f );
-	auto* pArrow = T2GUITextureSectionManager::GetTextureSection( "left_arrow" );
-	m_bHasScrollArrows = pArrow != TNULL;
-	if ( pArrow )
-	{
-		for ( TINT i = 0; i < 2; ++i )
-		{
-			auto& arrow = m_aScrollArrows[ i ];
-			arrow.SetTextureSection( pArrow );
-			arrow.SetDimensions( pArrow->GetWidth() * 0.35f, pArrow->GetHeight() * 0.35f );
-			arrow.SetAttachment( i == 0 ? T2GUIATTACHMENT_TOPCENTER : T2GUIATTACHMENT_BOTTOMCENTER, T2GUIATTACHMENT_MIDDLECENTER );
-			arrow.SetTransform( 0.0f, i == 0 ? -5.0f : 5.0f, i == 0 ? TMath::HALF_PI : -TMath::HALF_PI );
-			arrow.SetAlpha( 0.0f );
-			m_oMenu.AddChildTail( arrow );
-		}
-	}
-	UpdateScrollIndicators();
+	m_oMenu.SetTranslation( -12.0f, 0.0f );
+	m_oScrollTrack.SetColour( 0xff392718 );
+	m_oScrollTrack.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_TOPCENTER );
+	m_oMenu.AddChildTail( m_oScrollTrack );
+	m_oScrollThumb.SetTextureSection( T2GUITextureSectionManager::GetTextureSection( "Wood_Thin" ) );
+	m_oScrollThumb.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
+	m_oScrollTrack.AddChildTail( m_oScrollThumb );
+	UpdateScrollBar();
+	m_oScrollTrack.SetAlpha( 0.0f );
+	m_oScrollThumb.SetAlpha( 0.0f );
 }
 
 void AVROptionsState::OnRemoval()
@@ -199,7 +227,8 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
-	for ( auto& arrow : m_aScrollArrows ) arrow.RemoveSelf();
+	m_oScrollThumb.RemoveSelf();
+	m_oScrollTrack.RemoveSelf();
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
