@@ -2248,7 +2248,11 @@ TBOOL AVRManager::BeginFrame()
 			if ( !IsWorldDimRectangleVisible( pRectangle ) ) return;
 			const TUINT32 uiColour = pRectangle->GetColour();
 			const AFade::Color colour( uiColour );
-			const TFLOAT fAlpha = ( colour.A / 255.0f ) * ( 1.0f - rImpl.vWorldFadeColour.w );
+			// Strengthen the VR background dim without changing the native
+			// rectangle or the separate UI. A half-opacity panel becomes ~75%.
+			const TFLOAT fPanelAlpha = colour.A / 255.0f;
+			const TFLOAT fDimAlpha   = 1.0f - ( 1.0f - fPanelAlpha ) * ( 1.0f - fPanelAlpha );
+			const TFLOAT fAlpha      = fDimAlpha * ( 1.0f - rImpl.vWorldFadeColour.w );
 			rImpl.vWorldFadeColour.x += ( colour.R / 255.0f ) * fAlpha;
 			rImpl.vWorldFadeColour.y += ( colour.G / 255.0f ) * fAlpha;
 			rImpl.vWorldFadeColour.z += ( colour.B / 255.0f ) * fAlpha;
