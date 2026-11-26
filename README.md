@@ -21,7 +21,7 @@ BarnyardVR is a community-made OpenXR VR port of the 2006 video game **Barnyard*
 
 ## Settings
 
-BarnyardVR contains options that are configurable in-game via **Options → VR Settings**. Defaults are shown in bold. Select **More Settings** to switch pages. Some changes require a restart.
+BarnyardVR contains options that are configurable in-game via **Options → VR Settings**. Defaults are shown in bold. Some changes require a restart.
 
 | Setting | Values | Description |
 | --- | --- | --- |

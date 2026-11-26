@@ -9,6 +9,8 @@ public:
 	TDECLARE_CLASS( AVROptionsState, ABYardMenuState );
 
 	~AVROptionsState();
+	virtual TBOOL OnUpdate( TFLOAT a_fDeltaTime ) OVERRIDE;
+	virtual TBOOL ProcessInput( const Toshi::TInputInterface::InputEvent* a_pEvent ) OVERRIDE;
 	virtual void  OnInsertion() OVERRIDE;
 	virtual void  OnRemoval() OVERRIDE;
 	virtual void  OnActivate() OVERRIDE;
@@ -28,14 +30,14 @@ private:
 		ROW_RESOLUTION,
 		ROW_MSAA,
 		ROW_DEBUG_HUD,
-		ROW_PAGE,
 		ROW_DEFAULTS,
 		ROW_COUNT
 	};
-	static constexpr TINT SETTINGS_PER_PAGE = 5;
-	static constexpr TINT PAGE_COUNT = ( ROW_PAGE + SETTINGS_PER_PAGE - 1 ) / SETTINGS_PER_PAGE;
+	static constexpr TINT VISIBLE_ROWS = 5;
 	void                   RefreshLabels();
-	void                   ShowPage( TINT a_iPage );
+	void                   ShowRows();
+	void                   FocusRow( TINT a_iRow );
+	void                   UpdateScrollBar();
 	void                   Adjust( TINT a_iRow, TINT a_iDirection );
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
@@ -43,7 +45,7 @@ private:
 	TBOOL m_bOriginalHeadRelativeMovement = TTRUE;
 	TBOOL m_bOriginalUIFollowsHead = TTRUE;
 	TBOOL m_bOriginalToggleSprint = TFALSE;
-	TINT  m_iPage = 0;
+	TINT  m_iFirstVisible = 0;
 	TBOOL m_bOriginalVibration     = TTRUE;
 	TINT  m_iOriginalSnapTurnDegrees = 0;
 	TINT  m_iOriginalResolutionPercent = 100;
@@ -51,6 +53,8 @@ private:
 	TBOOL m_bOriginalDebugHUD = TFALSE;
 	TBOOL m_bConfirmed               = TFALSE;
 
+	Toshi::T2GUIRectangle m_oScrollTrack;
+	Toshi::T2GUIRectangle m_oScrollThumb;
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];
 	TWCHAR                                                                                   m_awszLabels[ ROW_COUNT ][ 96 ];
 	Toshi::TListener<AMessagePopupState, AMessagePopupState::ResponseEvent, AVROptionsState> m_oResetListener;

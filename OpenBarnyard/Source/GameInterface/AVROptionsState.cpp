@@ -2,6 +2,8 @@
 #include "AVROptionsState.h"
 #include "VR/AVRSettings.h"
 #include "GUI/T2GUIFontManager.h"
+#include "GUI/AGUI2.h"
+#include <Input/TInputDeviceMouse.h>
 #include "HUD/AHudManager.h"
 #include "HUD/AMenuNavHudElement.h"
 #include "Sound/ASoundManager.h"
@@ -37,23 +39,98 @@ void AVROptionsState::RefreshLabels()
 	else
 		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: %dx (restart)", settings.GetMSAASamples() );
 	std::swprintf( m_awszLabels[ ROW_DEBUG_HUD ], 96, L"Debug HUD: %ls", settings.IsDebugHUDEnabled() ? L"On" : L"Off" );
-	std::swprintf( m_awszLabels[ ROW_PAGE ], 96, L"More Settings (%d/%d)", m_iPage + 1, PAGE_COUNT );
 	std::swprintf( m_awszLabels[ ROW_DEFAULTS ], 96, L"Restore Defaults" );
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 		m_aButtons[ i ].GetTextBox().SetText( m_awszLabels[ i ] );
 }
 
-void AVROptionsState::ShowPage( TINT a_iPage )
+void AVROptionsState::ShowRows()
 {
-	m_iPage = a_iPage;
-	for ( TINT i = 0; i < ROW_PAGE; ++i )
+	for ( TINT i = 0; i < ROW_COUNT; ++i )
+		m_aButtons[ i ].SetVisible( i >= m_iFirstVisible && i < m_iFirstVisible + VISIBLE_ROWS );
+}
+
+void AVROptionsState::UpdateScrollBar()
+{
+	const TFLOAT fHeight = m_oMenu.GetHeight();
+	const TFLOAT fVisible = TMath::Min( TINT( ROW_COUNT ), TINT( VISIBLE_ROWS ) );
+	const TFLOAT fThumbHeight = fHeight * fVisible / ROW_COUNT;
+	const TINT iMaxFirst = TMath::Max( TINT( ROW_COUNT ) - VISIBLE_ROWS, 0 );
+	const TFLOAT fTop = iMaxFirst > 0 ? ( fHeight - fThumbHeight ) * m_iFirstVisible / iMaxFirst : 0.0f;
+
+	m_oScrollTrack.SetVisible( iMaxFirst > 0 );
+	m_oScrollTrack.SetDimensions( 12.0f, fHeight );
+	m_oScrollTrack.SetTransform( m_oMenu.GetWidth() * 0.5f + 25.0f, 0.0f );
+	m_oScrollThumb.SetDimensions( 12.0f, fThumbHeight );
+	m_oScrollThumb.SetTransform( 0.0f, fTop );
+}
+
+void AVROptionsState::FocusRow( TINT a_iRow )
+{
+	if ( a_iRow < 0 || a_iRow >= ROW_COUNT ) return;
+	auto* pOldFocus = m_oMenu.GetFocusedMenuItem();
+	if ( pOldFocus == &m_aButtons[ a_iRow ] ) return;
+	if ( pOldFocus ) OnMenuItemFocused( *pOldFocus, m_aButtons[ a_iRow ] );
+
+	TINT iFirst = m_iFirstVisible;
+	if ( a_iRow < iFirst ) iFirst = a_iRow;
+	else if ( a_iRow >= iFirst + VISIBLE_ROWS ) iFirst = a_iRow - VISIBLE_ROWS + 1;
+	if ( iFirst != m_iFirstVisible )
 	{
-		if ( i / SETTINGS_PER_PAGE == m_iPage ) m_aButtons[ i ].Show();
-		else m_aButtons[ i ].Hide();
+		m_iFirstVisible = iFirst;
+		ShowRows();
+		m_oMenu.ReflowChildrenVertically();
+		m_oMenu.SetMenuAlpha( m_fMenuOpacity, m_fMenuOpacity * 0.6f );
+		UpdateScrollBar();
 	}
-	if ( PAGE_COUNT > 1 ) m_aButtons[ ROW_PAGE ].Show();
-	else m_aButtons[ ROW_PAGE ].Hide();
-	RefreshLabels();
+	m_oMenu.SetFocusAt( m_aButtons[ a_iRow ] );
+	ASoundManager::GetSingleton()->PlayCue( soundbank::UI_MENUCLICK );
+}
+
+TBOOL AVROptionsState::OnUpdate( TFLOAT a_fDeltaTime )
+{
+	// OnMenuClose can remove this state during the base update, so do not access
+	// members after calling it. The indicator follows the menu fade by one frame.
+	m_oScrollTrack.SetAlpha( m_fMenuOpacity * 0.55f );
+	m_oScrollThumb.SetAlpha( m_fMenuOpacity );
+	return BaseClass::OnUpdate( a_fDeltaTime );
+}
+
+TBOOL AVROptionsState::ProcessInput( const TInputInterface::InputEvent* a_pEvent )
+{
+	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs )
+	{
+		const auto type = a_pEvent->GetEventType();
+		const TINT doodad = a_pEvent->GetDoodad();
+		// Wheel-axis motion is not cursor motion. Let the wheel buttons below
+		// scroll without causing a stale mouse position to steal focus.
+		if ( doodad == TInputDeviceMouse::AXIS_WHEEL && type == TInputInterface::EVENT_TYPE_MOVED )
+			return TTRUE;
+		if ( ( type == TInputInterface::EVENT_TYPE_GONE_DOWN || type == TInputInterface::EVENT_TYPE_REPEAT ) &&
+		     ( doodad == TInputDeviceMouse::BUTTON_WHEEL_FORWARD || doodad == TInputDeviceMouse::BUTTON_WHEEL_BACKWARD ) )
+		{
+			auto* pFocus = m_oMenu.GetFocusedMenuItem();
+			if ( pFocus ) FocusRow( TSTATICCAST( AGUI2Button, pFocus )->GetId() + ( doodad == TInputDeviceMouse::BUTTON_WHEEL_FORWARD ? -1 : 1 ) );
+			return TTRUE;
+		}
+		if ( type == TInputInterface::EVENT_TYPE_GONE_DOWN && doodad == TInputDeviceMouse::BUTTON_1 )
+		{
+			T2GUITransform inverse;
+			m_oScrollTrack.GetInvScreenTransform( inverse );
+			TVector2 pos;
+			inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
+			if ( m_oScrollTrack.IsVisible() && m_oScrollTrack.IsPointInside( pos.x, pos.y ) )
+			{
+				const TFLOAT fFraction = ( pos.y + m_oScrollTrack.GetHeight() * 0.5f ) / m_oScrollTrack.GetHeight();
+				FocusRow( TMath::Min( TINT( fFraction * ROW_COUNT ), TINT( ROW_COUNT ) - 1 ) );
+				return TTRUE;
+			}
+			// Recalculate hover after a scroll, even when the mouse hasn't moved.
+			m_oMenu.SetMouseStateDirty();
+			m_oMenu.Update( 0.0f );
+		}
+	}
+	return BaseClass::ProcessInput( a_pEvent );
 }
 
 void AVROptionsState::OnInsertion()
@@ -73,8 +150,7 @@ void AVROptionsState::OnInsertion()
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 	{
 		auto& button = m_aButtons[ i ];
-		// Each page is kept short enough for the existing dialog.
-		button.Create( pFont, 440.0f, m_awszLabels[ i ], 2.5f );
+		button.Create( pFont, 440.0f, m_awszLabels[ i ], 10.0f );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -85,10 +161,22 @@ void AVROptionsState::OnInsertion()
 		button.SetTextShadowOffset( 5.0f );
 		m_oMenu.AddMenuItem( button );
 	}
-	ShowPage( 0 );
+	m_iFirstVisible = 0;
+	ShowRows();
 	m_oMenu.SetFocusAt( m_aButtons[ 0 ] );
 	m_oDialogTitle.SetText( L"VR Settings" );
 	BaseClass::OnInsertion();
+
+	// A track and proportional thumb show that there are more rows offscreen.
+	m_oScrollTrack.SetColour( 0xff4b351e );
+	m_oScrollTrack.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_TOPCENTER );
+	m_oMenu.AddChildTail( m_oScrollTrack );
+	m_oScrollThumb.SetColour( AGUI2STYLE_COLOR_PRIMARY );
+	m_oScrollThumb.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_TOPCENTER );
+	m_oScrollTrack.AddChildTail( m_oScrollThumb );
+	UpdateScrollBar();
+	m_oScrollTrack.SetAlpha( 0.0f );
+	m_oScrollThumb.SetAlpha( 0.0f );
 }
 
 void AVROptionsState::OnRemoval()
@@ -104,6 +192,8 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
+	m_oScrollThumb.RemoveSelf();
+	m_oScrollTrack.RemoveSelf();
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
@@ -205,6 +295,20 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 		return TTRUE;
 	}
 	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs &&
+	     ( a_eCommand == AInputCommand_Up || a_eCommand == AInputCommand_Forward ||
+	       a_eCommand == AInputCommand_Down || a_eCommand == AInputCommand_Backward ) )
+	{
+		if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN ||
+		     a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_REPEAT )
+		{
+			auto* pFocus = m_oMenu.GetFocusedMenuItem();
+			if ( pFocus ) FocusRow( TSTATICCAST( AGUI2Button, pFocus )->GetId() +
+			    ( a_eCommand == AInputCommand_Up || a_eCommand == AInputCommand_Forward ? -1 : 1 ) );
+			a_pEvent->StartRepeat( 0.5f, 0.1f );
+		}
+		return TTRUE;
+	}
+	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs &&
 	     ( a_eCommand == AInputCommand_Left || a_eCommand == AInputCommand_Right ) )
 	{
 		AGUI2MenuItem* pItem = m_oMenu.GetFocusedMenuItem();
@@ -219,18 +323,10 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row >= 0 && row < ROW_PAGE )
+	if ( row >= 0 && row < ROW_DEFAULTS )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
-	}
-	else if ( row == ROW_PAGE )
-	{
-		ShowPage( ( m_iPage + 1 ) % PAGE_COUNT );
-		m_oMenu.ReflowChildrenVertically();
-		m_oMenu.SetMenuAlpha( m_fMenuOpacity, m_fMenuOpacity * 0.6f );
-		m_oMenu.SetFocusAt( m_aButtons[ ROW_PAGE ] );
-		m_oMenu.SetMouseStateDirty();
 	}
 	else if ( row == ROW_DEFAULTS )
 	{
