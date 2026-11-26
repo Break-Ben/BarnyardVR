@@ -38,7 +38,7 @@ private:
 private:
 	Toshi::TVector4 m_vecInput;     // 0x1c, see ABikeSteer::SetDesiredVelocity
 	TBOOL           m_bHorn;        // 0x2c
-	TBOOL           m_bUnk2D;       // 0x2d
+	TBOOL           m_bToggleBrake;  // 0x2d, brake input pending for toggle boost
 	TBOOL           m_bTrickLeft;   // 0x2e
 	TBOOL           m_bTrickRight;  // 0x2f
 	TBOOL           m_bTrick;       // 0x30

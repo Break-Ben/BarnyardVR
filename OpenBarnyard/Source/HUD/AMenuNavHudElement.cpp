@@ -8,6 +8,12 @@
 #include <GUI/T2GUIFontManager.h>
 #include <GUI/T2GUITextureSectionManager.h>
 
+#ifdef BARNYARD_COMMUNITY_PATCH
+#  include <array>
+#  include <string>
+#  include <unordered_map>
+#endif
+
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
 // Note: Should be the last include!
@@ -26,6 +32,29 @@ static void SetNavText( AGUI2TextBox& a_rText, const TWCHAR* a_wszText, TBOOL a_
 		a_rText.SetText( a_wszText );
 	else
 		a_rText.SetTextAndFitWidth( a_wszText );
+}
+
+#ifdef BARNYARD_COMMUNITY_PATCH
+namespace
+{
+// Keep unformatted source strings so device changes can also refresh tags that
+// do not have live prompt tokens, without changing the original HUD layout.
+auto& NavTextSources()
+{
+	static auto* sources = new std::unordered_map<const AMenuNavHudElement*, std::array<std::wstring, AMenuNavHudElement::NUM_TEXTS>>;
+	return *sources;
+}
+}
+#endif
+
+static void FormatNavText( AMenuNavHudElement* a_pNav, TINT a_iIndex, const TWCHAR* a_wszSource )
+{
+#ifdef BARNYARD_COMMUNITY_PATCH
+	auto& source = NavTextSources()[ a_pNav ][ a_iIndex ];
+	source = a_wszSource;
+	a_wszSource = source.c_str();
+#endif
+	ALocale::FormatInputTags( a_pNav->m_apwszTexts[ a_iIndex ], AMenuNavHudElement::MAX_LENGTH, a_wszSource );
 }
 
 // $Barnyard: FUNCTION 00455a50
@@ -51,8 +80,10 @@ TBOOL AMenuNavHudElement::OnAttach()
 	m_apwszTexts[ 1 ] = TSTATICCAST( TWCHAR, TMalloc( MAX_LENGTH * sizeof( TWCHAR ) ) );
 	m_apwszTexts[ 2 ] = TSTATICCAST( TWCHAR, TMalloc( MAX_LENGTH * sizeof( TWCHAR ) ) );
 
-	ALocale::FormatInputTags( m_apwszTexts[ 0 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( 1047 ) );
-	ALocale::FormatInputTags( m_apwszTexts[ 1 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( 1048 ) );
+	FormatNavText( this, 0, ALocaleManager::Interface()->GetString( 1047 ) );
+	FormatNavText( this, 1, ALocaleManager::Interface()->GetString( 1048 ) );
+
+	m_apwszTexts[ 2 ][ 0 ] = 0;
 
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( "Rekord26" );
 
@@ -94,6 +125,9 @@ TBOOL AMenuNavHudElement::OnAttach()
 // $Barnyard: FUNCTION 00455b30
 void AMenuNavHudElement::OnDetach()
 {
+#ifdef BARNYARD_COMMUNITY_PATCH
+	NavTextSources().erase( this );
+#endif
 	TFree( m_apwszTexts[ 0 ] );
 	TFree( m_apwszTexts[ 1 ] );
 	TFree( m_apwszTexts[ 2 ] );
@@ -119,19 +153,19 @@ void AMenuNavHudElement::SetTexts( TINT a_iLeft, TINT a_iRight, TINT a_iCentre )
 {
 	if ( a_iLeft != -1 )
 	{
-		ALocale::FormatInputTags( m_apwszTexts[ 0 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( a_iLeft ) );
+		FormatNavText( this, 0, ALocaleManager::Interface()->GetString( a_iLeft ) );
 		SetNavText( m_aTexts[ 0 ], m_apwszTexts[ 0 ], m_abFixedWidth[ 0 ] );
 	}
 
 	if ( a_iRight != -1 )
 	{
-		ALocale::FormatInputTags( m_apwszTexts[ 1 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( a_iRight ) );
+		FormatNavText( this, 1, ALocaleManager::Interface()->GetString( a_iRight ) );
 		SetNavText( m_aTexts[ 1 ], m_apwszTexts[ 1 ], m_abFixedWidth[ 1 ] );
 	}
 
 	if ( a_iCentre != -1 )
 	{
-		ALocale::FormatInputTags( m_apwszTexts[ 2 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( a_iCentre ) );
+		FormatNavText( this, 2, ALocaleManager::Interface()->GetString( a_iCentre ) );
 		SetNavText( m_aTexts[ 2 ], m_apwszTexts[ 2 ], m_abFixedWidth[ 2 ] );
 	}
 
@@ -147,19 +181,19 @@ void AMenuNavHudElement::SetTextStrings( const TWCHAR* a_wszLeft, const TWCHAR* 
 {
 	if ( a_wszLeft )
 	{
-		ALocale::FormatInputTags( m_apwszTexts[ 0 ], MAX_LENGTH, a_wszLeft );
+		FormatNavText( this, 0, a_wszLeft );
 		SetNavText( m_aTexts[ 0 ], m_apwszTexts[ 0 ], m_abFixedWidth[ 0 ] );
 	}
 
 	if ( a_wszRight )
 	{
-		ALocale::FormatInputTags( m_apwszTexts[ 1 ], MAX_LENGTH, a_wszRight );
+		FormatNavText( this, 1, a_wszRight );
 		SetNavText( m_aTexts[ 1 ], m_apwszTexts[ 1 ], m_abFixedWidth[ 1 ] );
 	}
 
 	if ( a_wszCentre )
 	{
-		ALocale::FormatInputTags( m_apwszTexts[ 2 ], MAX_LENGTH, a_wszCentre );
+		FormatNavText( this, 2, a_wszCentre );
 		SetNavText( m_aTexts[ 2 ], m_apwszTexts[ 2 ], m_abFixedWidth[ 2 ] );
 	}
 
@@ -173,10 +207,10 @@ void AMenuNavHudElement::SetTextStrings( const TWCHAR* a_wszLeft, const TWCHAR* 
 // $Barnyard: FUNCTION 00455d90
 void AMenuNavHudElement::SetDefaultTexts()
 {
-	ALocale::FormatInputTags( m_apwszTexts[ 0 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( 1047 ) );
+	FormatNavText( this, 0, ALocaleManager::Interface()->GetString( 1047 ) );
 	SetNavText( m_aTexts[ 0 ], m_apwszTexts[ 0 ], m_abFixedWidth[ 0 ] );
 
-	ALocale::FormatInputTags( m_apwszTexts[ 1 ], MAX_LENGTH, ALocaleManager::Interface()->GetString( 1048 ) );
+	FormatNavText( this, 1, ALocaleManager::Interface()->GetString( 1048 ) );
 	SetNavText( m_aTexts[ 1 ], m_apwszTexts[ 1 ], m_abFixedWidth[ 1 ] );
 
 	m_aTexts[ 0 ].T2GUIElement::Show();
@@ -218,3 +252,22 @@ void AMenuNavHudElement::UpdateText()
 	if ( AMenuNavHudElement* pMenuNav = AHudManager::GetSingleton()->FindElement<AMenuNavHudElement>() )
 		pMenuNav->SetTexts( 1047, 1048, -1 );
 }
+
+#ifdef BARNYARD_COMMUNITY_PATCH
+void AMenuNavHudElement::RefreshDeviceText()
+{
+	if ( !AHudManager::GetSingleton() ) return;
+
+	auto* pNav = AHudManager::GetSingleton()->FindElement<AMenuNavHudElement>();
+	if ( !pNav ) return;
+
+	auto it = NavTextSources().find( pNav );
+	if ( it == NavTextSources().end() ) return;
+
+	for ( TINT i = 0; i < NUM_TEXTS; i++ )
+	{
+		ALocale::FormatInputTags( pNav->m_apwszTexts[ i ], MAX_LENGTH, it->second[ i ].c_str() );
+		SetNavText( pNav->m_aTexts[ i ], pNav->m_apwszTexts[ i ], pNav->m_abFixedWidth[ i ] );
+	}
+}
+#endif

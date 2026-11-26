@@ -53,6 +53,9 @@ public:
 	TFLOAT GetTextScale();
 
 	static void UpdateText();
+#ifdef BARNYARD_COMMUNITY_PATCH
+	static void RefreshDeviceText();
+#endif
 
 public:
 	Toshi::T2GUIRectangle m_oBacking;                  // 0x14, "Wood_Thin"

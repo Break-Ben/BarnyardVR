@@ -11,6 +11,7 @@
 #include "GameInterface/AGameStateController.h"
 #include "UnitMovement/Steering/ABikeSteer.h"
 #include "UnitMovement/Steering/AThrowItemSteer.h"
+#include "VR/AVRSettings.h"
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -33,7 +34,7 @@ ABikeControlComponent::ABikeControlComponent()
 	m_vecInput.z   = 0.0f;
 	m_vecInput.w   = 0.0f;
 	m_bHorn        = TFALSE;
-	m_bUnk2D       = TFALSE;
+	m_bToggleBrake = TFALSE;
 	m_bTrickLeft   = TFALSE;
 	m_bTrickRight  = TFALSE;
 	m_bTrick       = TFALSE;
@@ -53,6 +54,19 @@ ABikeControlComponent::~ABikeControlComponent()
 void ABikeControlComponent::UpdateAI( TFLOAT a_fDeltaTime )
 {
 	ABikeSteer* pSteer = TSTATICCAST( ABikeSteer, GetOwner()->GetSteer() );
+
+	if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() )
+	{
+		// Boost itself is an accelerator on bikes. A toggle holds it until
+		// cancelled; never resume it automatically after braking or exhaustion.
+		if ( m_bToggleBrake || pSteer->IsExhausted() || pSteer->GetStamina() <= 0.0f || pSteer->IsStopped() )
+			m_bBoost = TFALSE;
+		if ( m_bToggleBrake )
+			m_vecInput.z = -1.0f;
+		else if ( m_bBoost )
+			m_vecInput.z = 1.0f;
+	}
+	m_bToggleBrake = TFALSE;
 
 	if ( m_bBoost == TTRUE && m_vecInput.z > 0.0f )
 		m_vecInput.z = 2.0f;
@@ -131,6 +145,7 @@ TBOOL ABikeControlComponent::ProcessCommand( AInputCommand a_eCommand, const TIn
 			}
 			return TTRUE;
 		case AInputCommand_Brake:
+			if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() ) m_bToggleBrake = TTRUE;
 			a_pEvent->StartRepeat( 0.0f, 0.0f );
 			m_vecInput.z = -1.0f;
 			return TTRUE;
@@ -142,6 +157,12 @@ TBOOL ABikeControlComponent::ProcessCommand( AInputCommand a_eCommand, const TIn
 			m_bHorn = TTRUE;
 			return TTRUE;
 		case AInputCommand_Trick1:
+			if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() )
+			{
+				if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
+					m_bBoost = !m_bBoost;
+				return TTRUE;
+			}
 			if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
 			{
 				a_pEvent->StartRepeat( 0.0f, 0.0f );
@@ -207,7 +228,9 @@ TBOOL ABikeControlComponent::ProcessCommand( AInputCommand a_eCommand, const TIn
 // $Barnyard: FUNCTION 0058b4b0
 void ABikeControlComponent::OnDisable()
 {
-	m_bBoost = TFALSE;
+	m_bBoost       = TFALSE;
+	m_bToggleBrake = TFALSE;
+	m_vecInput     = TVector4::VEC_ZERO;
 	AControlComponent::OnDisable();
 }
 

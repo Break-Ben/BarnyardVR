@@ -116,6 +116,7 @@ public:
 
 	void   SetStamina( TFLOAT a_fStamina );
 	TFLOAT GetStamina() const { return m_fStamina; }
+	TBOOL IsExhausted() const { return m_bExhausted; }
 
 	// TRUE if the bike has been in the water for more than a second
 	TBOOL IsSunk() const;
