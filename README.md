@@ -5,7 +5,7 @@ BarnyardVR is a community-made OpenXR VR port of the 2006 video game **Barnyard*
 ## Features
 
 - OpenXR support with stereoscopic VR rendering, 6DOF head tracking and a desktop mirror.
-- VR controller support with vibration, custom button prompts and optional modern control remapping.
+- VR controller support with vibration, custom button prompts, gamepad-like stick response and optional modern control remapping.
 - Full first-person support in the Barnyard and suitable minigames.
 - Snap/smooth turning options and head-relative movement/UI options.
 - VR-specific minigame improvements, including head-directed aiming and rendering suitable UI in 3D space.
