@@ -84,7 +84,7 @@ void AVROptionsState::UpdateScrollIndicators()
 	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
 	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
 	// Centre the arrows in the space above and below the row content.
-	m_aScrollArrows[ 0 ].SetTransform( 0.0f, 0.0f );
+	m_aScrollArrows[ 0 ].SetTransform( 0.0f, -6.0f );
 	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight );
 }
 
@@ -144,7 +144,8 @@ TBOOL AVROptionsState::ProcessInput( const TInputInterface::InputEvent* a_pEvent
 				m_aScrollArrows[ i ].GetInvScreenTransform( inverse );
 				TVector2 pos;
 				inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
-				if ( m_aScrollArrows[ i ].IsPointInside( pos.x, pos.y ) )
+				// Keep a comfortable hit target even though the artwork is flatter.
+				if ( pos.x >= -12.0f && pos.x <= 12.0f && pos.y >= -10.0f && pos.y <= 10.0f )
 				{
 					// Focus the next hidden row so each click scrolls immediately.
 					FocusRow( i == 0 ? m_iFirstVisible - 1 : m_iFirstVisible + VISIBLE_ROWS );
@@ -186,8 +187,8 @@ void AVROptionsState::OnInsertion()
 		button.OnFocusLost();
 		button.SetTextShadow( TTRUE, 0xa0000000, 0.6f );
 		button.SetTextShadowOffset( 5.0f );
-		// Centre the combined text and its right-offset shadow visually.
-		button.GetTextBox().SetTranslation( -2.5f, 0.0f );
+		// Offset the font's visual weight and right-offset shadow leftward.
+		button.GetTextBox().SetTranslation( -10.0f, 0.0f );
 		m_oMenu.AddMenuItem( button );
 	}
 	m_iFirstVisible = 0;
@@ -212,7 +213,7 @@ void AVROptionsState::OnInsertion()
 		{
 			auto& arrow = m_aScrollArrows[ i ];
 			arrow.SetTextureSection( pArrow );
-			arrow.SetDimensions( 16.0f, 16.0f );
+			arrow.SetDimensions( 16.0f, 9.0f );
 			arrow.SetDown( i == 1 );
 			arrow.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
 			arrow.SetAlpha( 0.0f );
