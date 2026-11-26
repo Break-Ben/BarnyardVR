@@ -18,6 +18,8 @@ public:
 	void  SetHeadRelativeMovement( TBOOL a_bEnabled );
 	TBOOL IsUIFollowingHead() const { return m_bUIFollowsHead; }
 	void  SetUIFollowingHead( TBOOL a_bEnabled );
+	TBOOL IsToggleSprintEnabled() const { return m_bToggleSprint; }
+	void  SetToggleSprintEnabled( TBOOL a_bEnabled );
 	TBOOL IsVibrationEnabled() const { return m_bVibration; }
 	void  SetVibrationEnabled( TBOOL a_bEnabled );
 
@@ -48,6 +50,7 @@ private:
 	TBOOL m_bHeadRelativeMovement = TFALSE;
 	TBOOL m_bUIFollowsHead = TFALSE;
 	TBOOL m_bVibration = TTRUE;
+	TBOOL m_bToggleSprint = TFALSE;
 	TINT  m_iSnapTurnDegrees = 0;
 	TINT  m_iResolutionPercent = 100;
 	TINT  m_iMSAASamples       = 2;

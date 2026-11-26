@@ -2,6 +2,10 @@
 #include "AVROptionsState.h"
 #include "VR/AVRSettings.h"
 #include "GUI/T2GUIFontManager.h"
+#include "GUI/T2GUI.h"
+#include "GUI/T2GUITextureSectionManager.h"
+#include "GUI/AGUI2.h"
+#include <Input/TInputDeviceMouse.h>
 #include "HUD/AHudManager.h"
 #include "HUD/AMenuNavHudElement.h"
 #include "Sound/ASoundManager.h"
@@ -13,6 +17,28 @@
 TOSHI_NAMESPACE_USING
 
 TDEFINE_CLASS( AVROptionsState );
+
+void AVROptionsState::ScrollArrow::Render()
+{
+	auto* pRenderer = T2GUI::GetRenderer();
+	pRenderer->SetMaterial( GetMaterial() );
+	pRenderer->SetColour( GetColour() );
+	if ( IsInFront() ) pRenderer->ResetZCoordinate();
+
+	const TFLOAT fHalfWidth = GetWidth() * 0.5f;
+	const TFLOAT fHalfHeight = GetHeight() * 0.5f;
+	TVector2 vertices[] = {
+		{ -fHalfWidth, -fHalfHeight }, { fHalfWidth, -fHalfHeight },
+		{ -fHalfWidth, fHalfHeight }, { fHalfWidth, fHalfHeight }
+	};
+	TVector2 uv1, uv2, uv3, uv4;
+	GetUVs( uv1, uv2, uv3, uv4 );
+	// The left arrow becomes an up or down arrow with a quarter turn.
+	TVector2 uvs[] = { m_bDown ? uv2 : uv4, m_bDown ? uv3 : uv1,
+	                   m_bDown ? uv1 : uv3, m_bDown ? uv4 : uv2 };
+	pRenderer->RenderTriStrip( vertices, uvs, 4 );
+	T2GUIElement::Render();
+}
 
 AVROptionsState::~AVROptionsState()
 {
@@ -27,6 +53,7 @@ void AVROptionsState::RefreshLabels()
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: Disabled" );
 	else
 		std::swprintf( m_awszLabels[ ROW_SNAP_TURN ], 96, L"Snap Turning: %d degrees", settings.GetSnapTurnDegrees() );
+	std::swprintf( m_awszLabels[ ROW_TOGGLE_SPRINT ], 96, L"Toggle Sprint: %ls", settings.IsToggleSprintEnabled() ? L"On" : L"Off" );
 	std::swprintf( m_awszLabels[ ROW_MOVEMENT ], 96, L"Movement: %ls", settings.IsHeadRelativeMovement() ? L"Head Relative" : L"Fixed" );
 	std::swprintf( m_awszLabels[ ROW_UI_PLACEMENT ], 96, L"UI Position: %ls", settings.IsUIFollowingHead() ? L"Head Relative" : L"Fixed" );
 	std::swprintf( m_awszLabels[ ROW_VIBRATION ], 96, L"Vibration: %ls", settings.IsVibrationEnabled() ? L"On" : L"Off" );
@@ -41,6 +68,94 @@ void AVROptionsState::RefreshLabels()
 		m_aButtons[ i ].GetTextBox().SetText( m_awszLabels[ i ] );
 }
 
+void AVROptionsState::ShowRows()
+{
+	for ( TINT i = 0; i < ROW_COUNT; ++i )
+		m_aButtons[ i ].SetVisible( i >= m_iFirstVisible && i < m_iFirstVisible + VISIBLE_ROWS );
+}
+
+void AVROptionsState::UpdateScrollIndicators()
+{
+	const TFLOAT fHeight = m_oMenu.GetHeight();
+	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
+	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
+	// Centre the arrows in the space above and below the row content.
+	m_aScrollArrows[ 0 ].SetTransform( 0.0f, -9.0f );
+	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight + 4.0f );
+}
+
+void AVROptionsState::FocusRow( TINT a_iRow )
+{
+	if ( a_iRow < 0 || a_iRow >= ROW_COUNT ) return;
+	auto* pOldFocus = m_oMenu.GetFocusedMenuItem();
+	if ( pOldFocus == &m_aButtons[ a_iRow ] ) return;
+	if ( pOldFocus ) OnMenuItemFocused( *pOldFocus, m_aButtons[ a_iRow ] );
+
+	TINT iFirst = m_iFirstVisible;
+	if ( a_iRow < iFirst ) iFirst = a_iRow;
+	else if ( a_iRow >= iFirst + VISIBLE_ROWS ) iFirst = a_iRow - VISIBLE_ROWS + 1;
+	if ( iFirst != m_iFirstVisible )
+	{
+		m_iFirstVisible = iFirst;
+		ShowRows();
+		m_oMenu.ReflowChildrenVertically();
+		m_oMenu.SetMenuAlpha( m_fMenuOpacity, m_fMenuOpacity * 0.6f );
+		UpdateScrollIndicators();
+	}
+	m_oMenu.SetFocusAt( m_aButtons[ a_iRow ] );
+	ASoundManager::GetSingleton()->PlayCue( soundbank::UI_MENUCLICK );
+}
+
+TBOOL AVROptionsState::OnUpdate( TFLOAT a_fDeltaTime )
+{
+	// OnMenuClose can remove this state during the base update, so do not access
+	// members after calling it. The indicator follows the menu fade by one frame.
+	for ( auto& arrow : m_aScrollArrows ) arrow.SetAlpha( m_fMenuOpacity );
+	return BaseClass::OnUpdate( a_fDeltaTime );
+}
+
+TBOOL AVROptionsState::ProcessInput( const TInputInterface::InputEvent* a_pEvent )
+{
+	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs )
+	{
+		const auto type = a_pEvent->GetEventType();
+		const TINT doodad = a_pEvent->GetDoodad();
+		// Wheel-axis motion is not cursor motion. Let the wheel buttons below
+		// scroll without causing a stale mouse position to steal focus.
+		if ( doodad == TInputDeviceMouse::AXIS_WHEEL && type == TInputInterface::EVENT_TYPE_MOVED )
+			return TTRUE;
+		if ( ( type == TInputInterface::EVENT_TYPE_GONE_DOWN || type == TInputInterface::EVENT_TYPE_REPEAT ) &&
+		     ( doodad == TInputDeviceMouse::BUTTON_WHEEL_FORWARD || doodad == TInputDeviceMouse::BUTTON_WHEEL_BACKWARD ) )
+		{
+			auto* pFocus = m_oMenu.GetFocusedMenuItem();
+			if ( pFocus ) FocusRow( TSTATICCAST( AGUI2Button, pFocus )->GetId() + ( doodad == TInputDeviceMouse::BUTTON_WHEEL_FORWARD ? -1 : 1 ) );
+			return TTRUE;
+		}
+		if ( type == TInputInterface::EVENT_TYPE_GONE_DOWN && doodad == TInputDeviceMouse::BUTTON_1 )
+		{
+			for ( TINT i = 0; i < 2; ++i )
+			{
+				if ( !m_aScrollArrows[ i ].IsVisible() ) continue;
+				T2GUITransform inverse;
+				m_aScrollArrows[ i ].GetInvScreenTransform( inverse );
+				TVector2 pos;
+				inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
+				// Keep a comfortable hit target even though the artwork is flatter.
+				if ( pos.x >= -12.0f && pos.x <= 12.0f && pos.y >= -10.0f && pos.y <= 10.0f )
+				{
+					// Focus the next hidden row so each click scrolls immediately.
+					FocusRow( i == 0 ? m_iFirstVisible - 1 : m_iFirstVisible + VISIBLE_ROWS );
+					return TTRUE;
+				}
+			}
+			// Recalculate hover after a scroll, even when the mouse hasn't moved.
+			m_oMenu.SetMouseStateDirty();
+			m_oMenu.Update( 0.0f );
+		}
+	}
+	return BaseClass::ProcessInput( a_pEvent );
+}
+
 void AVROptionsState::OnInsertion()
 {
 	m_iOriginalSnapTurnDegrees = AVRSettings::GetSingleton().GetSnapTurnDegrees();
@@ -48,17 +163,52 @@ void AVROptionsState::OnInsertion()
 	m_bOriginalHeadRelativeMovement = AVRSettings::GetSingleton().IsHeadRelativeMovement();
 	m_bOriginalUIFollowsHead = AVRSettings::GetSingleton().IsUIFollowingHead();
 	m_bOriginalVibration     = AVRSettings::GetSingleton().IsVibrationEnabled();
+	m_bOriginalToggleSprint  = AVRSettings::GetSingleton().IsToggleSprintEnabled();
 	m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 	m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 	m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();
 	m_bConfirmed               = TFALSE;
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
+
+	// Fit all possible values, not just those selected when the menu opens.
+	// A tight text box can also make the wrapped-text renderer miscentre a
+	// near-limit line, even when it appears to fit on one line.
+	TFLOAT fRowWidth = 440.0f;
+	auto measure = [ & ]( const TWCHAR* a_wszText ) {
+		fRowWidth = TMath::Max( fRowWidth, pFont->GetTextWidth( a_wszText ) + 8.0f );
+	};
+	for ( TINT i = 0; i < ROW_COUNT; ++i ) measure( m_awszLabels[ i ] );
+	const TWCHAR* aVariants[] = {
+		L"Control Layout: Modern", L"Control Layout: Classic", L"Snap Turning: Disabled",
+		L"Toggle Sprint: On", L"Toggle Sprint: Off", L"Movement: Head Relative", L"Movement: Fixed",
+		L"UI Position: Head Relative", L"UI Position: Fixed", L"Vibration: On", L"Vibration: Off",
+		L"MSAA: Off (restart)", L"Debug HUD: On", L"Debug HUD: Off", L"Restore Defaults"
+	};
+	for ( auto* pVariant : aVariants ) measure( pVariant );
+	TWCHAR awszVariant[ 96 ];
+	for ( TINT i = AVRSettings::RESOLUTION_MIN; i <= AVRSettings::RESOLUTION_MAX; i += AVRSettings::RESOLUTION_STEP )
+	{
+		std::swprintf( awszVariant, 96, L"Resolution: %d%% (restart)", i );
+		measure( awszVariant );
+	}
+	for ( TINT i : AVRSettings::SNAP_ANGLES )
+	{
+		if ( i == 0 ) continue;
+		std::swprintf( awszVariant, 96, L"Snap Turning: %d degrees", i );
+		measure( awszVariant );
+	}
+	for ( TINT i : AVRSettings::MSAA_SAMPLES )
+	{
+		if ( i == 1 ) continue;
+		std::swprintf( awszVariant, 96, L"MSAA: %dx (restart)", i );
+		measure( awszVariant );
+	}
+
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 	{
 		auto& button = m_aButtons[ i ];
-		// Keep the expanded list inside the existing dialog at standard GUI sizes.
-		button.Create( pFont, 440.0f, m_awszLabels[ i ], 2.5f );
+		button.Create( pFont, fRowWidth, m_awszLabels[ i ], 10.0f );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -67,11 +217,40 @@ void AVROptionsState::OnInsertion()
 		button.OnFocusLost();
 		button.SetTextShadow( TTRUE, 0xa0000000, 0.6f );
 		button.SetTextShadowOffset( 5.0f );
+		// Offset the font's visual weight and right-offset shadow leftward.
+		button.GetTextBox().SetTranslation( -5.0f, 0.0f );
 		m_oMenu.AddMenuItem( button );
 	}
+	m_iFirstVisible = 0;
+	ShowRows();
 	m_oMenu.SetFocusAt( m_aButtons[ 0 ] );
 	m_oDialogTitle.SetText( L"VR Settings" );
 	BaseClass::OnInsertion();
+
+	// Centre the labels and allow extra space between the title and the top
+	// arrow without changing the game's text size or row spacing.
+	m_oMenu.SetAttachment( T2GUIATTACHMENT_MIDDLECENTER, T2GUIATTACHMENT_MIDDLECENTER );
+	m_oMenu.SetTranslation( 0.0f, 0.0f );
+	m_oDialog.SetDialogSize( TMath::Max( 620.0f, m_oMenu.GetWidth() + 96.0f ), TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 152.0f );
+
+	// Use the game's arrow texture, keeping the indicators and their clickable
+	// areas between the title, rows and frame.
+	auto* pArrow = T2GUITextureSectionManager::GetTextureSection( "left_arrow" );
+	m_bHasScrollArrows = pArrow != TNULL;
+	if ( pArrow )
+	{
+		for ( TINT i = 0; i < 2; ++i )
+		{
+			auto& arrow = m_aScrollArrows[ i ];
+			arrow.SetTextureSection( pArrow );
+			arrow.SetDimensions( 16.0f, 9.0f );
+			arrow.SetDown( i == 1 );
+			arrow.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
+			arrow.SetAlpha( 0.0f );
+			m_oMenu.AddChildTail( arrow );
+		}
+	}
+	UpdateScrollIndicators();
 }
 
 void AVROptionsState::OnRemoval()
@@ -83,9 +262,11 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetHeadRelativeMovement( m_bOriginalHeadRelativeMovement );
 	AVRSettings::GetSingleton().SetUIFollowingHead( m_bOriginalUIFollowsHead );
 	AVRSettings::GetSingleton().SetVibrationEnabled( m_bOriginalVibration );
+	AVRSettings::GetSingleton().SetToggleSprintEnabled( m_bOriginalToggleSprint );
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
+	for ( auto& arrow : m_aScrollArrows ) arrow.RemoveSelf();
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
@@ -114,6 +295,13 @@ void AVROptionsState::Adjust( TINT a_iRow, TINT a_iDirection )
 			settings.SetHeadRelativeMovement( !settings.IsHeadRelativeMovement() );
 		else
 			settings.SetUIFollowingHead( !settings.IsUIFollowingHead() );
+		RefreshLabels();
+		return;
+	}
+	if ( a_iRow == ROW_TOGGLE_SPRINT )
+	{
+		auto& settings = AVRSettings::GetSingleton();
+		settings.SetToggleSprintEnabled( !settings.IsToggleSprintEnabled() );
 		RefreshLabels();
 		return;
 	}
@@ -180,6 +368,20 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 		return TTRUE;
 	}
 	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs &&
+	     ( a_eCommand == AInputCommand_Up || a_eCommand == AInputCommand_Forward ||
+	       a_eCommand == AInputCommand_Down || a_eCommand == AInputCommand_Backward ) )
+	{
+		if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN ||
+		     a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_REPEAT )
+		{
+			auto* pFocus = m_oMenu.GetFocusedMenuItem();
+			if ( pFocus ) FocusRow( TSTATICCAST( AGUI2Button, pFocus )->GetId() +
+			    ( a_eCommand == AInputCommand_Up || a_eCommand == AInputCommand_Forward ? -1 : 1 ) );
+			a_pEvent->StartRepeat( 0.5f, 0.1f );
+		}
+		return TTRUE;
+	}
+	if ( m_eMenuState == MENUSTATE_MENU_VISIBLE && !m_bIgnoreInputs &&
 	     ( a_eCommand == AInputCommand_Left || a_eCommand == AInputCommand_Right ) )
 	{
 		AGUI2MenuItem* pItem = m_oMenu.GetFocusedMenuItem();
@@ -194,7 +396,7 @@ TBOOL AVROptionsState::ProcessCommand( AInputCommand a_eCommand, const TInputInt
 void AVROptionsState::OnMenuItemActivated( AGUI2MenuItem* a_pItem )
 {
 	const TINT row = TSTATICCAST( AGUI2Button, a_pItem )->GetId();
-	if ( row == ROW_SNAP_TURN || row == ROW_CONTROLS || row == ROW_MOVEMENT || row == ROW_UI_PLACEMENT || row == ROW_VIBRATION || row == ROW_RESOLUTION || row == ROW_MSAA || row == ROW_DEBUG_HUD )
+	if ( row >= 0 && row < ROW_DEFAULTS )
 	{
 		m_bConfirmed = TTRUE;
 		m_eMenuState = MENUSTATE_MENU_DISAPPEAR;
@@ -228,6 +430,7 @@ void AVROptionsState::OnMenuClose()
 		AVRSettings::GetSingleton().SetHeadRelativeMovement( m_bOriginalHeadRelativeMovement );
 		AVRSettings::GetSingleton().SetUIFollowingHead( m_bOriginalUIFollowsHead );
 		AVRSettings::GetSingleton().SetVibrationEnabled( m_bOriginalVibration );
+		AVRSettings::GetSingleton().SetToggleSprintEnabled( m_bOriginalToggleSprint );
 		AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 		AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 		AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
@@ -241,6 +444,7 @@ void AVROptionsState::OnMenuClose()
 		m_bOriginalHeadRelativeMovement = AVRSettings::GetSingleton().IsHeadRelativeMovement();
 		m_bOriginalUIFollowsHead = AVRSettings::GetSingleton().IsUIFollowingHead();
 		m_bOriginalVibration     = AVRSettings::GetSingleton().IsVibrationEnabled();
+		m_bOriginalToggleSprint  = AVRSettings::GetSingleton().IsToggleSprintEnabled();
 		m_iOriginalResolutionPercent = AVRSettings::GetSingleton().GetResolutionPercent();
 		m_iOriginalMSAASamples       = AVRSettings::GetSingleton().GetMSAASamples();
 		m_bOriginalDebugHUD          = AVRSettings::GetSingleton().IsDebugHUDEnabled();

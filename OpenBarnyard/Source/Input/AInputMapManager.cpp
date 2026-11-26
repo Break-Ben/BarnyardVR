@@ -209,7 +209,7 @@ void AInputMapManager::GetEventCommands( const Toshi::TInputInterface::InputEven
 			m_oDoodadToCustomNameMap.Clear();
 		}
 
-		AMenuNavHudElement::UpdateText();
+		AMenuNavHudElement::RefreshDeviceText();
 
 		m_bIsUsingController = bIsCurrentlyUsingController;
 		m_bIsUsingXInput     = bIsCurrentlyUsingXInput;

@@ -137,12 +137,16 @@ TBOOL ASimplePlayerControlComponent::ProcessCommand( AInputCommand a_eCommand, c
 
 			if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_UP )
 			{
-				m_bSprinting = TFALSE;
+				if ( !AVRSettings::GetSingleton().IsToggleSprintEnabled() )
+					m_bSprinting = TFALSE;
 				return TTRUE;
 			}
 			else if ( a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
 			{
-				m_bSprinting = m_bCanSprint;
+				if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() )
+					m_bSprinting = m_bCanSprint && m_bMovementEnabled && !m_bSprinting;
+				else
+					m_bSprinting = m_bCanSprint;
 				return TTRUE;
 			}
 
@@ -261,7 +265,10 @@ void ASimplePlayerControlComponent::SetMovementEnabled( TBOOL a_bEnabled )
 	m_bMovementEnabled = a_bEnabled;
 
 	if ( !a_bEnabled )
+	{
+		if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() ) m_bSprinting = TFALSE;
 		TSTATICCAST( ACommonSteer, GetOwner()->GetSteer() )->SetDesiredVelocity( TVector4::VEC_ZERO );
+	}
 }
 
 // $Barnyard: FUNCTION 00592390
@@ -365,15 +372,20 @@ void ASimplePlayerControlComponent::UpdateMovement( TFLOAT a_fDeltaTime, TFLOAT 
 			}
 		}
 	}
-	else if ( m_bMoving )
+	else
 	{
-		TVector4 vDirection;
-		pSteer->CopyDirection( vDirection );
-		pSteer->SetDesiredVelocity( vDirection );
-		pSteer->SetDesiredSpeed( a_fStopSpeed );
-		pSteer->SetTilt( 0.0f, 0.0f, 0.0f );
+		// A toggle lasts only while movement input is above the normal dead zone.
+		if ( AVRSettings::GetSingleton().IsToggleSprintEnabled() ) m_bSprinting = TFALSE;
+		if ( m_bMoving )
+		{
+			TVector4 vDirection;
+			pSteer->CopyDirection( vDirection );
+			pSteer->SetDesiredVelocity( vDirection );
+			pSteer->SetDesiredSpeed( a_fStopSpeed );
+			pSteer->SetTilt( 0.0f, 0.0f, 0.0f );
 
-		m_bMoving = TFALSE;
+			m_bMoving = TFALSE;
+		}
 	}
 
 	m_vMovement = TVector2::VEC_ZERO;
