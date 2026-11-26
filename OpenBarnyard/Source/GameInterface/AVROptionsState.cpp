@@ -58,10 +58,6 @@ void AVROptionsState::RefreshLabels()
 	std::swprintf( m_awszLabels[ ROW_UI_PLACEMENT ], 96, L"UI Position: %ls", settings.IsUIFollowingHead() ? L"Head Relative" : L"Fixed" );
 	std::swprintf( m_awszLabels[ ROW_VIBRATION ], 96, L"Vibration: %ls", settings.IsVibrationEnabled() ? L"On" : L"Off" );
 	std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Resolution: %d%% (restart)", settings.GetResolutionPercent() );
-	// Preserve the restart reminder without wrapping at the game's normal font size.
-	auto* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
-	if ( pFont && pFont->GetTextWidth( m_awszLabels[ ROW_RESOLUTION ] ) > 440.0f )
-		std::swprintf( m_awszLabels[ ROW_RESOLUTION ], 96, L"Res: %d%% (restart)", settings.GetResolutionPercent() );
 	if ( settings.GetMSAASamples() == 1 )
 		std::swprintf( m_awszLabels[ ROW_MSAA ], 96, L"MSAA: Off (restart)" );
 	else
@@ -84,8 +80,8 @@ void AVROptionsState::UpdateScrollIndicators()
 	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
 	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
 	// Centre the arrows in the space above and below the row content.
-	m_aScrollArrows[ 0 ].SetTransform( 0.0f, -6.0f );
-	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight );
+	m_aScrollArrows[ 0 ].SetTransform( 0.0f, -11.0f );
+	m_aScrollArrows[ 1 ].SetTransform( 0.0f, fHeight - 5.0f );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -175,10 +171,44 @@ void AVROptionsState::OnInsertion()
 	RefreshLabels();
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( AGUI2STYLE_FONT_PRIMARY );
 
+	// Fit all possible values, not just those selected when the menu opens.
+	// A tight text box can also make the wrapped-text renderer miscentre a
+	// near-limit line, even when it appears to fit on one line.
+	TFLOAT fRowWidth = 440.0f;
+	auto measure = [ & ]( const TWCHAR* a_wszText ) {
+		fRowWidth = TMath::Max( fRowWidth, pFont->GetTextWidth( a_wszText ) + 8.0f );
+	};
+	for ( TINT i = 0; i < ROW_COUNT; ++i ) measure( m_awszLabels[ i ] );
+	const TWCHAR* aVariants[] = {
+		L"Control Layout: Modern", L"Control Layout: Classic", L"Snap Turning: Disabled",
+		L"Toggle Sprint: On", L"Toggle Sprint: Off", L"Movement: Head Relative", L"Movement: Fixed",
+		L"UI Position: Head Relative", L"UI Position: Fixed", L"Vibration: On", L"Vibration: Off",
+		L"MSAA: Off (restart)", L"Debug HUD: On", L"Debug HUD: Off", L"Restore Defaults"
+	};
+	for ( auto* pVariant : aVariants ) measure( pVariant );
+	TWCHAR awszVariant[ 96 ];
+	for ( TINT i = AVRSettings::RESOLUTION_MIN; i <= AVRSettings::RESOLUTION_MAX; i += AVRSettings::RESOLUTION_STEP )
+	{
+		std::swprintf( awszVariant, 96, L"Resolution: %d%% (restart)", i );
+		measure( awszVariant );
+	}
+	for ( TINT i : AVRSettings::SNAP_ANGLES )
+	{
+		if ( i == 0 ) continue;
+		std::swprintf( awszVariant, 96, L"Snap Turning: %d degrees", i );
+		measure( awszVariant );
+	}
+	for ( TINT i : AVRSettings::MSAA_SAMPLES )
+	{
+		if ( i == 1 ) continue;
+		std::swprintf( awszVariant, 96, L"MSAA: %dx (restart)", i );
+		measure( awszVariant );
+	}
+
 	for ( TINT i = 0; i < ROW_COUNT; ++i )
 	{
 		auto& button = m_aButtons[ i ];
-		button.Create( pFont, 440.0f, m_awszLabels[ i ], 10.0f );
+		button.Create( pFont, fRowWidth, m_awszLabels[ i ], 10.0f );
 		button.SetId( i );
 		button.SetFocusedColour( AGUI2STYLE_COLOR_FOCUSED );
 		button.SetEnabledColour( AGUI2STYLE_COLOR_SECONDARY );
@@ -188,7 +218,7 @@ void AVROptionsState::OnInsertion()
 		button.SetTextShadow( TTRUE, 0xa0000000, 0.6f );
 		button.SetTextShadowOffset( 5.0f );
 		// Offset the font's visual weight and right-offset shadow leftward.
-		button.GetTextBox().SetTranslation( -10.0f, 0.0f );
+		button.GetTextBox().SetTranslation( -5.0f, 0.0f );
 		m_oMenu.AddMenuItem( button );
 	}
 	m_iFirstVisible = 0;
@@ -201,7 +231,7 @@ void AVROptionsState::OnInsertion()
 	// arrow without changing the game's text size or row spacing.
 	m_oMenu.SetAttachment( T2GUIATTACHMENT_MIDDLECENTER, T2GUIATTACHMENT_MIDDLECENTER );
 	m_oMenu.SetTranslation( 0.0f, 0.0f );
-	m_oDialog.SetDialogSize( m_oMenu.GetWidth() + 180.0f, TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 152.0f );
+	m_oDialog.SetDialogSize( TMath::Max( 620.0f, m_oMenu.GetWidth() + 96.0f ), TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 152.0f );
 
 	// Use the game's arrow texture, keeping the indicators and their clickable
 	// areas between the title, rows and frame.
