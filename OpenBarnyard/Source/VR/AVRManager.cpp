@@ -17,8 +17,14 @@
 #include "Units/AUnit.h"
 #include "Units/APlayerControlComponent.h"
 #include "Units/ASimplePlayerControlComponent.h"
+#include "Input/AInputHandler.h"
+#include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
 
 #include <Input/TInputDeviceController.h>
+#include <Platform/Windows/Input/TInputDeviceController_Win.h>
+#ifdef BARNYARD_COMMUNITY_PATCH
+#  include <Platform/Windows/Input/TInputDeviceController_XInput.h>
+#endif
 #include <Render/TBackend.h>
 #include <Render/TCameraObject.h>
 #include <Render/TRenderContext.h>
@@ -2529,6 +2535,59 @@ TBOOL AVRManager::BeginUILayer()
 	return TTRUE;
 }
 
+namespace
+{
+struct DebugStickValues
+{
+	const TWCHAR* wszDevice;
+	TFLOAT        afRaw[ 4 ];
+	TFLOAT        afEvent[ 4 ];
+};
+
+// The Windows gamepads' GetAxisFloat() is not the value in their virtual
+// stick events. Read their cached event axes, as well as the pre-deadzone axes.
+static TBOOL ReadDebugSticks( Toshi::TInputDeviceController* a_pController, DebugStickValues& a_rValues )
+{
+	using Pad = Toshi::TInputDeviceController;
+	if ( !a_pController ) return TFALSE;
+
+	auto* pXR = a_pController->IsA( &TGetClass( Toshi::TInputOpenXRDeviceController ) ) ? TSTATICCAST( Toshi::TInputOpenXRDeviceController, a_pController ) : TNULL;
+	auto* pDX = a_pController->IsA( &TGetClass( Toshi::TInputDXDeviceController ) ) ? TSTATICCAST( Toshi::TInputDXDeviceController, a_pController ) : TNULL;
+#ifdef BARNYARD_COMMUNITY_PATCH
+	auto* pXInput = a_pController->IsA( &TGetClass( Toshi::TInputXInputDeviceController ) ) ? TSTATICCAST( Toshi::TInputXInputDeviceController, a_pController ) : TNULL;
+	if ( !pXR && !pDX && !pXInput ) return TFALSE;
+	a_rValues.wszDevice = pXR ? L"OpenXR" : ( pXInput ? L"XInput gamepad" : L"DirectInput gamepad" );
+#else
+	if ( !pXR && !pDX ) return TFALSE;
+	a_rValues.wszDevice = pXR ? L"OpenXR" : L"DirectInput gamepad";
+#endif
+
+	for ( TINT i = 0; i < 4; ++i )
+	{
+		const auto stick = i < 2 ? Pad::STICK_LEFT : Pad::STICK_RIGHT;
+		const TINT axis = i % 2;
+		if ( pXR )
+		{
+			a_rValues.afRaw[ i ]   = pXR->GetAxisFloat2( stick, axis );
+			a_rValues.afEvent[ i ] = pXR->GetAxisFloat( stick, axis );
+		}
+#ifdef BARNYARD_COMMUNITY_PATCH
+		else if ( pXInput )
+		{
+			a_rValues.afRaw[ i ]   = pXInput->GetRawStickAxis( stick, axis );
+			a_rValues.afEvent[ i ] = pXInput->GetEventStickAxis( stick, axis );
+		}
+#endif
+		else
+		{
+			a_rValues.afRaw[ i ]   = pDX->GetRawStickAxis( stick, axis );
+			a_rValues.afEvent[ i ] = pDX->GetEventStickAxis( stick, axis );
+		}
+	}
+	return TTRUE;
+}
+} // namespace
+
 void AVRManager::RenderDebugHUD()
 {
 	const Impl& rImpl = *m_pImpl;
@@ -2586,6 +2645,40 @@ void AVRManager::RenderDebugHUD()
 	else
 		std::swprintf( text, 128, L"MSAA: Off" );
 	drawLine( text );
+
+	// Use the current input owner, not the first enumerated controller. Verify
+	// it is still registered before dereferencing it after a disconnect.
+	Toshi::TInputDeviceController* pController = TNULL;
+	if ( auto* pInput = AInputHandler::GetSingletonSafe() )
+	{
+		for ( TINT i = 0; auto* pDevice = pInput->GetController( i ); ++i )
+		{
+			if ( pDevice == pInput->GetMainController() )
+			{
+				pController = pDevice;
+				break;
+			}
+		}
+	}
+
+	DebugStickValues sticks{};
+	if ( ReadDebugSticks( pController, sticks ) )
+	{
+		std::swprintf( text, 128, L"Controller: %ls", sticks.wszDevice );
+		drawLine( text );
+		for ( TINT i = 0; i < 2; ++i )
+		{
+			std::swprintf( text, 128, L"%ls raw: X %+.3f  Y %+.3f", i == 0 ? L"Left" : L"Right", sticks.afRaw[ i * 2 ], sticks.afRaw[ i * 2 + 1 ] );
+			drawLine( text );
+			std::swprintf( text, 128, L"%ls game: X %+.3f  Y %+.3f", i == 0 ? L"Left" : L"Right", sticks.afEvent[ i * 2 ], sticks.afEvent[ i * 2 + 1 ] );
+			drawLine( text );
+		}
+	}
+	else
+	{
+		drawLine( L"Controller: no active stick data" );
+	}
+
 	pGUIRenderer->EndScene();
 	Toshi::T2GUIFontManager::ReleaseFont( pFont );
 }

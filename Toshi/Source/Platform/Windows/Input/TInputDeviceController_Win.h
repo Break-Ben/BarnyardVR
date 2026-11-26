@@ -63,6 +63,18 @@ public:
 	static TINT   TranslateDoodadToDXButton( Doodad a_iDoodad );
 	static TFLOAT NormaliseStick( TINT a_iValue );
 
+	// Diagnostic values: the centred device axis and the value sent in stick events.
+	TFLOAT GetRawStickAxis( Doodad a_iDoodad, TINT a_iAxis ) const
+	{
+		if ( !m_bPolled || ( a_iDoodad != STICK_LEFT && a_iDoodad != STICK_RIGHT ) || a_iAxis < 0 || a_iAxis > 1 ) return 0.0f;
+		return ( GetAxisInt2( a_iDoodad, a_iAxis ) + STICK_SATURATE - STICK_CENTRE ) * ( 1.0f / STICK_CENTRE );
+	}
+	TFLOAT GetEventStickAxis( Doodad a_iDoodad, TINT a_iAxis ) const
+	{
+		if ( !m_bPolled || ( a_iDoodad != STICK_LEFT && a_iDoodad != STICK_RIGHT ) || a_iAxis < 0 || a_iAxis > 1 ) return 0.0f;
+		return m_afSticks[ ( a_iDoodad == STICK_RIGHT ? 2 : 0 ) + a_iAxis ];
+	}
+
 private:
 	friend class TInputXInputDeviceController;
 	static BOOL CALLBACK EnumerateObjectCallback( LPCDIDEVICEOBJECTINSTANCEA a_poDeviceInstance, LPVOID a_pData );

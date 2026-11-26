@@ -33,7 +33,7 @@ BarnyardVR contains options that are configurable in-game via **Options → VR S
 | Vibration | **On**, Off | Toggle vibration on VR controllers and gamepads. |
 | Resolution (Requires Restart) | 50–200%; **100%** | Change VR render resolution factor. Higher values are recommended to improve visual clarity (since the game isn't demanding), but it may cost performance on weaker computers. |
 | MSAA (Requires Restart) | Off, **2x**, 4x, 8x | Smooth jagged edges. Higher levels can reduce performance. Levels unsupported by your hardware fall back to a lower level. |
-| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, and MSAA. |
+| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, MSAA, and controller stick inputs. |
 
 ## Content Disclosure
 
