@@ -23,8 +23,8 @@ private:
 	{
 		ROW_CONTROLS,
 		ROW_SNAP_TURN,
-		ROW_MOVEMENT,
 		ROW_TOGGLE_SPRINT,
+		ROW_MOVEMENT,
 		ROW_UI_PLACEMENT,
 		ROW_VIBRATION,
 		ROW_RESOLUTION,
@@ -37,7 +37,7 @@ private:
 	void                   RefreshLabels();
 	void                   ShowRows();
 	void                   FocusRow( TINT a_iRow );
-	void                   UpdateScrollBar();
+	void                   UpdateScrollIndicators();
 	void                   Adjust( TINT a_iRow, TINT a_iDirection );
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
@@ -53,8 +53,8 @@ private:
 	TBOOL m_bOriginalDebugHUD = TFALSE;
 	TBOOL m_bConfirmed               = TFALSE;
 
-	Toshi::T2GUIRectangle m_oScrollTrack;
-	Toshi::T2GUIRectangle m_oScrollThumb;
+	TBOOL m_bHasScrollArrows = TFALSE;
+	Toshi::T2GUIRectangle m_aScrollArrows[ 2 ];
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];
 	TWCHAR                                                                                   m_awszLabels[ ROW_COUNT ][ 96 ];
 	Toshi::TListener<AMessagePopupState, AMessagePopupState::ResponseEvent, AVROptionsState> m_oResetListener;
