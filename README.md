@@ -5,7 +5,7 @@ BarnyardVR is a community-made OpenXR VR port of the 2006 video game **Barnyard*
 ## Features
 
 - OpenXR support with stereoscopic VR rendering, 6DOF head tracking and a desktop mirror.
-- VR controller support with vibration, custom button prompts, gamepad-like stick response and optional modern control remapping.
+- VR controller support with vibration, custom button prompts and optional modern control remapping.
 - Full first-person support in the Barnyard and suitable minigames.
 - Snap/smooth turning options and head-relative movement/UI options.
 - VR-specific minigame improvements, including head-directed aiming and rendering suitable UI in 3D space.
@@ -27,13 +27,13 @@ BarnyardVR contains options that are configurable in-game via **Options → VR S
 | --- | --- | --- |
 | Control Layout | **Modern**, Classic | Modern remaps controls for VR controllers and modern conventions. Classic uses the original gamepad layout. |
 | Snap Turning | **Disabled**, 15°, 30°, 45°, 60°, 90° | Turn smoothly when disabled, or turn by the selected angle. |
-| Toggle Sprint | **Off**, On | Press sprint to toggle it; on foot it stops when you stop moving, and on a bike boost stops when you release the accelerator or brake. Both stop when stamina runs out. |
+| Toggle Sprint | **Off**, On | Press sprint to toggle it. Automatically disables when you stop accelerating or when stamina runs out. |
 | Movement | **Fixed**, Head Relative | While on foot, move relative to the VR forward direction when fixed, or your headset direction when head-relative. |
 | UI Position | **Fixed**, Head Relative | Keep the interface at the VR forward direction when fixed, or let it follow your headset direction (where supported) when head-relative. |
 | Vibration | **On**, Off | Toggle vibration on VR controllers and gamepads. |
 | Resolution (Requires Restart) | 50–200%; **100%** | Change VR render resolution factor. Higher values are recommended to improve visual clarity (since the game isn't demanding), but it may cost performance on weaker computers. |
 | MSAA (Requires Restart) | Off, **2x**, 4x, 8x | Smooth jagged edges. Higher levels can reduce performance. Levels unsupported by your hardware fall back to a lower level. |
-| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, MSAA, and controller stick inputs. |
+| Debug HUD | **Off**, On | Display an overlay with info such as FPS, resolution, MSAA, and joystick inputs. |
 
 ## Content Disclosure
 
