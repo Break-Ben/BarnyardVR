@@ -76,6 +76,16 @@ void AVRSettings::SetUIFollowingHead( TBOOL a_bEnabled )
 	}
 }
 
+void AVRSettings::SetToggleSprintEnabled( TBOOL a_bEnabled )
+{
+	const TBOOL bEnabled = a_bEnabled != TFALSE;
+	if ( m_bToggleSprint != bEnabled )
+	{
+		m_bToggleSprint = bEnabled;
+		m_bDirty        = TTRUE;
+	}
+}
+
 void AVRSettings::SetVibrationEnabled( TBOOL a_bEnabled )
 {
 	const TBOOL bEnabled = a_bEnabled != TFALSE;
@@ -124,6 +134,7 @@ void AVRSettings::RestoreDefaults()
 	SetHeadRelativeMovement( TFALSE );
 	SetUIFollowingHead( TFALSE );
 	SetVibrationEnabled( TTRUE );
+	SetToggleSprintEnabled( TFALSE );
 	SetResolutionPercent( 100 );
 	SetMSAASamples( 2 );
 	SetDebugHUDEnabled( TFALSE );
@@ -161,6 +172,8 @@ void AVRSettings::Load()
 			SetHeadRelativeMovement( number != 0 );
 		else if ( key == "UIFollowsHead" && ( number == 0 || number == 1 ) )
 			SetUIFollowingHead( number != 0 );
+		else if ( key == "ToggleSprint" && ( number == 0 || number == 1 ) )
+			SetToggleSprintEnabled( number != 0 );
 		else if ( key == "Vibration" && ( number == 0 || number == 1 ) )
 			SetVibrationEnabled( number != 0 );
 		else if ( key == "DebugHUD" && ( number == 0 || number == 1 ) )
@@ -195,6 +208,7 @@ TBOOL AVRSettings::Save()
 	fprintf( pFile, "# BarnyardVR settings. SnapTurnDegrees: 0 (disabled), 15, 30, 45, 60, 90.\n" );
 	fprintf( pFile, "SnapTurnDegrees=%d\nModernControls=%d\n", m_iSnapTurnDegrees, m_bModernControls ? 1 : 0 );
 	fprintf( pFile, "HeadRelativeMovement=%d\nUIFollowsHead=%d\nVibration=%d\n", m_bHeadRelativeMovement ? 1 : 0, m_bUIFollowsHead ? 1 : 0, m_bVibration ? 1 : 0 );
+	fprintf( pFile, "ToggleSprint=%d\n", m_bToggleSprint ? 1 : 0 );
 	fprintf( pFile, "# VR graphics: restart required. ResolutionPercent: 50-200 in steps of 10; 100 is the OpenXR recommendation.\n" );
 	fprintf( pFile, "# The -vrscale command-line option overrides ResolutionPercent.\n" );
 	fprintf( pFile, "# MSAASamples: 1 (off), 2, 4, 8. Unsupported counts fall back to a lower level.\n" );

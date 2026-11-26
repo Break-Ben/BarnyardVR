@@ -22,21 +22,28 @@ private:
 		ROW_CONTROLS,
 		ROW_SNAP_TURN,
 		ROW_MOVEMENT,
+		ROW_TOGGLE_SPRINT,
 		ROW_UI_PLACEMENT,
 		ROW_VIBRATION,
 		ROW_RESOLUTION,
 		ROW_MSAA,
 		ROW_DEBUG_HUD,
+		ROW_PAGE,
 		ROW_DEFAULTS,
 		ROW_COUNT
 	};
+	static constexpr TINT SETTINGS_PER_PAGE = 5;
+	static constexpr TINT PAGE_COUNT = ( ROW_PAGE + SETTINGS_PER_PAGE - 1 ) / SETTINGS_PER_PAGE;
 	void                   RefreshLabels();
+	void                   ShowPage( TINT a_iPage );
 	void                   Adjust( TINT a_iRow, TINT a_iDirection );
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
 	TBOOL m_bOriginalModernControls  = TTRUE;
 	TBOOL m_bOriginalHeadRelativeMovement = TTRUE;
 	TBOOL m_bOriginalUIFollowsHead = TTRUE;
+	TBOOL m_bOriginalToggleSprint = TFALSE;
+	TINT  m_iPage = 0;
 	TBOOL m_bOriginalVibration     = TTRUE;
 	TINT  m_iOriginalSnapTurnDegrees = 0;
 	TINT  m_iOriginalResolutionPercent = 100;

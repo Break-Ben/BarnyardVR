@@ -21,13 +21,14 @@ BarnyardVR is a community-made OpenXR VR port of the 2006 video game **Barnyard*
 
 ## Settings
 
-BarnyardVR contains options that are configurable in-game via **Options → VR Settings**. Defaults are shown in bold. Some changes require a restart.
+BarnyardVR contains options that are configurable in-game via **Options → VR Settings**. Defaults are shown in bold. Select **More Settings** to switch pages. Some changes require a restart.
 
 | Setting | Values | Description |
 | --- | --- | --- |
 | Control Layout | **Modern**, Classic | Modern remaps controls for VR controllers and modern conventions. Classic uses the original gamepad layout. |
 | Snap Turning | **Disabled**, 15°, 30°, 45°, 60°, 90° | Turn smoothly when disabled, or turn by the selected angle. |
 | Movement | **Fixed**, Head Relative | While on foot, move relative to the VR forward direction when fixed, or your headset direction when head-relative. |
+| Toggle Sprint | **Off**, On | Press sprint to toggle it; sprinting stops when you stop moving or run out of stamina. |
 | UI Position | **Fixed**, Head Relative | Keep the interface at the VR forward direction when fixed, or let it follow your headset direction (where supported) when head-relative. |
 | Vibration | **On**, Off | Toggle vibration on VR controllers and gamepads. |
 | Resolution (Requires Restart) | 50–200%; **100%** | Change VR render resolution factor. Higher values are recommended to improve visual clarity (since the game isn't demanding), but it may cost performance on weaker computers. |
