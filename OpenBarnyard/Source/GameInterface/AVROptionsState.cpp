@@ -57,19 +57,28 @@ void AVROptionsState::ShowRows()
 
 void AVROptionsState::UpdateScrollBar()
 {
-	const TFLOAT fHeight = m_oMenu.GetHeight();
+	// Inset the rail vertically and keep a gap between it and the longest label.
+	const TFLOAT fMenuHeight = m_oMenu.GetHeight();
+	const TFLOAT fHeight = fMenuHeight * 0.86f;
+	const TFLOAT fInset = ( fMenuHeight - fHeight ) * 0.5f;
 	const TINT iVisible = TMath::Min( TINT( ROW_COUNT ), VISIBLE_ROWS );
 	const TFLOAT fThumbHeight = fHeight * iVisible / ROW_COUNT;
 	const TINT iMaxFirst = TMath::Max( TINT( ROW_COUNT ) - VISIBLE_ROWS, 0 );
 	const TFLOAT fTop = iMaxFirst > 0 ? ( fHeight - fThumbHeight ) * m_iFirstVisible / iMaxFirst : 0.0f;
+	const TFLOAT fX = m_oMenu.GetWidth() * 0.5f + 52.0f;
 
 	m_oScrollTrack.SetVisible( iMaxFirst > 0 );
+	m_oScrollRail.SetVisible( iMaxFirst > 0 );
 	m_oScrollThumb.SetVisible( iMaxFirst > 0 );
-	const TFLOAT fX = m_oMenu.GetWidth() * 0.5f + 28.0f;
-	m_oScrollTrack.SetDimensions( 18.0f, fHeight );
-	m_oScrollTrack.SetTransform( fX, 0.0f );
-	m_oScrollThumb.SetDimensions( 18.0f, fThumbHeight );
-	m_oScrollThumb.SetTransform( fX, fTop + fThumbHeight * 0.5f );
+	// The invisible hit area remains unrotated for reliable mouse picking.
+	m_oScrollTrack.SetDimensions( 36.0f, fHeight );
+	m_oScrollTrack.SetTransform( fX, fInset );
+	// Wood_Thin is a complete horizontal plank; rotate the whole texture,
+	// retaining its ends instead of using the frame's uncapped border tile.
+	m_oScrollRail.SetDimensions( fHeight, 14.0f );
+	m_oScrollRail.SetTransform( fX, fInset + fHeight * 0.5f, TMath::HALF_PI );
+	m_oScrollThumb.SetDimensions( fThumbHeight, 24.0f );
+	m_oScrollThumb.SetTransform( fX, fInset + fTop + fThumbHeight * 0.5f, TMath::HALF_PI );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -98,7 +107,7 @@ TBOOL AVROptionsState::OnUpdate( TFLOAT a_fDeltaTime )
 {
 	// OnMenuClose can remove this state during the base update, so do not access
 	// members after calling it. The indicator follows the menu fade by one frame.
-	m_oScrollTrack.SetAlpha( m_fMenuOpacity * 0.65f );
+	m_oScrollRail.SetAlpha( m_fMenuOpacity * 0.8f );
 	m_oScrollThumb.SetAlpha( m_fMenuOpacity );
 	return BaseClass::OnUpdate( a_fDeltaTime );
 }
@@ -182,20 +191,22 @@ void AVROptionsState::OnInsertion()
 	m_oMenu.SetTranslation( -28.0f, 0.0f );
 	m_oDialog.SetDialogSize( m_oMenu.GetWidth() + 180.0f, TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 128.0f );
 
-	// Both parts use the game's vertical wooden border. The darker rail and
-	// brighter thumb are siblings so the thumb renders on top of the rail.
-	auto* pBorder = T2GUITextureSectionManager::GetTextureSection( "Border_Vertical" );
-	m_oScrollTrack.SetTextureSection( pBorder );
-	m_oScrollThumb.SetTextureSection( pBorder );
-	m_oScrollTrack.SetColour( 0xff504038 );
+	// Use the game's complete wooden plank for both pieces. Render the
+	// lighter, wider thumb in front of the darker rail.
+	auto* pWood = T2GUITextureSectionManager::GetTextureSection( "Wood_Thin" );
+	m_oScrollRail.SetTextureSection( pWood );
+	m_oScrollThumb.SetTextureSection( pWood );
+	m_oScrollRail.SetColour( 0xff806b55 );
 	m_oScrollThumb.SetColour( 0xffffffff );
 	m_oScrollTrack.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_TOPCENTER );
+	m_oScrollRail.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
 	m_oScrollThumb.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
 	m_oScrollThumb.SetInFront();
 	m_oMenu.AddChildTail( m_oScrollThumb );
+	m_oMenu.AddChildTail( m_oScrollRail );
 	m_oMenu.AddChildTail( m_oScrollTrack );
 	UpdateScrollBar();
-	m_oScrollTrack.SetAlpha( 0.0f );
+	m_oScrollRail.SetAlpha( 0.0f );
 	m_oScrollThumb.SetAlpha( 0.0f );
 }
 
@@ -213,6 +224,7 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
 	m_oScrollThumb.RemoveSelf();
+	m_oScrollRail.RemoveSelf();
 	m_oScrollTrack.RemoveSelf();
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();

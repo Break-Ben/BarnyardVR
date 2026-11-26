@@ -53,7 +53,8 @@ private:
 	TBOOL m_bOriginalDebugHUD = TFALSE;
 	TBOOL m_bConfirmed               = TFALSE;
 
-	Toshi::T2GUIRectangle m_oScrollTrack;
+	Toshi::T2GUIElement   m_oScrollTrack;
+	Toshi::T2GUIRectangle m_oScrollRail;
 	Toshi::T2GUIRectangle m_oScrollThumb;
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];
 	TWCHAR                                                                                   m_awszLabels[ ROW_COUNT ][ 96 ];
