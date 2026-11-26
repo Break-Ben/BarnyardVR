@@ -19,11 +19,14 @@ public:
 	virtual void  OnMenuClose() OVERRIDE;
 
 private:
-	// Draw a horizontal texture vertically without rotating its hit geometry.
-	class ScrollPlank : public Toshi::T2GUIRectangle
+	// Rotate the game's left arrow in UV space so its hit box stays upright.
+	class ScrollArrow : public Toshi::T2GUIRectangle
 	{
 	public:
+		void SetDown( TBOOL a_bDown ) { m_bDown = a_bDown; }
 		virtual void Render() OVERRIDE;
+	private:
+		TBOOL m_bDown = TFALSE;
 	};
 
 	enum ROW
@@ -44,7 +47,7 @@ private:
 	void                   RefreshLabels();
 	void                   ShowRows();
 	void                   FocusRow( TINT a_iRow );
-	void                   UpdateScrollBar();
+	void                   UpdateScrollIndicators();
 	void                   Adjust( TINT a_iRow, TINT a_iDirection );
 	static TBOOL __stdcall OnResetResponse( AVROptionsState* a_pState, AMessagePopupState* a_pPopup, AMessagePopupState::ResponseEvent* a_pEvent );
 
@@ -60,9 +63,8 @@ private:
 	TBOOL m_bOriginalDebugHUD = TFALSE;
 	TBOOL m_bConfirmed               = TFALSE;
 
-	Toshi::T2GUIElement   m_oScrollTrack;
-	ScrollPlank           m_oScrollRail;
-	ScrollPlank           m_oScrollThumb;
+	TBOOL       m_bHasScrollArrows = TFALSE;
+	ScrollArrow m_aScrollArrows[ 2 ];
 	AGUI2Button                                                                              m_aButtons[ ROW_COUNT ];
 	TWCHAR                                                                                   m_awszLabels[ ROW_COUNT ][ 96 ];
 	Toshi::TListener<AMessagePopupState, AMessagePopupState::ResponseEvent, AVROptionsState> m_oResetListener;

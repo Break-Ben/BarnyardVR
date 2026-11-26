@@ -18,7 +18,7 @@ TOSHI_NAMESPACE_USING
 
 TDEFINE_CLASS( AVROptionsState );
 
-void AVROptionsState::ScrollPlank::Render()
+void AVROptionsState::ScrollArrow::Render()
 {
 	auto* pRenderer = T2GUI::GetRenderer();
 	pRenderer->SetMaterial( GetMaterial() );
@@ -33,8 +33,9 @@ void AVROptionsState::ScrollPlank::Render()
 	};
 	TVector2 uv1, uv2, uv3, uv4;
 	GetUVs( uv1, uv2, uv3, uv4 );
-	// Rotate the complete section 90 degrees, including its natural ends.
-	TVector2 uvs[] = { uv4, uv1, uv3, uv2 };
+	// The left arrow becomes an up or down arrow with a quarter turn.
+	TVector2 uvs[] = { m_bDown ? uv2 : uv4, m_bDown ? uv3 : uv1,
+	                   m_bDown ? uv1 : uv3, m_bDown ? uv4 : uv2 };
 	pRenderer->RenderTriStrip( vertices, uvs, 4 );
 	T2GUIElement::Render();
 }
@@ -77,30 +78,15 @@ void AVROptionsState::ShowRows()
 		m_aButtons[ i ].SetVisible( i >= m_iFirstVisible && i < m_iFirstVisible + VISIBLE_ROWS );
 }
 
-void AVROptionsState::UpdateScrollBar()
+void AVROptionsState::UpdateScrollIndicators()
 {
-	// Inset the rail vertically and keep a gap between it and the longest label.
-	const TFLOAT fMenuHeight = m_oMenu.GetHeight();
-	const TFLOAT fHeight = fMenuHeight * 0.86f;
-	const TFLOAT fInset = ( fMenuHeight - fHeight ) * 0.5f;
-	const TINT iVisible = TMath::Min( TINT( ROW_COUNT ), VISIBLE_ROWS );
-	const TFLOAT fThumbHeight = fHeight * iVisible / ROW_COUNT;
-	const TINT iMaxFirst = TMath::Max( TINT( ROW_COUNT ) - VISIBLE_ROWS, 0 );
-	const TFLOAT fTop = iMaxFirst > 0 ? ( fHeight - fThumbHeight ) * m_iFirstVisible / iMaxFirst : 0.0f;
 	const TFLOAT fX = m_oMenu.GetWidth() * 0.5f + 52.0f;
-
-	m_oScrollTrack.SetVisible( iMaxFirst > 0 );
-	m_oScrollRail.SetVisible( iMaxFirst > 0 );
-	m_oScrollThumb.SetVisible( iMaxFirst > 0 );
-	// The invisible hit area remains unrotated for reliable mouse picking.
-	m_oScrollTrack.SetDimensions( 36.0f, fHeight );
-	m_oScrollTrack.SetTransform( fX, fInset );
-	// The texture is rotated in ScrollPlank::Render, keeping the dimensions
-	// and hit area in the same upright coordinate system.
-	m_oScrollRail.SetDimensions( 14.0f, fHeight );
-	m_oScrollRail.SetTransform( fX, fInset + fHeight * 0.5f );
-	m_oScrollThumb.SetDimensions( 24.0f, fThumbHeight );
-	m_oScrollThumb.SetTransform( fX, fInset + fTop + fThumbHeight * 0.5f );
+	const TFLOAT fHeight = m_oMenu.GetHeight();
+	m_aScrollArrows[ 0 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible > 0 );
+	m_aScrollArrows[ 1 ].SetVisible( m_bHasScrollArrows && m_iFirstVisible + VISIBLE_ROWS < ROW_COUNT );
+	// Align the arrows with the first and last rows, in the right-hand gutter.
+	m_aScrollArrows[ 0 ].SetTransform( fX, 22.0f );
+	m_aScrollArrows[ 1 ].SetTransform( fX, fHeight - 22.0f );
 }
 
 void AVROptionsState::FocusRow( TINT a_iRow )
@@ -119,7 +105,7 @@ void AVROptionsState::FocusRow( TINT a_iRow )
 		ShowRows();
 		m_oMenu.ReflowChildrenVertically();
 		m_oMenu.SetMenuAlpha( m_fMenuOpacity, m_fMenuOpacity * 0.6f );
-		UpdateScrollBar();
+		UpdateScrollIndicators();
 	}
 	m_oMenu.SetFocusAt( m_aButtons[ a_iRow ] );
 	ASoundManager::GetSingleton()->PlayCue( soundbank::UI_MENUCLICK );
@@ -129,8 +115,7 @@ TBOOL AVROptionsState::OnUpdate( TFLOAT a_fDeltaTime )
 {
 	// OnMenuClose can remove this state during the base update, so do not access
 	// members after calling it. The indicator follows the menu fade by one frame.
-	m_oScrollRail.SetAlpha( m_fMenuOpacity * 0.8f );
-	m_oScrollThumb.SetAlpha( m_fMenuOpacity );
+	for ( auto& arrow : m_aScrollArrows ) arrow.SetAlpha( m_fMenuOpacity );
 	return BaseClass::OnUpdate( a_fDeltaTime );
 }
 
@@ -153,15 +138,19 @@ TBOOL AVROptionsState::ProcessInput( const TInputInterface::InputEvent* a_pEvent
 		}
 		if ( type == TInputInterface::EVENT_TYPE_GONE_DOWN && doodad == TInputDeviceMouse::BUTTON_1 )
 		{
-			T2GUITransform inverse;
-			m_oScrollTrack.GetInvScreenTransform( inverse );
-			TVector2 pos;
-			inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
-			if ( m_oScrollTrack.IsVisible() && m_oScrollTrack.IsPointInside( pos.x, pos.y ) )
+			for ( TINT i = 0; i < 2; ++i )
 			{
-				const TFLOAT fFraction = ( pos.y + m_oScrollTrack.GetHeight() * 0.5f ) / m_oScrollTrack.GetHeight();
-				FocusRow( TMath::Min( TINT( fFraction * ROW_COUNT ), TINT( ROW_COUNT ) - 1 ) );
-				return TTRUE;
+				if ( !m_aScrollArrows[ i ].IsVisible() ) continue;
+				T2GUITransform inverse;
+				m_aScrollArrows[ i ].GetInvScreenTransform( inverse );
+				TVector2 pos;
+				inverse.Transform( pos, AGUI2::GetMouseCursor().GetCursorPos() );
+				if ( m_aScrollArrows[ i ].IsPointInside( pos.x, pos.y ) )
+				{
+					// Focus the next hidden row so each click scrolls immediately.
+					FocusRow( i == 0 ? m_iFirstVisible - 1 : m_iFirstVisible + VISIBLE_ROWS );
+					return TTRUE;
+				}
 			}
 			// Recalculate hover after a scroll, even when the mouse hasn't moved.
 			m_oMenu.SetMouseStateDirty();
@@ -213,24 +202,24 @@ void AVROptionsState::OnInsertion()
 	m_oMenu.SetTranslation( -28.0f, 0.0f );
 	m_oDialog.SetDialogSize( m_oMenu.GetWidth() + 180.0f, TMath::Max( m_oMenu.GetHeight(), 128.0f ) + 128.0f );
 
-	// Use the game's complete wooden plank for both pieces. Render the
-	// lighter, wider thumb in front of the darker rail.
-	auto* pWood = T2GUITextureSectionManager::GetTextureSection( "Panel_01" );
-	m_oScrollRail.SetTextureSection( pWood );
-	m_oScrollThumb.SetTextureSection( pWood );
-	m_oScrollRail.SetColour( 0xff806b55 );
-	m_oScrollThumb.SetColour( 0xffffffff );
-	m_oScrollTrack.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_TOPCENTER );
-	m_oScrollRail.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
-	m_oScrollThumb.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
-	m_oScrollThumb.SetInFront();
-	// AddChildTail renders older children first; the thumb must follow the rail.
-	m_oMenu.AddChildTail( m_oScrollRail );
-	m_oMenu.AddChildTail( m_oScrollThumb );
-	m_oMenu.AddChildTail( m_oScrollTrack );
-	UpdateScrollBar();
-	m_oScrollRail.SetAlpha( 0.0f );
-	m_oScrollThumb.SetAlpha( 0.0f );
+	// Use the game's arrow texture, keeping the indicators and their clickable
+	// areas inside the panel rather than over the labels or the frame.
+	auto* pArrow = T2GUITextureSectionManager::GetTextureSection( "left_arrow" );
+	m_bHasScrollArrows = pArrow != TNULL;
+	if ( pArrow )
+	{
+		for ( TINT i = 0; i < 2; ++i )
+		{
+			auto& arrow = m_aScrollArrows[ i ];
+			arrow.SetTextureSection( pArrow );
+			arrow.SetDimensions( 26.0f, 26.0f );
+			arrow.SetDown( i == 1 );
+			arrow.SetAttachment( T2GUIATTACHMENT_TOPCENTER, T2GUIATTACHMENT_MIDDLECENTER );
+			arrow.SetAlpha( 0.0f );
+			m_oMenu.AddChildTail( arrow );
+		}
+	}
+	UpdateScrollIndicators();
 }
 
 void AVROptionsState::OnRemoval()
@@ -246,9 +235,7 @@ void AVROptionsState::OnRemoval()
 	AVRSettings::GetSingleton().SetResolutionPercent( m_iOriginalResolutionPercent );
 	AVRSettings::GetSingleton().SetMSAASamples( m_iOriginalMSAASamples );
 	AVRSettings::GetSingleton().SetDebugHUDEnabled( m_bOriginalDebugHUD );
-	m_oScrollThumb.RemoveSelf();
-	m_oScrollRail.RemoveSelf();
-	m_oScrollTrack.RemoveSelf();
+	for ( auto& arrow : m_aScrollArrows ) arrow.RemoveSelf();
 	for ( auto& button : m_aButtons ) button.RemoveSelf();
 	AMenuNavHudElement::UpdateText();
 	BaseClass::OnRemoval();
