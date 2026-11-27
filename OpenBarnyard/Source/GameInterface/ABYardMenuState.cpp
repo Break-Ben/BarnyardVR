@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "VR/AVRManager.h"
 #include "ABYardMenuState.h"
 #include "GUI/AGUI2.h"
 #include "GUI/T2GUIFontManager.h"
@@ -32,6 +33,7 @@ ABYardMenuState::ABYardMenuState()
 // $Barnyard: FUNCTION 00432f10
 ABYardMenuState::~ABYardMenuState()
 {
+	AVRManager::UnregisterWorldDimRectangle( &m_oRectangle2 );
 	if ( m_pButtonRotations )
 		delete[] m_pButtonRotations;
 }
@@ -207,6 +209,7 @@ void ABYardMenuState::OnInsertion()
 		m_oRectangle2.SetColour( 0x7f000000 );
 
 		AGUI2::GetRootElement()->AddChildTail( m_oRectangle2 );
+		AVRManager::RegisterWorldDimRectangle( &m_oRectangle2 );
 	}
 
 	SetInputMap( TPS8( DialogInputMap ) );
@@ -285,6 +288,7 @@ void ABYardMenuState::OnRemoval()
 {
 	if ( m_bHasRectangle2 )
 		m_oRectangle2.RemoveSelf();
+	AVRManager::UnregisterWorldDimRectangle( &m_oRectangle2 );
 
 	m_oDialogTitle.RemoveSelf();
 	m_oDialogTitleBackground.RemoveSelf();

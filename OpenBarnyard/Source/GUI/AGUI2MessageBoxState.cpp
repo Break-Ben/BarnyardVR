@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "VR/AVRManager.h"
 #include "AGUI2MessageBoxState.h"
 #include "AGUI2.h"
 #include "Input/AInputMapManager.h"
@@ -48,6 +49,7 @@ AGUI2MessageBoxState::AGUI2MessageBoxState()
 // $Barnyard: FUNCTION 00640dd0
 AGUI2MessageBoxState::~AGUI2MessageBoxState()
 {
+	AVRManager::UnregisterWorldDimRectangle( &m_oScreenRect );
 	m_oMenu.RemoveAllItems();
 
 	if ( m_bUseDialog == TTRUE )
@@ -163,6 +165,7 @@ void AGUI2MessageBoxState::OnRemoval()
 {
 	if ( m_bDarkenScreen )
 		m_oScreenRect.RemoveSelf();
+	AVRManager::UnregisterWorldDimRectangle( &m_oScreenRect );
 
 	m_pRootElement->RemoveSelf();
 
@@ -182,6 +185,7 @@ void AGUI2MessageBoxState::Create( TFLOAT a_fWidth, TFLOAT a_fHeight, const TCHA
 		m_oScreenRect.SetDimensions( fScreenWidth, fScreenHeight );
 		m_oScreenRect.SetColour( 0xff000000 );
 		AGUI2::GetRootElement()->AddChildTail( m_oScreenRect );
+		AVRManager::RegisterWorldDimRectangle( &m_oScreenRect );
 	}
 
 	m_fWidth       = a_fWidth;

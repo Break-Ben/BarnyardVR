@@ -10,6 +10,9 @@
 #include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
 #include "GameInterface/ABYardMenuState.h"
+#include "GameInterface/AGamesPlayedDisplayState.h"
+#include "GameInterface/AMapState.h"
+#include "GameInterface/AMiniGameInstructionState.h"
 #include "MiniGame/AHoneyCollectingGame.h"
 #include "MiniGame/AShakeTreeMicroGame.h"
 #include "Cameras/AFirstPersonCamera.h"
@@ -53,6 +56,10 @@
 
 namespace
 {
+// Registered rectangles retain their native behaviour outside the XR UI pass.
+// Their owners unregister on removal and destruction.
+std::vector<Toshi::T2GUIRectangle*> s_aWorldDimRectangles;
+
 constexpr TUINT32 kEyeCount = 2;
 constexpr TFLOAT  kUiQuadWidthMeters = 1.95f;
 constexpr TFLOAT  kUiWorldDistance = 1.75f;
@@ -272,6 +279,17 @@ static DXGI_FORMAT ChooseDXGIFormat( const std::vector<int64_t>& a_rcFormats )
 
 } // namespace
 
+void AVRManager::RegisterWorldDimRectangle( Toshi::T2GUIRectangle* a_pRectangle )
+{
+	if ( a_pRectangle && std::find( s_aWorldDimRectangles.begin(), s_aWorldDimRectangles.end(), a_pRectangle ) == s_aWorldDimRectangles.end() )
+		s_aWorldDimRectangles.push_back( a_pRectangle );
+}
+
+void AVRManager::UnregisterWorldDimRectangle( Toshi::T2GUIRectangle* a_pRectangle )
+{
+	s_aWorldDimRectangles.erase( std::remove( s_aWorldDimRectangles.begin(), s_aWorldDimRectangles.end(), a_pRectangle ), s_aWorldDimRectangles.end() );
+}
+
 struct AVRManager::Impl
 {
 
@@ -318,6 +336,13 @@ struct AVRManager::Impl
 	TBOOL bUILayerActive = TFALSE;
 	TBOOL bStateOverlaySuppressed = TFALSE;
 	TUINT32 uiStateOverlayColour = 0;
+	struct DimOverlay
+	{
+		Toshi::T2GUIRectangle* pRectangle;
+		TUINT32 uiColour;
+		TBOOL bSuppressed;
+	};
+	std::vector<DimOverlay> aDimOverlays;
 	TBOOL bEyeActive = TFALSE;
 	TBOOL bHasNeutralPose = TFALSE;
 	TBOOL bRecenterPending = TFALSE;
@@ -413,6 +438,7 @@ struct AVRManager::Impl
 	ID3D11DeviceContext* pD3D11Context = TNULL;
 	ID3D11Buffer* pFadeConstants = TNULL;
 	Toshi::TVector4 vFadeColour = { 0.0f, 0.0f, 0.0f, 0.0f };
+	Toshi::TVector4 vWorldFadeColour = { 0.0f, 0.0f, 0.0f, 0.0f };
 	ID3D11VertexShader* pMirrorVertexShader = TNULL;
 	ID3D11PixelShader* pMirrorPixelShader = TNULL;
 	ID3D11PixelShader* pColorResolvePixelShader = TNULL;
@@ -2069,19 +2095,73 @@ TBOOL AVRManager::ShouldExit() const
 	return m_pImpl->bExitRequested;
 }
 
-// State transitions, scripted fades and fade activities share OVERLAY_3.
-// OVERLAY_2 is ordinary menu dimming and must remain on the UI panel.
-static Toshi::T2GUIRectangle* GetStateFadeOverlay()
+// State transitions, scripted fades and fade activities share OVERLAY_3;
+// OVERLAY_2 is a background dim that must not darken the menu UI.
+static Toshi::T2GUIRectangle* GetStateOverlay( AGameState::OVERLAY a_eOverlay )
 {
 	if ( !AGameStateController::IsSingletonCreated() )
 		return TNULL;
 
 	auto* pStates = AGameStateController::GetSingleton();
-	if ( pStates->GetNumStates() <= 1 || pStates->GetCurrentState()->GetOverlay() != AGameState::OVERLAY_3 )
+	if ( pStates->GetNumStates() <= 1 || pStates->GetCurrentState()->GetOverlay() != a_eOverlay )
 		return TNULL;
 
 	auto& rOverlay = pStates->GetOverlayElement();
 	return rOverlay.IsLinked() && rOverlay.IsVisible() ? &rOverlay : TNULL;
+}
+
+static Toshi::T2GUIRectangle* GetStateFadeOverlay()
+{
+	return GetStateOverlay( AGameState::OVERLAY_3 );
+}
+
+static TBOOL IsWorldDimRectangleAlive( const Toshi::T2GUIRectangle* a_pRectangle )
+{
+	return std::find( s_aWorldDimRectangles.begin(), s_aWorldDimRectangles.end(), a_pRectangle ) != s_aWorldDimRectangles.end() ||
+	       a_pRectangle == GetStateOverlay( AGameState::OVERLAY_2 );
+}
+
+static TBOOL IsWorldDimElementVisible( const Toshi::T2GUIElement* a_pElement )
+{
+	if ( !a_pElement || !a_pElement->IsLinked() || !AGUI2::IsSingletonCreated() )
+		return TFALSE;
+	const auto* pRoot = AGUI2::GetRootElement();
+	for ( auto* pElement = a_pElement; pElement; pElement = pElement->GetParent() )
+	{
+		if ( !pElement->IsVisible() ) return TFALSE;
+		if ( pElement == pRoot ) return TTRUE;
+	}
+	return TFALSE;
+}
+
+// Match the resolve shader's transfer functions. Composite menu backgrounds
+// behind the transition fade in linear light, then re-encode its premultiplied
+// colour for the existing shader constant. Mixing their sRGB values directly
+// would darken coloured transition fades differently in the eyes and UI.
+static TFLOAT FadeSrgbToLinear( TFLOAT a_fValue )
+{
+	const TFLOAT f = std::max( 0.0f, std::min( a_fValue, 1.0f ) );
+	return f <= 0.04045f ? f / 12.92f : std::pow( ( f + 0.055f ) / 1.055f, 2.4f );
+}
+
+static TFLOAT FadeLinearToSrgb( TFLOAT a_fValue )
+{
+	const TFLOAT f = std::max( 0.0f, std::min( a_fValue, 1.0f ) );
+	return f <= 0.0031308f ? f * 12.92f : 1.055f * std::pow( f, 1.0f / 2.4f ) - 0.055f;
+}
+
+static Toshi::TVector4 CompositeWorldFade( const Toshi::TVector4& a_rcFade, const Toshi::TVector4& a_rcLinearDim )
+{
+	if ( a_rcLinearDim.w <= 0.0f ) return a_rcFade;
+
+	const TFLOAT fBehind = 1.0f - a_rcFade.w;
+	const TFLOAT fAlpha  = a_rcFade.w + fBehind * a_rcLinearDim.w;
+	auto channel = [&]( TFLOAT fFade, TFLOAT fDim ) {
+		const TFLOAT fFront = a_rcFade.w > 0.000001f ? FadeSrgbToLinear( fFade / a_rcFade.w ) * a_rcFade.w : 0.0f;
+		return fAlpha > 0.000001f ? FadeLinearToSrgb( ( fFront + fBehind * fDim ) / fAlpha ) * fAlpha : 0.0f;
+	};
+	return Toshi::TVector4( channel( a_rcFade.x, a_rcLinearDim.x ), channel( a_rcFade.y, a_rcLinearDim.y ),
+	                        channel( a_rcFade.z, a_rcLinearDim.z ), fAlpha );
 }
 
 TBOOL AVRManager::BeginFrame()
@@ -2190,6 +2270,59 @@ TBOOL AVRManager::BeginFrame()
 		}
 	}
 
+	// Menu backgrounds darken the eyes, but not the separate UI layer. Snapshot
+	// once so both eyes and the desktop mirror use the same set of rectangles.
+	rImpl.vWorldFadeColour = rImpl.vFadeColour;
+	rImpl.aDimOverlays.clear();
+	if ( rImpl.bColorCorrectionAvailable )
+	{
+		Toshi::TVector4 vLinearDim( 0.0f, 0.0f, 0.0f, 0.0f );
+		auto snapshotDim = [&]( Toshi::T2GUIRectangle* pRectangle ) {
+			if ( !IsWorldDimElementVisible( pRectangle ) ) return;
+			const TUINT32 uiColour = pRectangle->GetColour();
+			const AFade::Color colour( uiColour );
+			// Strengthen the VR background dim without changing the native
+			// rectangle or the separate UI. A half-opacity panel becomes ~75%.
+			const TFLOAT fPanelAlpha = colour.A / 255.0f;
+			const TFLOAT fDimAlpha   = 1.0f - ( 1.0f - fPanelAlpha ) * ( 1.0f - fPanelAlpha );
+			const TFLOAT fAlpha      = fDimAlpha * ( 1.0f - vLinearDim.w );
+			vLinearDim.x += FadeSrgbToLinear( colour.R / 255.0f ) * fAlpha;
+			vLinearDim.y += FadeSrgbToLinear( colour.G / 255.0f ) * fAlpha;
+			vLinearDim.z += FadeSrgbToLinear( colour.B / 255.0f ) * fAlpha;
+			vLinearDim.w += fAlpha;
+			rImpl.aDimOverlays.push_back( { pRectangle, uiColour, TFALSE } );
+		};
+		for ( auto* pRectangle : s_aWorldDimRectangles ) snapshotDim( pRectangle );
+		if ( auto* pOverlay = GetStateOverlay( AGameState::OVERLAY_2 ) ) snapshotDim( pOverlay );
+
+		if ( AGameStateController::IsSingletonCreated() )
+		{
+			auto* pStates = AGameStateController::GetSingleton();
+			if ( pStates->GetNumStates() > 1 )
+			{
+				auto* pState = pStates->GetCurrentState();
+				const Toshi::T2GUIElement* pDimAnchor = TNULL;
+				if ( pState->IsA( &TGetClass( AMapState ) ) )
+					pDimAnchor = static_cast<AMapState*>( pState )->GetWorldDimAnchor();
+				else if ( pState->IsA( &TGetClass( AGamesPlayedDisplayState ) ) )
+					pDimAnchor = static_cast<AGamesPlayedDisplayState*>( pState )->GetWorldDimAnchor();
+
+				// These menus have no dim rectangle. Match the pause backdrop,
+				// without stacking another dim if one is already behind them.
+				constexpr TFLOAT kPanelTransmission = 128.0f / 255.0f;
+				constexpr TFLOAT kMenuDim = 1.0f - kPanelTransmission * kPanelTransmission;
+				if ( IsWorldDimElementVisible( pDimAnchor ) && vLinearDim.w < kMenuDim )
+					vLinearDim.w = kMenuDim;
+
+				// Keep the minigame instruction picture and prompt on the UI
+				// layer, with a black surround as on the original full screen.
+				if ( pState->IsA( &TGetClass( AMiniGameInstructionState ) ) )
+					vLinearDim.w = 1.0f;
+			}
+		}
+		rImpl.vWorldFadeColour = CompositeWorldFade( rImpl.vFadeColour, vLinearDim );
+	}
+
 	if ( !rImpl.bHasNeutralPose || rImpl.bRecenterPending )
 	{
 		rImpl.vNeutralPosition = {
@@ -2239,7 +2372,7 @@ TUINT32 AVRManager::GetCurrentEye() const
 	return m_pImpl->bEyeActive ? m_pImpl->uiActiveEye : std::numeric_limits<TUINT32>::max();
 }
 
-static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetView* a_pRenderTarget, const D3D11_VIEWPORT& a_rcViewport, ID3D11ShaderResourceView* a_pSource, ID3D11PixelShader* a_pPixelShader, TBOOL a_bAlphaBlend )
+static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetView* a_pRenderTarget, const D3D11_VIEWPORT& a_rcViewport, ID3D11ShaderResourceView* a_pSource, ID3D11PixelShader* a_pPixelShader, TBOOL a_bAlphaBlend, const Toshi::TVector4& a_rcFadeColour )
 {
 	if ( !a_rImpl.pFadeConstants || !a_rImpl.pMirrorVertexShader || !a_pPixelShader || !a_pSource || !a_pRenderTarget || a_rcViewport.Width <= 0.0f || a_rcViewport.Height <= 0.0f )
 		return TFALSE;
@@ -2256,7 +2389,7 @@ static TBOOL DrawD3D11Fullscreen( AVRManager::Impl& a_rImpl, ID3D11RenderTargetV
 	a_rImpl.pD3D11Context->PSSetShader( a_pPixelShader, TNULL, 0 );
 	a_rImpl.pD3D11Context->PSSetShaderResources( 0, 1, &a_pSource );
 	a_rImpl.pD3D11Context->PSSetSamplers( 0, 1, &a_rImpl.pMirrorSampler );
-	a_rImpl.pD3D11Context->UpdateSubresource( a_rImpl.pFadeConstants, 0, TNULL, &a_rImpl.vFadeColour, 0, 0 );
+	a_rImpl.pD3D11Context->UpdateSubresource( a_rImpl.pFadeConstants, 0, TNULL, &a_rcFadeColour, 0, 0 );
 	a_rImpl.pD3D11Context->PSSetConstantBuffers( 0, 1, &a_rImpl.pFadeConstants );
 	a_rImpl.pD3D11Context->Draw( 3, 0 );
 	ID3D11Buffer* pNullBuffer = TNULL;
@@ -2288,7 +2421,8 @@ static TBOOL ResolveTargetToOpenXR( AVRManager::Impl& a_rImpl, AVRManager::Impl:
 	    oViewport,
 	    a_rTarget.pColorShaderResourceView,
 	    a_bPremultipliedAlpha ? a_rImpl.pColorResolveUIPixelShader : a_rImpl.pColorResolvePixelShader,
-	    TFALSE );
+	    TFALSE,
+	    a_bPremultipliedAlpha ? a_rImpl.vFadeColour : a_rImpl.vWorldFadeColour );
 	if ( !bResolved )
 		return TFALSE;
 
@@ -2309,7 +2443,7 @@ static TBOOL ResolveTargetToOpenXR( AVRManager::Impl& a_rImpl, AVRManager::Impl:
 	return TTRUE;
 }
 
-static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rSource, TUINT32 a_uiImageIndex, TBOOL a_bAlphaBlend )
+static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rSource, TUINT32 a_uiImageIndex, TBOOL a_bAlphaBlend, const Toshi::TVector4& a_rcFadeColour )
 {
 	if ( a_uiImageIndex >= a_rSource.aShaderResourceViews.size() )
 		return TFALSE;
@@ -2352,7 +2486,7 @@ static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Targe
 	}
 	oViewport.MinDepth = 0.0f;
 	oViewport.MaxDepth = 1.0f;
-	return DrawD3D11Fullscreen( a_rImpl, pRenderTarget, oViewport, pSRV, a_rImpl.pMirrorPixelShader, a_bAlphaBlend );
+	return DrawD3D11Fullscreen( a_rImpl, pRenderTarget, oViewport, pSRV, a_rImpl.pMirrorPixelShader, a_bAlphaBlend, a_rcFadeColour );
 }
 
 
@@ -2486,7 +2620,7 @@ void AVRManager::EndEye()
 		bImageReady = ResolveTargetToOpenXR( rImpl, rTarget, rTarget.uiImageIndex, TFALSE );
 
 	if ( bImageReady && uiEye == 0 )
-		rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rTarget, rTarget.uiImageIndex, TFALSE );
+		rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rTarget, rTarget.uiImageIndex, TFALSE, rImpl.vWorldFadeColour );
 
 	ReleaseTargetImage( rImpl, rTarget );
 	if ( bImageReady )
@@ -2527,6 +2661,19 @@ TBOOL AVRManager::BeginUILayer()
 			// loading text and other GUI elements attached as its children.
 			pOverlay->SetColour( 0 );
 			rImpl.bStateOverlaySuppressed = TTRUE;
+		}
+	}
+	// Keep native panel backgrounds if no world was rendered or the resolve is
+	// unavailable. Only suppress rectangles captured for this frame, and keep
+	// their children visible just like the transition fade overlay above.
+	if ( rImpl.bColorCorrectionAvailable && rImpl.bWorldRendered )
+	{
+		for ( auto& rDim : rImpl.aDimOverlays )
+		{
+			if ( !IsWorldDimRectangleAlive( rDim.pRectangle ) ) continue;
+			rDim.uiColour = rDim.pRectangle->GetColour();
+			rDim.pRectangle->SetColour( 0 );
+			rDim.bSuppressed = TTRUE;
 		}
 	}
 	rImpl.bUILayerActive = TTRUE;
@@ -2765,6 +2912,12 @@ void AVRManager::EndUILayer()
 	if ( rImpl.bStateOverlaySuppressed && AGameStateController::IsSingletonCreated() )
 		AGameStateController::GetSingleton()->GetOverlayElement().SetColour( rImpl.uiStateOverlayColour );
 	rImpl.bStateOverlaySuppressed = TFALSE;
+	for ( auto& rDim : rImpl.aDimOverlays )
+	{
+		if ( rDim.bSuppressed && IsWorldDimRectangleAlive( rDim.pRectangle ) )
+			rDim.pRectangle->SetColour( rDim.uiColour );
+		rDim.bSuppressed = TFALSE;
+	}
 
 	TBOOL bUILayerReady = !rImpl.bDeviceLost;
 	if ( bUILayerReady && rImpl.bColorCorrectionAvailable )
@@ -2772,9 +2925,9 @@ void AVRManager::EndUILayer()
 	if ( bUILayerReady )
 	{
 		if ( rImpl.bHasMirrorFrame )
-			(void)DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TTRUE );
+			(void)DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TTRUE, rImpl.vFadeColour );
 		else
-			rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TFALSE );
+			rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TFALSE, rImpl.vFadeColour );
 	}
 
 	rImpl.oQuadSubImage.swapchain = rImpl.oUI.hSwapchain;
@@ -2999,6 +3152,8 @@ AVRManager& AVRManager::GetSingleton()
 	return s_oInstance;
 }
 
+void AVRManager::RegisterWorldDimRectangle( Toshi::T2GUIRectangle* ) {}
+void AVRManager::UnregisterWorldDimRectangle( Toshi::T2GUIRectangle* ) {}
 TBOOL AVRManager::GetHeadWorldMatrix( const Toshi::TMatrix44&, Toshi::TMatrix44& ) const { return TFALSE; }
 TBOOL AVRManager::GetUserHeadHeight( const AUnit*, TFLOAT& ) const { return TFALSE; }
 TBOOL AVRManager::AlignEntryHeading() { return TFALSE; }

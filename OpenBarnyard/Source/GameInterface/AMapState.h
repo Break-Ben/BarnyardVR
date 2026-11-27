@@ -86,6 +86,9 @@ public:
 	virtual void  OnInsertion() OVERRIDE;                                                                                                                  // +0x50
 	virtual void  OnRemoval() OVERRIDE;                                                                                                                    // +0x54
 
+	// The VR renderer uses the map's visibility to dim the world behind it.
+	const Toshi::T2GUIElement* GetWorldDimAnchor() const { return &m_oDialog; }
+
 private:
 	void CreateGUI();
 
