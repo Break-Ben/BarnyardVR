@@ -2134,6 +2134,36 @@ static TBOOL IsWorldDimElementVisible( const Toshi::T2GUIElement* a_pElement )
 	return TFALSE;
 }
 
+// Match the resolve shader's transfer functions. Composite menu backgrounds
+// behind the transition fade in linear light, then re-encode its premultiplied
+// colour for the existing shader constant. Mixing their sRGB values directly
+// would darken coloured transition fades differently in the eyes and UI.
+static TFLOAT FadeSrgbToLinear( TFLOAT a_fValue )
+{
+	const TFLOAT f = std::max( 0.0f, std::min( a_fValue, 1.0f ) );
+	return f <= 0.04045f ? f / 12.92f : std::pow( ( f + 0.055f ) / 1.055f, 2.4f );
+}
+
+static TFLOAT FadeLinearToSrgb( TFLOAT a_fValue )
+{
+	const TFLOAT f = std::max( 0.0f, std::min( a_fValue, 1.0f ) );
+	return f <= 0.0031308f ? f * 12.92f : 1.055f * std::pow( f, 1.0f / 2.4f ) - 0.055f;
+}
+
+static Toshi::TVector4 CompositeWorldFade( const Toshi::TVector4& a_rcFade, const Toshi::TVector4& a_rcLinearDim )
+{
+	if ( a_rcLinearDim.w <= 0.0f ) return a_rcFade;
+
+	const TFLOAT fBehind = 1.0f - a_rcFade.w;
+	const TFLOAT fAlpha  = a_rcFade.w + fBehind * a_rcLinearDim.w;
+	auto channel = [&]( TFLOAT fFade, TFLOAT fDim ) {
+		const TFLOAT fFront = a_rcFade.w > 0.000001f ? FadeSrgbToLinear( fFade / a_rcFade.w ) * a_rcFade.w : 0.0f;
+		return fAlpha > 0.000001f ? FadeLinearToSrgb( ( fFront + fBehind * fDim ) / fAlpha ) * fAlpha : 0.0f;
+	};
+	return Toshi::TVector4( channel( a_rcFade.x, a_rcLinearDim.x ), channel( a_rcFade.y, a_rcLinearDim.y ),
+	                        channel( a_rcFade.z, a_rcLinearDim.z ), fAlpha );
+}
+
 TBOOL AVRManager::BeginFrame()
 {
 	Impl& rImpl = *m_pImpl;
@@ -2246,7 +2276,7 @@ TBOOL AVRManager::BeginFrame()
 	rImpl.aDimOverlays.clear();
 	if ( rImpl.bColorCorrectionAvailable )
 	{
-		TFLOAT fBackdropOpacity = 0.0f;
+		Toshi::TVector4 vLinearDim( 0.0f, 0.0f, 0.0f, 0.0f );
 		auto snapshotDim = [&]( Toshi::T2GUIRectangle* pRectangle ) {
 			if ( !IsWorldDimElementVisible( pRectangle ) ) return;
 			const TUINT32 uiColour = pRectangle->GetColour();
@@ -2255,12 +2285,11 @@ TBOOL AVRManager::BeginFrame()
 			// rectangle or the separate UI. A half-opacity panel becomes ~75%.
 			const TFLOAT fPanelAlpha = colour.A / 255.0f;
 			const TFLOAT fDimAlpha   = 1.0f - ( 1.0f - fPanelAlpha ) * ( 1.0f - fPanelAlpha );
-			const TFLOAT fAlpha      = fDimAlpha * ( 1.0f - rImpl.vWorldFadeColour.w );
-			fBackdropOpacity += fDimAlpha * ( 1.0f - fBackdropOpacity );
-			rImpl.vWorldFadeColour.x += ( colour.R / 255.0f ) * fAlpha;
-			rImpl.vWorldFadeColour.y += ( colour.G / 255.0f ) * fAlpha;
-			rImpl.vWorldFadeColour.z += ( colour.B / 255.0f ) * fAlpha;
-			rImpl.vWorldFadeColour.w += fAlpha;
+			const TFLOAT fAlpha      = fDimAlpha * ( 1.0f - vLinearDim.w );
+			vLinearDim.x += FadeSrgbToLinear( colour.R / 255.0f ) * fAlpha;
+			vLinearDim.y += FadeSrgbToLinear( colour.G / 255.0f ) * fAlpha;
+			vLinearDim.z += FadeSrgbToLinear( colour.B / 255.0f ) * fAlpha;
+			vLinearDim.w += fAlpha;
 			rImpl.aDimOverlays.push_back( { pRectangle, uiColour, TFALSE } );
 		};
 		for ( auto* pRectangle : s_aWorldDimRectangles ) snapshotDim( pRectangle );
@@ -2282,18 +2311,16 @@ TBOOL AVRManager::BeginFrame()
 				// without stacking another dim if one is already behind them.
 				constexpr TFLOAT kPanelTransmission = 128.0f / 255.0f;
 				constexpr TFLOAT kMenuDim = 1.0f - kPanelTransmission * kPanelTransmission;
-				if ( IsWorldDimElementVisible( pDimAnchor ) && fBackdropOpacity < kMenuDim )
-				{
-					const TFLOAT fExtraDim = ( kMenuDim - fBackdropOpacity ) / ( 1.0f - fBackdropOpacity );
-					rImpl.vWorldFadeColour.w += fExtraDim * ( 1.0f - rImpl.vWorldFadeColour.w );
-				}
+				if ( IsWorldDimElementVisible( pDimAnchor ) && vLinearDim.w < kMenuDim )
+					vLinearDim.w = kMenuDim;
 
 				// Keep the minigame instruction picture and prompt on the UI
 				// layer, with a black surround as on the original full screen.
 				if ( pState->IsA( &TGetClass( AMiniGameInstructionState ) ) )
-					rImpl.vWorldFadeColour.w = 1.0f;
+					vLinearDim.w = 1.0f;
 			}
 		}
+		rImpl.vWorldFadeColour = CompositeWorldFade( rImpl.vFadeColour, vLinearDim );
 	}
 
 	if ( !rImpl.bHasNeutralPose || rImpl.bRecenterPending )
@@ -2416,7 +2443,7 @@ static TBOOL ResolveTargetToOpenXR( AVRManager::Impl& a_rImpl, AVRManager::Impl:
 	return TTRUE;
 }
 
-static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rSource, TUINT32 a_uiImageIndex, TBOOL a_bAlphaBlend )
+static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Target& a_rSource, TUINT32 a_uiImageIndex, TBOOL a_bAlphaBlend, const Toshi::TVector4& a_rcFadeColour )
 {
 	if ( a_uiImageIndex >= a_rSource.aShaderResourceViews.size() )
 		return TFALSE;
@@ -2459,8 +2486,7 @@ static TBOOL DrawD3D11Mirror( AVRManager::Impl& a_rImpl, AVRManager::Impl::Targe
 	}
 	oViewport.MinDepth = 0.0f;
 	oViewport.MaxDepth = 1.0f;
-	return DrawD3D11Fullscreen( a_rImpl, pRenderTarget, oViewport, pSRV, a_rImpl.pMirrorPixelShader, a_bAlphaBlend,
-	                            a_bAlphaBlend ? a_rImpl.vFadeColour : a_rImpl.vWorldFadeColour );
+	return DrawD3D11Fullscreen( a_rImpl, pRenderTarget, oViewport, pSRV, a_rImpl.pMirrorPixelShader, a_bAlphaBlend, a_rcFadeColour );
 }
 
 
@@ -2594,7 +2620,7 @@ void AVRManager::EndEye()
 		bImageReady = ResolveTargetToOpenXR( rImpl, rTarget, rTarget.uiImageIndex, TFALSE );
 
 	if ( bImageReady && uiEye == 0 )
-		rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rTarget, rTarget.uiImageIndex, TFALSE );
+		rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rTarget, rTarget.uiImageIndex, TFALSE, rImpl.vWorldFadeColour );
 
 	ReleaseTargetImage( rImpl, rTarget );
 	if ( bImageReady )
@@ -2899,9 +2925,9 @@ void AVRManager::EndUILayer()
 	if ( bUILayerReady )
 	{
 		if ( rImpl.bHasMirrorFrame )
-			(void)DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TTRUE );
+			(void)DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TTRUE, rImpl.vFadeColour );
 		else
-			rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TFALSE );
+			rImpl.bHasMirrorFrame = DrawD3D11Mirror( rImpl, rImpl.oUI, rImpl.oUI.uiImageIndex, TFALSE, rImpl.vFadeColour );
 	}
 
 	rImpl.oQuadSubImage.swapchain = rImpl.oUI.hSwapchain;
