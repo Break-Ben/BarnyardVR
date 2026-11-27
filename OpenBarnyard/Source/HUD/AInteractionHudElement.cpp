@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AInteractionHudElement.h"
+#include "AHudManager.h"
 #include "GUI/AGUI2.h"
 #include "Locale/ALocale.h"
 
@@ -110,7 +111,10 @@ void AInteractionHudElement::SetText( const TWCHAR* a_wszText, TINT a_iUnk1, TIN
 	if ( a_wszText )
 	{
 		m_abShowLine[ a_iLine ] = TTRUE;
-		rLine.T2GUIElement::Show();
+		// Updates can arrive after the manager hid this element. Remember the
+		// text for when HUD visibility returns without revealing it meanwhile.
+		if ( AHudManager::IsGameplayHUDVisible() || m_bCurrentlyVisible )
+			rLine.T2GUIElement::Show();
 
 		ALocale::FormatInputTags( m_aTexts[ a_iLine ], MAX_LENGTH, a_wszText );
 		rLine.SetText( m_aTexts[ a_iLine ] );

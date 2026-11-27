@@ -541,10 +541,14 @@ void AMapState::CreateGUI()
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( "Rekord26" );
 	TWCHAR     wszBuffer[ 64 ];
 
-	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", L"%c_DialogInputMap[Cancel]", ALocaleManager::Interface()->GetString( 1212 ) );
+	// Match the map selected on insertion, even if the XR session changes
+	// while terrain is loading. Close and zoom prompts use the same bindings.
+	const TBOOL bVRMap = m_pInputMap && m_pInputMap->GetName() == TPString8( "VRMap" );
+	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", bVRMap ? L"%c_VRMap[Cancel]" : L"%c_DialogInputMap[Cancel]", ALocaleManager::Interface()->GetString( 1212 ) );
 	ALocale::FormatInputTags( m_wszClose, TARRAYSIZE( m_wszClose ), wszBuffer );
 
-	const TBOOL bVRMap = AVRManager::GetSingleton().IsActive();
+	// These prompts are named for the current zoom level; ZoomOut increases
+	// scale, while ZoomIn decreases it.
 	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", bVRMap ? L"%c_VRMap[ZoomOut]" : L"%c_DialogInputMap[ZoomOut]", ALocaleManager::Interface()->GetString( 1235 ) );
 	ALocale::FormatInputTags( m_wszZoomOut, TARRAYSIZE( m_wszZoomOut ), wszBuffer );
 

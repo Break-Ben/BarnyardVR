@@ -181,6 +181,11 @@ void AHudManager::ToggleGameplayHUD()
 	s_bGameplayHUDVisible = !s_bGameplayHUDVisible;
 }
 
+TBOOL AHudManager::IsGameplayHUDVisible()
+{
+	return s_bGameplayHUDVisible;
+}
+
 TUINT32 AHudManager::GetCurrentHUDMask() const
 {
 	const TUINT32 uiMask = AGameStateController::GetSingleton()->GetCurrentState()->GetHUDMask();
