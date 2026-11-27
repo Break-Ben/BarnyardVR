@@ -3,6 +3,7 @@
 #include "VR/AVRSettings.h"
 #include <Input/TInputDeviceController.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <memory>
@@ -122,6 +123,21 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 		auto* result = effective.get();
 		s_maps.emplace( &a_rOwner, std::move( effective ) );
 		return *result;
+	}
+
+	if ( std::strcmp( mapName, "VRMap" ) == 0 )
+	{
+		// Only the Modern copy changes controller zoom. Keep Classic and
+		// keyboard/mouse on the untouched original dialog bindings.
+		entries.erase( std::remove_if( entries.begin(), entries.end(), []( const Entry& entry ) {
+			const auto command = AInputMap::GetBindingCommand( entry.second );
+			const TBOOL controller = entry.first >= Pad::BUTTON_DPAD_UP && entry.first <= Pad::BUTTON_SHOULDER_RIGHT_2;
+			return entry.first == Pad::BUTTON_SHOULDER_LEFT_2 || entry.first == Pad::BUTTON_SHOULDER_RIGHT_2 ||
+			       ( controller && ( command == AInputCommand_ZoomIn || command == AInputCommand_ZoomOut ) );
+		} ), entries.end() );
+		// AMapState's legacy names are reversed: ZoomOut increases scale.
+		entries.emplace_back( Pad::BUTTON_SHOULDER_LEFT_2, TUINT32( AInputCommand_ZoomIn ) | ( 1u << 16 ) );
+		entries.emplace_back( Pad::BUTTON_SHOULDER_RIGHT_2, TUINT32( AInputCommand_ZoomOut ) | ( 1u << 16 ) );
 	}
 
 	// Leave/SelectPrevious/etc. also appear in ordinary menus. Do not apply

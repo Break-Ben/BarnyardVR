@@ -107,20 +107,10 @@ TBOOL AInputMapManager::ReadControlsData()
 		auto* map = new AInputMap( TPString8( "VRMap" ) );
 		auto& original = dialog->GetCommandMap( TFALSE );
 		auto& bindings = map->GetCommandMap( TFALSE );
+		// Classic and keyboard/mouse use an exact copy. Modern's resolver
+		// applies map-specific controller bindings to its separate cached copy.
 		for ( auto it = original.Begin(); it != original.End(); ++it )
-		{
-			const auto key = it->GetFirst();
-			const auto command = AInputMap::GetBindingCommand( it->GetSecond() );
-			const TBOOL controller = key >= TInputDeviceController::BUTTON_DPAD_UP && key <= TInputDeviceController::BUTTON_SHOULDER_RIGHT_2;
-			if ( key == TInputDeviceController::BUTTON_SHOULDER_LEFT_2 || key == TInputDeviceController::BUTTON_SHOULDER_RIGHT_2 ||
-			     ( controller && ( command == AInputCommand_ZoomIn || command == AInputCommand_ZoomOut ) ) )
-				continue;
-			bindings.Insert( key, it->GetSecond() );
-		}
-		// In AMapState the original command names are reversed: ZoomOut
-		// increases the map scale, and ZoomIn decreases it.
-		bindings.Insert( TInputDeviceController::BUTTON_SHOULDER_LEFT_2, TUINT32( AInputCommand_ZoomIn ) | ( 1u << 16 ) );
-		bindings.Insert( TInputDeviceController::BUTTON_SHOULDER_RIGHT_2, TUINT32( AInputCommand_ZoomOut ) | ( 1u << 16 ) );
+			bindings.Insert( it->GetFirst(), it->GetSecond() );
 		s_pVRMap = map;
 	}
 
