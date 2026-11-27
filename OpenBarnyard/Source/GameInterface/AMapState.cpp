@@ -17,6 +17,7 @@
 #include "Terrain/ATerrainInterface.h"
 #include "Units/AUnit.h"
 #include "UnitMovement/Steering/ASteer.h"
+#include "VR/AVRManager.h"
 
 #include <File/TTRB.h>
 #include <GUI/T2GUIFontManager.h>
@@ -252,7 +253,7 @@ void AMapState::OnInsertion()
 	m_uiHUDMask = AGameStateController::GetSingleton()->FindGameStateOnStack( TPS8( ASimState ) )->GetHUDMask();
 	m_HUDParams.SetFlags( m_uiHUDMask );
 
-	SetInputMap( TPS8( DialogInputMap ) );
+	SetInputMap( AVRManager::GetSingleton().IsActive() ? TPString8( "VRMap" ) : TPS8( DialogInputMap ) );
 	AGameState::OnInsertion();
 }
 
@@ -540,13 +541,18 @@ void AMapState::CreateGUI()
 	T2GUIFont* pFont = T2GUIFontManager::FindFont( "Rekord26" );
 	TWCHAR     wszBuffer[ 64 ];
 
-	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", L"%c_DialogInputMap[Cancel]", ALocaleManager::Interface()->GetString( 1212 ) );
+	// Match the map selected on insertion, even if the XR session changes
+	// while terrain is loading. Close and zoom prompts use the same bindings.
+	const TBOOL bVRMap = m_pInputMap && m_pInputMap->GetName() == TPString8( "VRMap" );
+	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", bVRMap ? L"%c_VRMap[Cancel]" : L"%c_DialogInputMap[Cancel]", ALocaleManager::Interface()->GetString( 1212 ) );
 	ALocale::FormatInputTags( m_wszClose, TARRAYSIZE( m_wszClose ), wszBuffer );
 
-	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", L"%c_DialogInputMap[ZoomOut]", ALocaleManager::Interface()->GetString( 1235 ) );
+	// These prompts are named for the current zoom level; ZoomOut increases
+	// scale, while ZoomIn decreases it.
+	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", bVRMap ? L"%c_VRMap[ZoomOut]" : L"%c_DialogInputMap[ZoomOut]", ALocaleManager::Interface()->GetString( 1235 ) );
 	ALocale::FormatInputTags( m_wszZoomOut, TARRAYSIZE( m_wszZoomOut ), wszBuffer );
 
-	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", L"%c_DialogInputMap[ZoomIn]", ALocaleManager::Interface()->GetString( 1236 ) );
+	TStringManager::String16Format( wszBuffer, TARRAYSIZE( wszBuffer ), L"%s  %s", bVRMap ? L"%c_VRMap[ZoomIn]" : L"%c_DialogInputMap[ZoomIn]", ALocaleManager::Interface()->GetString( 1236 ) );
 	ALocale::FormatInputTags( m_wszZoomIn, TARRAYSIZE( m_wszZoomIn ), wszBuffer );
 
 	TFLOAT fCloseWidth   = pFont->GetTextWidth( m_wszClose, 1.0f );

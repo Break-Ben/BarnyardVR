@@ -21,6 +21,12 @@ TOSHI_NAMESPACE_USING
 // NOTE: GetClass 00596de0, CreateObject 0059c930, CreateObjectInPlace 0059c990
 TDEFINE_CLASS( AInputMapManager );
 
+namespace
+{
+// Keep the additional VR map outside the fixed-size retail map array.
+AInputMap* s_pVRMap = TNULL;
+}
+
 // $Barnyard: FUNCTION 0059c840
 AInputMapManager::AInputMapManager()
     : m_pActiveInputMap( TNULL ), m_iNumPushedInputMaps( 0 ), m_oDoodadToNameMap( AMemory::GetAllocator( AMemory::POOL_Misc ) ), m_oKeyMap( AMemory::GetAllocator( AMemory::POOL_Misc ) ), m_oCommandMap( AMemory::GetAllocator( AMemory::POOL_Misc ) ), m_oDoodadToCustomNameMap( AMemory::GetAllocator( AMemory::POOL_Misc ) )
@@ -35,6 +41,8 @@ AInputMapManager::AInputMapManager()
 // $Barnyard: FUNCTION 0059c910
 AInputMapManager::~AInputMapManager()
 {
+	delete s_pVRMap;
+	s_pVRMap = TNULL;
 	while ( m_InputMaps.Size() != 0 )
 	{
 		AInputMap* pInputMap = m_InputMaps.Back().Value();
@@ -61,6 +69,8 @@ TBOOL AInputMapManager::ReadControlsData()
 
 	auto properties = PBProperties::LoadFromTRB( trb );
 
+	delete s_pVRMap;
+	s_pVRMap = TNULL;
 	while ( m_InputMaps.Size() != 0 )
 	{
 		auto pInputMap = m_InputMaps.Back();
@@ -89,6 +99,19 @@ TBOOL AInputMapManager::ReadControlsData()
 		for ( auto it = original.Begin(); it != original.End(); ++it )
 			inventory->GetCommandMap( TFALSE ).Insert( it->GetFirst(), it->GetSecond() );
 		m_InputMaps.PushBack( inventory );
+	}
+
+	// The map needs trigger zoom without changing the shared dialog controls.
+	if ( auto* dialog = FindMap( TPString8( "DialogInputMap" ) ) )
+	{
+		auto* map = new AInputMap( TPString8( "VRMap" ) );
+		auto& original = dialog->GetCommandMap( TFALSE );
+		auto& bindings = map->GetCommandMap( TFALSE );
+		// Classic and keyboard/mouse use an exact copy. Modern's resolver
+		// applies map-specific controller bindings to its separate cached copy.
+		for ( auto it = original.Begin(); it != original.End(); ++it )
+			bindings.Insert( it->GetFirst(), it->GetSecond() );
+		s_pVRMap = map;
 	}
 
 	return TTRUE;
@@ -121,6 +144,9 @@ AInputMap* AInputMapManager::PopInputMap()
 // $Barnyard: FUNCTION 00596ee0
 AInputMap* AInputMapManager::FindMap( const Toshi::TPString8& a_rMapName )
 {
+	if ( s_pVRMap && s_pVRMap->GetName() == a_rMapName )
+		return s_pVRMap;
+
 	for ( auto it = m_InputMaps.Begin(); it != m_InputMaps.End(); it++ )
 	{
 		if ( ( *it )->GetName() == a_rMapName )

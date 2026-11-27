@@ -3,6 +3,7 @@
 #include "VR/AVRSettings.h"
 #include <Input/TInputDeviceController.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <memory>
@@ -124,6 +125,21 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 		return *result;
 	}
 
+	if ( std::strcmp( mapName, "VRMap" ) == 0 )
+	{
+		// Only the Modern copy changes controller zoom. Keep Classic and
+		// keyboard/mouse on the untouched original dialog bindings.
+		entries.erase( std::remove_if( entries.begin(), entries.end(), []( const Entry& entry ) {
+			const auto command = AInputMap::GetBindingCommand( entry.second );
+			const TBOOL controller = entry.first >= Pad::BUTTON_DPAD_UP && entry.first <= Pad::BUTTON_SHOULDER_RIGHT_2;
+			return entry.first == Pad::BUTTON_SHOULDER_LEFT_2 || entry.first == Pad::BUTTON_SHOULDER_RIGHT_2 ||
+			       ( controller && ( command == AInputCommand_ZoomIn || command == AInputCommand_ZoomOut ) );
+		} ), entries.end() );
+		// AMapState's legacy names are reversed: ZoomOut increases scale.
+		entries.emplace_back( Pad::BUTTON_SHOULDER_LEFT_2, TUINT32( AInputCommand_ZoomIn ) | ( 1u << 16 ) );
+		entries.emplace_back( Pad::BUTTON_SHOULDER_RIGHT_2, TUINT32( AInputCommand_ZoomOut ) | ( 1u << 16 ) );
+	}
+
 	// Leave/SelectPrevious/etc. also appear in ordinary menus. Do not apply
 	// gameplay preferences to those maps just because the command name matches.
 	TBOOL gameplay = TFALSE;
@@ -142,6 +158,7 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 			default: break;
 		}
 	}
+	if ( std::strcmp( mapName, "VRMap" ) == 0 ) gameplay = TFALSE;
 	std::array<Doodad, COUNT> destinations;
 	std::array<TBOOL, COUNT>  assigned{};
 	std::array<TBOOL, COUNT>  occupied{};
@@ -150,6 +167,13 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 	// UI maps use Quest A to accept and B to go back. Keep these separate
 	// from gameplay, where B is Interact rather than Cancel.
 	std::vector<Preference> preferences;
+	// The map has its own copy of the dialog bindings; keep its zoom triggers
+	// fixed before applying the usual menu accept/cancel preferences.
+	if ( std::strcmp( mapName, "VRMap" ) == 0 )
+	{
+		preferences.push_back( { AInputCommand_ZoomIn, Pad::BUTTON_SHOULDER_LEFT_2 } );
+		preferences.push_back( { AInputCommand_ZoomOut, Pad::BUTTON_SHOULDER_RIGHT_2 } );
+	}
 	// Car chase calls its pedals Forward/BackwardWithUp, unlike the bike.
 	// Do not reinterpret these directional commands in tapper/whack/QTE maps.
 	if ( std::strcmp( mapName, "ACarChaseMiniGameState" ) == 0 )

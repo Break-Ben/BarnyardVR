@@ -24,6 +24,8 @@ public:
 
 	TBOOL        AddElement( AHudElement* a_pElement, TBOOL a_bOwnedByManager, TBOOL a_bInsertTail = TTRUE, TBOOL a_bShow = TFALSE );
 	AHudElement* FindElement( const Toshi::TClass* a_pClass );
+	void         ToggleGameplayHUD();
+	static TBOOL IsGameplayHUDVisible();
 
 	template <class T>
 	T* FindElement()

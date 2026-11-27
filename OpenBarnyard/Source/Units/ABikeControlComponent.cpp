@@ -229,6 +229,8 @@ void ABikeControlComponent::OnDisable()
 	m_bBoost       = TFALSE;
 	m_bToggleBrake = TFALSE;
 	m_vecInput     = TVector4::VEC_ZERO;
+	// VEC_ZERO is a position with w = 1, but w is the bike jump input.
+	m_vecInput.w   = 0.0f;
 	AControlComponent::OnDisable();
 }
 

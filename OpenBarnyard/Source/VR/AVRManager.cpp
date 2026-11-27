@@ -2831,9 +2831,8 @@ void AVRManager::RenderDebugHUD()
 }
 
 // Follow in the in-game pause menu, while collecting honey, and during
-// unrestricted first-person gameplay. The world-rendered check is separate so
-// camera updates can query the same policy earlier in the frame.
-static TBOOL CanFollowHeadUIInWorld( const AUnit* a_pRequiredPlayer = TNULL )
+// unrestricted first-person gameplay.
+static TBOOL CanFollowHeadUIInWorld()
 {
 	if ( g_oLoadScreen.IsLoadingScreen() || !AVRSettings::GetSingleton().IsUIFollowingHead() ||
 	     !AGameStateController::IsSingletonCreated() )
@@ -2860,8 +2859,7 @@ static TBOOL CanFollowHeadUIInWorld( const AUnit* a_pRequiredPlayer = TNULL )
 	if ( !APlayerManager::IsSingletonCreated() )
 		return TFALSE;
 	AUnit* pPlayer = APlayerManager::GetSingleton()->GetPlayer( 0 );
-	if ( !pPlayer || ( a_pRequiredPlayer && pPlayer != a_pRequiredPlayer ) ||
-	     !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( pPlayer ) )
+	if ( !pPlayer || !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( pPlayer ) )
 		return TFALSE;
 
 	// APlayerControlComponent derives from ASimplePlayerControlComponent in C++,
@@ -2885,7 +2883,12 @@ static TBOOL CanFollowHeadUI( const AVRManager::Impl& a_rImpl )
 TBOOL AVRManager::GetUserHeadHeight( const AUnit* a_pUnit, TFLOAT& a_rOutHeight ) const
 {
 	const Impl& rImpl = *m_pImpl;
-	if ( !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending || !CanFollowHeadUIInWorld( a_pUnit ) )
+	// Eye height belongs to the camera, not to the UI's input/follow policy.
+	// Menus can disable controls while the same on-foot camera remains active.
+	if ( !IsActive() || !rImpl.bHasNeutralPose || rImpl.bRecenterPending ||
+	     !AVRSettings::GetSingleton().IsUIFollowingHead() || !APlayerManager::IsSingletonCreated() ||
+	     a_pUnit != APlayerManager::GetSingleton()->GetPlayer( 0 ) ||
+	     !AFirstPersonCamera::IsUnitInFreeTurningFirstPerson( a_pUnit ) )
 		return TFALSE;
 
 	// Prefer the runtime's floor estimate; LOCAL alone may be head-anchored.
