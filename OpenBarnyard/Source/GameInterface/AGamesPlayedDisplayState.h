@@ -47,6 +47,9 @@ public:
 	virtual void  OnActivate() OVERRIDE;                                                                                                                   // +0x60
 	virtual void  OnDeactivate() OVERRIDE;                                                                                                                 // +0x64
 
+	// The VR renderer uses the scorebook's visibility to dim the world behind it.
+	const Toshi::T2GUIElement* GetWorldDimAnchor() const { return &m_oBackground; }
+
 private:
 	void CreateGUI();
 	void UpdatePage();

@@ -10,6 +10,8 @@
 #include "VR/AVRSettings.h"
 #include "GameInterface/AGameStateController.h"
 #include "GameInterface/ABYardMenuState.h"
+#include "GameInterface/AGamesPlayedDisplayState.h"
+#include "GameInterface/AMapState.h"
 #include "GameInterface/AMiniGameInstructionState.h"
 #include "MiniGame/AHoneyCollectingGame.h"
 #include "MiniGame/AShakeTreeMicroGame.h"
@@ -2119,12 +2121,12 @@ static TBOOL IsWorldDimRectangleAlive( const Toshi::T2GUIRectangle* a_pRectangle
 	       a_pRectangle == GetStateOverlay( AGameState::OVERLAY_2 );
 }
 
-static TBOOL IsWorldDimRectangleVisible( Toshi::T2GUIRectangle* a_pRectangle )
+static TBOOL IsWorldDimElementVisible( const Toshi::T2GUIElement* a_pElement )
 {
-	if ( !a_pRectangle || !a_pRectangle->IsLinked() || !AGUI2::IsSingletonCreated() )
+	if ( !a_pElement || !a_pElement->IsLinked() || !AGUI2::IsSingletonCreated() )
 		return TFALSE;
 	const auto* pRoot = AGUI2::GetRootElement();
-	for ( auto* pElement = static_cast<Toshi::T2GUIElement*>( a_pRectangle ); pElement; pElement = pElement->GetParent() )
+	for ( auto* pElement = a_pElement; pElement; pElement = pElement->GetParent() )
 	{
 		if ( !pElement->IsVisible() ) return TFALSE;
 		if ( pElement == pRoot ) return TTRUE;
@@ -2244,8 +2246,9 @@ TBOOL AVRManager::BeginFrame()
 	rImpl.aDimOverlays.clear();
 	if ( rImpl.bColorCorrectionAvailable )
 	{
+		TFLOAT fBackdropOpacity = 0.0f;
 		auto snapshotDim = [&]( Toshi::T2GUIRectangle* pRectangle ) {
-			if ( !IsWorldDimRectangleVisible( pRectangle ) ) return;
+			if ( !IsWorldDimElementVisible( pRectangle ) ) return;
 			const TUINT32 uiColour = pRectangle->GetColour();
 			const AFade::Color colour( uiColour );
 			// Strengthen the VR background dim without changing the native
@@ -2253,6 +2256,7 @@ TBOOL AVRManager::BeginFrame()
 			const TFLOAT fPanelAlpha = colour.A / 255.0f;
 			const TFLOAT fDimAlpha   = 1.0f - ( 1.0f - fPanelAlpha ) * ( 1.0f - fPanelAlpha );
 			const TFLOAT fAlpha      = fDimAlpha * ( 1.0f - rImpl.vWorldFadeColour.w );
+			fBackdropOpacity += fDimAlpha * ( 1.0f - fBackdropOpacity );
 			rImpl.vWorldFadeColour.x += ( colour.R / 255.0f ) * fAlpha;
 			rImpl.vWorldFadeColour.y += ( colour.G / 255.0f ) * fAlpha;
 			rImpl.vWorldFadeColour.z += ( colour.B / 255.0f ) * fAlpha;
@@ -2262,14 +2266,33 @@ TBOOL AVRManager::BeginFrame()
 		for ( auto* pRectangle : s_aWorldDimRectangles ) snapshotDim( pRectangle );
 		if ( auto* pOverlay = GetStateOverlay( AGameState::OVERLAY_2 ) ) snapshotDim( pOverlay );
 
-		// Minigame instructions use a full-screen loading picture rather than
-		// a dim rectangle. Keep the picture and prompt on the UI layer, with a
-		// black surround like the original full-screen presentation.
 		if ( AGameStateController::IsSingletonCreated() )
 		{
 			auto* pStates = AGameStateController::GetSingleton();
-			if ( pStates->GetNumStates() > 1 && pStates->GetCurrentState()->IsA( &TGetClass( AMiniGameInstructionState ) ) )
-				rImpl.vWorldFadeColour.w = 1.0f;
+			if ( pStates->GetNumStates() > 1 )
+			{
+				auto* pState = pStates->GetCurrentState();
+				const Toshi::T2GUIElement* pDimAnchor = TNULL;
+				if ( pState->IsA( &TGetClass( AMapState ) ) )
+					pDimAnchor = static_cast<AMapState*>( pState )->GetWorldDimAnchor();
+				else if ( pState->IsA( &TGetClass( AGamesPlayedDisplayState ) ) )
+					pDimAnchor = static_cast<AGamesPlayedDisplayState*>( pState )->GetWorldDimAnchor();
+
+				// These menus have no dim rectangle. Match the pause backdrop,
+				// without stacking another dim if one is already behind them.
+				constexpr TFLOAT kPanelTransmission = 128.0f / 255.0f;
+				constexpr TFLOAT kMenuDim = 1.0f - kPanelTransmission * kPanelTransmission;
+				if ( IsWorldDimElementVisible( pDimAnchor ) && fBackdropOpacity < kMenuDim )
+				{
+					const TFLOAT fExtraDim = ( kMenuDim - fBackdropOpacity ) / ( 1.0f - fBackdropOpacity );
+					rImpl.vWorldFadeColour.w += fExtraDim * ( 1.0f - rImpl.vWorldFadeColour.w );
+				}
+
+				// Keep the minigame instruction picture and prompt on the UI
+				// layer, with a black surround as on the original full screen.
+				if ( pState->IsA( &TGetClass( AMiniGameInstructionState ) ) )
+					rImpl.vWorldFadeColour.w = 1.0f;
+			}
 		}
 	}
 
