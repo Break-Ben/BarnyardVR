@@ -142,6 +142,7 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 			default: break;
 		}
 	}
+	if ( std::strcmp( mapName, "VRMap" ) == 0 ) gameplay = TFALSE;
 	std::array<Doodad, COUNT> destinations;
 	std::array<TBOOL, COUNT>  assigned{};
 	std::array<TBOOL, COUNT>  occupied{};
@@ -150,6 +151,13 @@ AControllerBindings::Map& AControllerBindings::Resolve( AInputMap& a_rOwner, Map
 	// UI maps use Quest A to accept and B to go back. Keep these separate
 	// from gameplay, where B is Interact rather than Cancel.
 	std::vector<Preference> preferences;
+	// The map has its own copy of the dialog bindings; keep its zoom triggers
+	// fixed before applying the usual menu accept/cancel preferences.
+	if ( std::strcmp( mapName, "VRMap" ) == 0 )
+	{
+		preferences.push_back( { AInputCommand_ZoomIn, Pad::BUTTON_SHOULDER_LEFT_2 } );
+		preferences.push_back( { AInputCommand_ZoomOut, Pad::BUTTON_SHOULDER_RIGHT_2 } );
+	}
 	// Car chase calls its pedals Forward/BackwardWithUp, unlike the bike.
 	// Do not reinterpret these directional commands in tapper/whack/QTE maps.
 	if ( std::strcmp( mapName, "ACarChaseMiniGameState" ) == 0 )

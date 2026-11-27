@@ -23,6 +23,13 @@
 #include "GUI/AGUISystem.h"
 #include "Mod/ImGui/AImGui.h"
 
+#include <Input/TInputDeviceKeyboard.h>
+#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 ) && !defined( TOSHI_SKU_WASM )
+#  include "ASimState.h"
+#  include "Platform/Windows/Input/TInputDeviceController_OpenXR.h"
+#  include "VR/AVRSettings.h"
+#endif
+
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
 // Note: Should be the last include!
@@ -717,6 +724,14 @@ TBOOL AGameStateController::ProcessInput( const TInputInterface::InputEvent* a_p
 
 	if ( m_eFlags.bIgnoreInput ) return TTRUE;
 
+	if ( a_pEvent->GetSource()->IsA( &TGetClass( TInputDeviceKeyboard ) ) &&
+	     a_pEvent->GetDoodad() == TInputDeviceKeyboard::KEY_F8 &&
+	     a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN && AHudManager::IsSingletonCreated() )
+	{
+		AHudManager::GetSingleton()->ToggleGameplayHUD();
+		return TTRUE;
+	}
+
 	if ( m_oStates.Size() <= 1 )
 	{
 		return TFALSE;
@@ -749,6 +764,22 @@ TBOOL AGameStateController::ProcessInput( const TInputInterface::InputEvent* a_p
 	// NOTE: Barnyard route added on top: the TGUI screen of AGUISystem gets the input while it shows a widget
 	if ( AGUISystem::IsSingletonCreated() && AGUISystem::GetSingleton()->NotifyTGUIInputEvent( a_pEvent ) )
 		return TTRUE;
+#endif
+
+#if defined( TOSHI_SKU_WINDOWS ) && defined( TRENDERINTERFACE_DX11 ) && !defined( TOSHI_SKU_WASM )
+	// Quest X is free in ordinary Modern on-foot/bike play. Route it through
+	// the sim's existing Select command, without stealing it from child games,
+	// inventory, other devices, or the Classic layout.
+	if ( pGameState->GetClass() == &TGetClass( ASimState ) && pGameState->GetNumChildStates() == 0 &&
+	     !ARootTask::GetSingleton()->IsPaused() && AVRSettings::GetSingleton().IsModernControls() &&
+	     a_pEvent->GetSource()->IsA( &TGetClass( TInputOpenXRDeviceController ) ) &&
+	     a_pEvent->GetDoodad() == TInputDeviceController::BUTTON_CONTEXT_4 &&
+	     a_pEvent->GetEventType() == TInputInterface::EVENT_TYPE_GONE_DOWN )
+	{
+		TBOOL bStopEvents = TTRUE;
+		if ( pGameState->ProcessCommand( AInputCommand_Select, a_pEvent, bStopEvents ) )
+			return TTRUE;
+	}
 #endif
 
 	if ( pGameState->SendInputCommands( a_pEvent ) )
